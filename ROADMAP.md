@@ -22,7 +22,7 @@ response validation with one controlled repair/retry, error mapping
 (no leaked provider errors/keys/stack traces), clearly-labelled demo
 fallback when `GEMINI_API_KEY` is missing. Route tests where feasible.
 
-## Step 3 — Upload shell + page flow
+## Step 3 — Upload shell + page flow ✅ done (verified in browser + live extraction)
 
 Dropzone + file picker, image preview with replace/remove, client+server
 file validation (JPEG/PNG/WebP, size limits), loading/error states,
