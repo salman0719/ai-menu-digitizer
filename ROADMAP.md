@@ -9,13 +9,13 @@ Git on `main`, Next.js App Router + TS strict + Tailwind, Prettier, ESLint,
 Vitest, Zod, VSCode setup, `.gitattributes`/`.editorconfig` (LF everywhere),
 `AGENTS.md`, `local/` sandbox (gitignored, see below).
 
-## Step 1 — Schema + data utilities + tests (in progress)
+## Step 1 — Schema + data utilities + tests ✅ done
 
 Canonical Zod schema and types first — everything else consumes them.
 Owns: `src/features/menu/schema.ts`, `types.ts`, `menu-utils.ts`,
 `sample-menu.ts`, `tests/menu-schema.test.ts`, `tests/menu-utils.test.ts`.
 
-## Step 2 — AI provider + API route
+## Step 2 — AI provider + API route ✅ done (live-tested with real key + sample images)
 
 Server-only Gemini wrapper, prompt, `POST /api/extract-menu`, env config,
 response validation with one controlled repair/retry, error mapping
