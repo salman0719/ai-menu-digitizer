@@ -33,10 +33,10 @@ sample data, so the editor, persistence, and export can all be exercised.
 
 ### Environment variables
 
-| Variable         | Where           | Purpose                                                            |
-| ---------------- | --------------- | ------------------------------------------------------------------ |
-| `GEMINI_API_KEY` | Server only     | Gemini API key. Required for real extraction.                      |
-| `GEMINI_MODEL`   | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`.             |
+| Variable         | Where             | Purpose                                              |
+| ---------------- | ----------------- | ---------------------------------------------------- |
+| `GEMINI_API_KEY` | Server only       | Gemini API key. Required for real extraction.        |
+| `GEMINI_MODEL`   | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`. |
 
 Rules enforced by the code:
 
