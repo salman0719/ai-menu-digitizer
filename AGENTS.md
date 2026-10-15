@@ -23,6 +23,7 @@ P0 first. Do not build out-of-scope items (auth, billing, remote DB, public site
   competing types. Agents B/C/D consume Agent A's schema.
 - Prefer editing existing files over creating new ones.
 - Match existing conventions (App Router, TypeScript strict, Tailwind).
+- Do NOT add shadcn/ui (user decision). Use Tailwind + small local primitives.
 - Do not add dependencies unless they materially reduce effort or improve reliability.
 
 ## Quality gates (run before finishing)
