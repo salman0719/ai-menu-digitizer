@@ -35,11 +35,16 @@ native IndexedDB persistence (menus + optional image blobs, schema
 versioning, upgrade/error handling), JSON export/import with validation,
 CSV export with correct escaping.
 
-## Step 5 — Integrate + demo mode + README
+## Step 5 — Integrate + demo mode + README ✅ done (gates green + browser-verified)
 
 Wire upload → extract → edit → save. Demo mode without API key.
 README: setup, env vars, IndexedDB behavior, tests, Vercel deploy.
 Collect sample images in `local/samples/menus/` (one clean, one difficult).
+
+Verified: demo → edit → autosave → reload persistence in browser; live
+extraction via `POST /api/extract-menu` with `cafe-board-clean-01.jpg`;
+lint/typecheck/53 tests/production build all pass; README rewritten
+(create-next-app boilerplate replaced).
 
 ## Step 6 — Verify + polish
 
@@ -56,12 +61,12 @@ mobile, no key leakage, production build, Vercel config.
 
 ## Things needed from the user (later, not now)
 
-- [ ] `GEMINI_API_KEY` — needed at Step 5 for live extraction testing
-      (`.env.local` locally; Vercel project env vars for deploys).
+- [x] `GEMINI_API_KEY` — present in `.env.local`, live extraction tested at
+      Step 5. Still needed as a Vercel project env var when deploying.
 - [ ] GitHub remote URL — repo is local-only; push only when asked.
 - [ ] Vercel project setup — needed at Step 6 deploy check.
-- [ ] Sample menu images — optional; can drop into `local/samples/menus/`
-      anytime before Step 5 (or agents fetch openly-licensed ones then).
+- [x] Sample menu images — collected in `local/samples/menus/`
+      (clean: `cafe-board-clean-01.jpg`; difficult: `vintage-menu-01.png`).
 
 ## local/ sandbox convention (untracked)
 
