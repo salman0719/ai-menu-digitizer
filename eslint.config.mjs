@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Uncommitted throwaway sandbox (see ROADMAP.md "local/" section):
+    "local/**",
   ]),
 ]);
 
