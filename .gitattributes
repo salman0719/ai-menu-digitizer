@@ -1,0 +1,13 @@
+# Line endings: enforce LF everywhere, let Git handle conversion on checkout.
+* text=auto eol=lf
+
+# Source code
+*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml,toml} text eol=lf
+
+# Windows batch files need CRLF to run correctly
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Images and binaries: do not modify
+*.{png,jpg,jpeg,webp,gif,ico,woff,woff2,ttf,eot,otf,pdf} binary
