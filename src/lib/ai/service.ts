@@ -4,15 +4,12 @@
  * Server-only. Throws {@link ServiceError} with HTTP-ready status/code.
  */
 
+import { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES } from "../image-constraints";
 import { ExtractedMenu, extractedMenuSchema } from "./extraction-schema";
 import { buildExtractionPrompt, buildRepairPrompt } from "./prompts";
 import { ExtractionProvider, ProviderError } from "./provider";
 
-export const SUPPORTED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-
-// Vercel's Hobby plan rejects request bodies above ~4.5 MB before our code
-// runs, so validate well below that and document the limit in errors.
-export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+export { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES };
 
 const MAX_REPAIR_INPUT_CHARS = 8000;
 
