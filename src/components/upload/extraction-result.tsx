@@ -32,6 +32,8 @@ interface ExtractionResultProps {
   data: PreviewMenu;
   source: "ai" | "demo";
   onStartOver: () => void;
+  /** Open the result in the editor. Absent until Step 4 wiring provides it. */
+  onEdit?: () => void;
 }
 
 function formatPrice(item: PreviewItem, fallbackCurrency: string | null): string {
@@ -40,7 +42,7 @@ function formatPrice(item: PreviewItem, fallbackCurrency: string | null): string
   return `${currency ? `${currency} ` : ""}${item.price.toFixed(2)}`;
 }
 
-export function ExtractionResult({ data, source, onStartOver }: ExtractionResultProps) {
+export function ExtractionResult({ data, source, onStartOver, onEdit }: ExtractionResultProps) {
   const itemCount = data.categories.reduce((sum, c) => sum + c.items.length, 0);
   const reviewCount = data.categories.reduce(
     (sum, c) => sum + c.items.filter((i) => i.price === null || i.reviewNotes.length > 0).length,
@@ -76,13 +78,24 @@ export function ExtractionResult({ data, source, onStartOver }: ExtractionResult
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onStartOver}
-          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-        >
-          Start over
-        </button>
+        <div className="flex gap-2">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              Edit menu
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onStartOver}
+            className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Start over
+          </button>
+        </div>
       </div>
 
       {data.categories.length === 0 ? (
