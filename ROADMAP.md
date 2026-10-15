@@ -28,7 +28,7 @@ Dropzone + file picker, image preview with replace/remove, client+server
 file validation (JPEG/PNG/WebP, size limits), loading/error states,
 extraction trigger. Typed extraction callback; consume Step 1 schema.
 
-## Step 4 — Editor + IndexedDB + import/export
+## Step 4 — Editor + IndexedDB + import/export ✅ done (browser-verified incl. persistence + data-loss fix)
 
 Editable workspace (categories/items CRUD, reorder, move, availability),
 native IndexedDB persistence (menus + optional image blobs, schema
