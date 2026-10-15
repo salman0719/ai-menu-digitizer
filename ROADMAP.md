@@ -46,12 +46,21 @@ extraction via `POST /api/extract-menu` with `cafe-board-clean-01.jpg`;
 lint/typecheck/53 tests/production build all pass; README rewritten
 (create-next-app boilerplate replaced).
 
-## Step 6 — Verify + polish
+## Step 6 — Verify + polish ✅ done (full local checklist; deploy pending user setup)
 
 Full PLAN.md §11 acceptance checklist: both sample images, all error paths
 (missing key, quota, bad AI JSON, bad file, oversized, empty menu, malformed
 import), persistence after refresh, JSON round-trip, CSV escaping, desktop +
 mobile, no key leakage, production build, Vercel config.
+
+Verified 2026-10-16: clean image via UI (drop → extract → editor → image blob
+retrieved after refresh) and difficult image via API (31 items, honest nulls);
+missing-key server run (503 `missing_api_key`, demo CTA, no key in logs);
+quota error shown in UI without data loss; validation errors (400/413) live;
+key absent from client bundles, no server-side file writes; desktop + mobile
+screenshots. Fixed: dark-OS contrast break (light theme pinned), ESLint now
+ignores `local/`. Gates: lint/typecheck/53 tests/build all green.
+Remaining: actual Vercel deploy (needs user's project + GitHub remote).
 
 ## Decisions
 
