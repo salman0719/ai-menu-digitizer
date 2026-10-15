@@ -1,36 +1,122 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Menu Digitizer
 
-## Getting Started
+Upload a photo or scan of a menu, extract it into structured categories and
+items with Gemini, review and correct the draft in an editable workspace, and
+save or export the result. AI output is a draft — the app flags anything
+uncertain for review and never invents missing prices, descriptions, or
+dietary labels.
 
-First, run the development server:
+Local-first prototype: menus are stored in your browser (IndexedDB). No
+accounts, no server database.
+
+## Stack
+
+- Next.js (App Router) + TypeScript strict + Tailwind CSS
+- Zod for validating AI output, stored records, and imported files
+- Gemini API, called only through the server route `POST /api/extract-menu`
+- Native IndexedDB for menus and image blobs (no wrapper library)
+- Vitest for unit tests
+
+## Local setup
+
+Requirements: Node.js 22 (see `.nvmrc`).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then add your Gemini API key
+npm run dev                  # http://localhost:3200
 ```
 
-Open [http://localhost:3200](http://localhost:3200) with your browser to see the result.
+Without an API key the app still starts and runs: extraction reports that no
+key is configured and offers a clearly labelled **demo mode** built from
+sample data, so the editor, persistence, and export can all be exercised.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable         | Where           | Purpose                                                            |
+| ---------------- | --------------- | ------------------------------------------------------------------ |
+| `GEMINI_API_KEY` | Server only     | Gemini API key. Required for real extraction.                      |
+| `GEMINI_MODEL`   | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`.             |
 
-## Learn More
+Rules enforced by the code:
 
-To learn more about Next.js, take a look at the following resources:
+- The key is read only in server-side code (`.env.local` locally, Vercel
+  project environment variables in deployment).
+- Never expose it via a `NEXT_PUBLIC_` variable, the client bundle, or logs.
+- `.env.local` is gitignored — never commit real keys.
+- Provider errors, credentials, and stack traces are never returned to the
+  browser; the API responds with `{ error: { code, message } }` only.
+- Uploaded images are processed in memory and never stored server-side.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run dev          # dev server on port 3200
+npm run build        # production build
+npm run start        # serve the production build
+npm run lint         # ESLint
+npm run typecheck    # tsc --noEmit (strict)
+npm run test         # Vitest unit tests (single run)
+npm run test:watch   # Vitest watch mode
+npm run format       # Prettier write
+```
 
-## Deploy on Vercel
+## How it works
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. **Upload** — drag-and-drop or file picker; JPEG/PNG/WebP validated on both
+   client and server, with size limits and clear error messages.
+2. **Extract** — the image is sent once to `POST /api/extract-menu`, which
+   calls Gemini, validates the response with Zod (one controlled repair retry),
+   and returns a structured draft. With no key configured, the UI offers
+   clearly labelled demo data instead.
+3. **Review** — the draft opens in the editor: fix names, prices,
+   descriptions, categories, variants/options, dietary labels, and
+   availability; add, duplicate, delete, reorder, and move items. Uncertain
+   fields carry a visible "needs review" note.
+4. **Save** — edits autosave to IndexedDB (debounced; "Saving… / Saved
+   locally" status). Nothing is claimed saved before the transaction succeeds.
+5. **Export** — download the menu as JSON (round-trips through Import JSON)
+   or as CSV (one row per item, correctly escaped).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## IndexedDB behavior
+
+- Database `ai-menu-digitizer` with versioned schema and object stores for
+  `menus` and `images` (original image blobs, stored optionally).
+- Native browser API only — no database server, no sync.
+- Data lives in **this browser on this device**. It does not follow you to
+  other devices or browsers, and clearing site data (or browser eviction)
+  removes it. **Export JSON backups of anything important.**
+- Schema upgrades, quota errors, unavailable IndexedDB, and malformed or
+  outdated records are handled with visible messages rather than crashes.
+- `localStorage` is not used for menu data.
+
+## Tests
+
+`npm run test` covers the schema, menu utilities, extraction conversion,
+provider error mapping, API service/validation, image constraints, the
+extraction client, IndexedDB storage (via `fake-indexeddb`), and JSON/CSV
+import/export escaping.
+
+Before finishing a change, run the full gate:
+
+```bash
+npm run lint && npm run typecheck && npm run test && npm run build
+```
+
+## Deployment (Vercel)
+
+1. Push the repository to GitHub/GitLab (when you choose to).
+2. Import the project in Vercel — it is detected as Next.js automatically.
+3. Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) under
+   Project → Settings → Environment Variables. Production builds fail
+   extraction gracefully without a key (demo mode still works).
+4. Deploy. The extraction endpoint runs as a serverless Next.js route; there
+   is no separate server or long-running process.
+5. Verify with a real image after deploying: upload → extract → edit → reload.
+
+No other services are required: no external database, auth, or file storage.
+
+## Scope
+
+P0 prototype only (see `PLAN.md` and `ROADMAP.md`). No accounts, cloud sync,
+payments, public site publishing, QR menus, or POS integrations.
