@@ -11,6 +11,7 @@ import {
   renameCategory,
 } from "@/features/menu/menu-utils";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
+import { searchMenu } from "@/features/menu/search";
 import {
   canRestoreDeleteUndo,
   captureDeleteUndo,
@@ -59,6 +60,11 @@ export function MenuEditor({
     (sum, c) => sum + c.items.filter((i) => i.price === null || i.reviewNotes.length > 0).length,
     0
   );
+
+  // Search box: pure client-side filter, see search.ts for the rules.
+  const [query, setQuery] = useState("");
+  const search = searchMenu(doc, query);
+  const isFiltering = query.trim().length > 0;
 
   // One-level undo for deletions. The snapshot only stays offered while the
   // document still matches the post-delete state — see undo.ts.
@@ -153,92 +159,132 @@ export function MenuEditor({
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3">
+        <label htmlFor="menu-search" className="sr-only">
+          Search the menu
+        </label>
+        <input
+          id="menu-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && query) setQuery("");
+          }}
+          placeholder="Search items, descriptions, or categories…"
+          className="min-w-[200px] flex-1 rounded-full border border-stone-300 bg-white px-4 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-amber-700 focus:outline-none"
+        />
+        {isFiltering && (
+          <button type="button" onClick={() => setQuery("")} className={smallButton}>
+            Clear
+          </button>
+        )}
+        <p role="status" className="text-xs font-medium text-stone-500">
+          {isFiltering
+            ? `${search.matchCount} of ${search.totalItems} ${search.totalItems === 1 ? "item" : "items"}`
+            : `${search.totalItems} ${search.totalItems === 1 ? "item" : "items"}`}
+        </p>
+      </div>
+
       {doc.categories.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No categories yet</p>
           <p className="mt-1 text-sm text-stone-600">Add a category below, then add items to it.</p>
         </div>
+      ) : search.categories.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
+          <p className="font-medium text-stone-900">No items match “{query.trim()}”</p>
+          <p className="mt-1 text-sm text-stone-600">
+            {search.totalItems} {search.totalItems === 1 ? "item" : "items"} in this menu.
+          </p>
+          <button type="button" onClick={() => setQuery("")} className={`${smallButton} mt-3`}>
+            Clear search
+          </button>
+        </div>
       ) : (
-        doc.categories.map((category, index) => (
-          <section
-            key={category.id}
-            aria-label={`Category ${category.name}`}
-            className="rounded-2xl border border-stone-200 bg-stone-50/60 p-4"
-          >
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-              <CommitInput
-                label={`Category ${index + 1}`}
-                value={category.name}
-                onCommit={(name) => onChange(renameCategory(doc, category.id, name.trim()))}
-              />
-              <div className="flex items-end gap-1.5 pb-0.5">
-                <button
-                  type="button"
-                  aria-label={`Move ${category.name} up`}
-                  disabled={index === 0}
-                  onClick={() => onChange(moveCategory(doc, category.id, index - 1))}
-                  className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Move ${category.name} down`}
-                  disabled={index === doc.categories.length - 1}
-                  onClick={() => onChange(moveCategory(doc, category.id, index + 1))}
-                  className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete category “${category.name}” and its ${category.items.length} items? You can undo this until your next change.`
-                      )
-                    ) {
-                      const next = deleteCategory(doc, category.id);
-                      setUndo(
-                        captureDeleteUndo(doc, next, `deleted category “${category.name}”`)
-                      );
-                      onChange(next);
-                    }
-                  }}
-                  className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-            {category.items.length === 0 ? (
-              <p className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-3 text-center text-sm text-stone-500">
-                No items — add the first one below.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-3">
-                {category.items.map((item) => (
-                  <ItemEditor
-                    key={item.id}
-                    doc={doc}
-                    categoryId={category.id}
-                    item={item}
-                    categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
-                    onChange={onChange}
-                    onDelete={() => removeItem(category.id, item)}
-                  />
-                ))}
-              </ul>
-            )}
-            <button
-              type="button"
-              onClick={() => onChange(addItem(doc, category.id, { name: "New item" }))}
-              className={`${smallButton} mt-3`}
+        search.categories.map(({ category, items }) => {
+          const index = doc.categories.findIndex((c) => c.id === category.id);
+          return (
+            <section
+              key={category.id}
+              aria-label={`Category ${category.name}`}
+              className="rounded-2xl border border-stone-200 bg-stone-50/60 p-4"
             >
-              + Add item
-            </button>
-          </section>
-        ))
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <CommitInput
+                  label={`Category ${index + 1}`}
+                  value={category.name}
+                  onCommit={(name) => onChange(renameCategory(doc, category.id, name.trim()))}
+                />
+                <div className="flex items-end gap-1.5 pb-0.5">
+                  <button
+                    type="button"
+                    aria-label={`Move ${category.name} up`}
+                    disabled={index === 0}
+                    onClick={() => onChange(moveCategory(doc, category.id, index - 1))}
+                    className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${category.name} down`}
+                    disabled={index === doc.categories.length - 1}
+                    onClick={() => onChange(moveCategory(doc, category.id, index + 1))}
+                    className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete category “${category.name}” and its ${category.items.length} items? You can undo this until your next change.`
+                        )
+                      ) {
+                        const next = deleteCategory(doc, category.id);
+                        setUndo(
+                          captureDeleteUndo(doc, next, `deleted category “${category.name}”`)
+                        );
+                        onChange(next);
+                      }
+                    }}
+                    className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              {items.length === 0 ? (
+                <p className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-3 text-center text-sm text-stone-500">
+                  No items — add the first one below.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {items.map((item) => (
+                    <ItemEditor
+                      key={item.id}
+                      doc={doc}
+                      categoryId={category.id}
+                      item={item}
+                      categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
+                      onChange={onChange}
+                      onDelete={() => removeItem(category.id, item)}
+                    />
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => onChange(addItem(doc, category.id, { name: "New item" }))}
+                className={`${smallButton} mt-3`}
+              >
+                + Add item
+              </button>
+            </section>
+          );
+        })
       )}
 
       <button
