@@ -46,7 +46,7 @@ extraction via `POST /api/extract-menu` with `cafe-board-clean-01.jpg`;
 lint/typecheck/53 tests/production build all pass; README rewritten
 (create-next-app boilerplate replaced).
 
-## Step 6 — Verify + polish ✅ done (full local checklist; deploy pending user setup)
+## Step 6 — Verify + polish ✅ done (full local checklist + deployed)
 
 Full PLAN.md §11 acceptance checklist: both sample images, all error paths
 (missing key, quota, bad AI JSON, bad file, oversized, empty menu, malformed
@@ -60,7 +60,12 @@ quota error shown in UI without data loss; validation errors (400/413) live;
 key absent from client bundles, no server-side file writes; desktop + mobile
 screenshots. Fixed: dark-OS contrast break (light theme pinned), ESLint now
 ignores `local/`. Gates: lint/typecheck/53 tests/build all green.
-Remaining: actual Vercel deploy (needs user's project + GitHub remote).
+
+Deployed: pushed to GitHub (`origin/main`), imported into Vercel, and the
+production URL verified end-to-end by the user on 2026-10-16 with
+`GEMINI_API_KEY` set in Vercel project env vars (real extraction confirmed in
+production). Vercel Hobby's 300s default function timeout covers the Gemini
+call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 
 ## Decisions
 
@@ -70,12 +75,43 @@ Remaining: actual Vercel deploy (needs user's project + GitHub remote).
 
 ## Things needed from the user (later, not now)
 
-- [x] `GEMINI_API_KEY` — present in `.env.local`, live extraction tested at
-      Step 5. Still needed as a Vercel project env var when deploying.
-- [ ] GitHub remote URL — repo is local-only; push only when asked.
-- [ ] Vercel project setup — needed at Step 6 deploy check.
+- [x] `GEMINI_API_KEY` — in `.env.local` (live extraction tested at Step 5)
+      and in Vercel project env vars (production extraction verified at deploy).
+- [x] GitHub remote URL — `https://github.com/salman0719/ai-menu-digitizer.git`.
+- [x] Vercel project setup — imported from GitHub, production verified 2026-10-16.
 - [x] Sample menu images — collected in `local/samples/menus/`
       (clean: `cafe-board-clean-01.jpg`; difficult: `vintage-menu-01.png`).
+
+## P1 backlog — all remaining work (P0 complete)
+
+Ordered by value to a café owner. PLAN.md §5 allows at most two of these per
+Phase 4; each should be its own small commit(s) with tests where practical.
+Two P1 items from the list are already delivered and need no work:
+
+- **Sample menu/demo mode** — done ("Preview with demo data" CTA +
+  `sample-menu.ts`, labelled demo; also the no-API-key fallback).
+- **Extraction summary** — done (category/item counts and needs-review count
+  in `extraction-result.tsx` and the editor header).
+
+Remaining, in priority order:
+
+1. **Undo the most recent destructive edit** — one-level undo for delete
+   item/category; highest safety value, plain in-memory snapshot of the doc.
+2. **Category/item search box** — filter by name/description across
+   categories; makes large menus (30+ items) usable.
+3. **Duplicate item detection with a review action** — flag likely duplicates
+   after multi-page merge; never auto-delete (PLAN.md: review action only).
+4. **Multiple menu images/pages** — accept several images, merge into one
+   menu, dedupe overlaps; upload already kept extensible for this.
+5. **Bulk category reassignment** — select several items, move together.
+6. **Optional description cleanup** — separate, explicitly-invoked rewrite of
+   descriptions; must stay clearly distinct from faithful extraction and
+   preserve the original text.
+7. **Optional language selection/translation** — always preserve original
+   text alongside any translation.
+
+Do not start these until the two chosen ones are verified in the deployed
+app. Nothing here blocks shipping P0.
 
 ## local/ sandbox convention (untracked)
 
