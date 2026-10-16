@@ -1,6 +1,11 @@
 "use client";
 
-import { duplicateItem, moveItem, moveItemToCategory, updateItem } from "@/features/menu/menu-utils";
+import {
+  duplicateItem,
+  moveItem,
+  moveItemToCategory,
+  updateItem,
+} from "@/features/menu/menu-utils";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
 
 import { CommitInput, CommitNumber } from "./fields";
@@ -14,6 +19,8 @@ interface ItemEditorProps {
   onChange: (next: MenuDocument) => void;
   /** Request deletion of this item; the editor confirms and handles undo. */
   onDelete: () => void;
+  /** Flagged by duplicate detection (review-only badge, see duplicates.ts). */
+  duplicate: boolean;
 }
 
 const smallButton =
@@ -27,6 +34,7 @@ export function ItemEditor({
   categories,
   onChange,
   onDelete,
+  duplicate,
 }: ItemEditorProps) {
   const category = doc.categories.find((c) => c.id === categoryId);
   const index = category ? category.items.findIndex((i) => i.id === item.id) : -1;
@@ -339,6 +347,11 @@ export function ItemEditor({
         {needsReview && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
             Needs review
+          </span>
+        )}
+        {duplicate && (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
+            Possible duplicate
           </span>
         )}
         <button

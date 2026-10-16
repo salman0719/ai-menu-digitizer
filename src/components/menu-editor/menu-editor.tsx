@@ -10,6 +10,12 @@ import {
   moveCategory,
   renameCategory,
 } from "@/features/menu/menu-utils";
+import {
+  findDuplicateGroups,
+  duplicateItemIds,
+  loadDismissedDuplicateKeys,
+  saveDismissedDuplicateKeys,
+} from "@/features/menu/duplicates";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
 import { searchMenu } from "@/features/menu/search";
 import {
@@ -65,6 +71,22 @@ export function MenuEditor({
   const [query, setQuery] = useState("");
   const search = searchMenu(doc, query);
   const isFiltering = query.trim().length > 0;
+
+  // Duplicate review (flags only, never auto-deletes — see duplicates.ts).
+  // Dismissals are remembered per document, in session state and localStorage.
+  const [dismissedMap, setDismissedMap] = useState<Record<string, string[]>>({});
+  const dismissedKeys = dismissedMap[doc.id] ?? loadDismissedDuplicateKeys(doc.id);
+  const duplicateGroups = findDuplicateGroups(doc).filter(
+    (group) => !dismissedKeys.includes(group.key)
+  );
+  const duplicateIds = duplicateItemIds(duplicateGroups);
+
+  function dismissGroup(key: string) {
+    const current = dismissedMap[doc.id] ?? dismissedKeys;
+    const next = current.includes(key) ? current : [...current, key];
+    saveDismissedDuplicateKeys(doc.id, next);
+    setDismissedMap((prev) => ({ ...prev, [doc.id]: next }));
+  }
 
   // One-level undo for deletions. The snapshot only stays offered while the
   // document still matches the post-delete state — see undo.ts.
@@ -159,6 +181,62 @@ export function MenuEditor({
         )}
       </div>
 
+      {duplicateGroups.length > 0 && (
+        <section
+          aria-label="Possible duplicates"
+          className="rounded-2xl border border-amber-300 bg-amber-50/70 p-4"
+        >
+          <p className="text-sm font-semibold text-amber-900">
+            {duplicateGroups.length === 1
+              ? "1 possible duplicate found — review it; nothing is deleted automatically."
+              : `${duplicateGroups.length} possible duplicates found — review them; nothing is deleted automatically.`}
+          </p>
+          <ul className="mt-3 space-y-3">
+            {duplicateGroups.map((group) => (
+              <li key={group.key} className="rounded-xl border border-amber-200 bg-white p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-stone-900">
+                    “{group.displayName}” appears {group.occurrences.length} times
+                  </p>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => dismissGroup(group.key)}
+                    className={smallButton}
+                  >
+                    Keep all
+                  </button>
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {group.occurrences.map((occurrence) => (
+                    <li
+                      key={occurrence.item.id}
+                      className="flex flex-wrap items-center gap-2 text-sm text-stone-700"
+                    >
+                      <span className="min-w-[160px] flex-1">
+                        {occurrence.item.name}
+                        <span className="text-xs text-stone-500">
+                          {" "}
+                          in {occurrence.categoryName}
+                          {occurrence.item.price !== null &&
+                            ` · ${occurrence.item.currency ?? doc.currency ?? ""}${occurrence.item.price}`}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(occurrence.categoryId, occurrence.item)}
+                        className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+                      >
+                        Delete this copy
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3">
         <label htmlFor="menu-search" className="sr-only">
           Search the menu
@@ -271,6 +349,7 @@ export function MenuEditor({
                       categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
                       onChange={onChange}
                       onDelete={() => removeItem(category.id, item)}
+                      duplicate={duplicateIds.has(item.id)}
                     />
                   ))}
                 </ul>
