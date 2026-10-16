@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 import { SUPPORTED_IMAGE_MIME_TYPES } from "@/lib/image-constraints";
 
 interface DropzoneProps {
-  onSelect: (file: File) => void;
+  /** Called with every accepted file from the picker or the drop. */
+  onSelect: (files: File[]) => void;
   disabled?: boolean;
 }
 
@@ -13,8 +14,9 @@ export function Dropzone({ onSelect, disabled = false }: DropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
-  function takeFile(file: File | undefined | null) {
-    if (file) onSelect(file);
+  function takeFiles(files: FileList | null | undefined) {
+    const list = Array.from(files ?? []);
+    if (list.length > 0) onSelect(list);
   }
 
   return (
@@ -22,7 +24,7 @@ export function Dropzone({ onSelect, disabled = false }: DropzoneProps) {
       role="button"
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
-      aria-label="Upload a menu image"
+      aria-label="Upload menu images"
       onClick={() => {
         if (!disabled) inputRef.current?.click();
       }}
@@ -40,7 +42,7 @@ export function Dropzone({ onSelect, disabled = false }: DropzoneProps) {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        if (!disabled) takeFile(event.dataTransfer.files[0]);
+        if (!disabled) takeFiles(event.dataTransfer.files);
       }}
       className={[
         "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors",
@@ -69,22 +71,23 @@ export function Dropzone({ onSelect, disabled = false }: DropzoneProps) {
       </svg>
       <div>
         <p className="text-base font-semibold text-stone-900">
-          Drag &amp; drop your menu image here
+          Drag &amp; drop your menu images here
         </p>
         <p className="mt-1 text-sm text-stone-600">
           or <span className="font-medium text-amber-800 underline">browse files</span> — JPEG, PNG,
-          or WebP, up to 4&nbsp;MB
+          or WebP, up to 4&nbsp;MB each (max 4 pages, merged into one menu)
         </p>
       </div>
       <input
         ref={inputRef}
         type="file"
+        multiple
         accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
         className="sr-only"
         tabIndex={-1}
         disabled={disabled}
         onChange={(event) => {
-          takeFile(event.target.files?.[0]);
+          takeFiles(event.target.files);
           event.target.value = "";
         }}
       />

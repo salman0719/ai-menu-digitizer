@@ -7,7 +7,7 @@ import { LibraryPanel } from "@/components/menu-editor/library-panel";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
 import { ExtractionResult, PreviewMenu } from "@/components/upload/extraction-result";
-import { ImagePreview } from "@/components/upload/image-preview";
+import { ImagePreview, type PageImage } from "@/components/upload/image-preview";
 import { extractedMenuToDocument } from "@/features/menu/convert";
 import {
   downloadTextFile,
@@ -32,8 +32,8 @@ import {
   type MenuSummary,
 } from "@/features/menu/storage";
 import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
-import { ExtractClientError, extractMenuFromFile } from "@/lib/extract-client";
-import { validateImageFile } from "@/lib/image-constraints";
+import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
+import { validateImageBatch } from "@/lib/image-constraints";
 
 type Screen = "capture" | "library" | "editor";
 type Phase = "upload" | "ready" | "extracting" | "done";
@@ -49,8 +49,7 @@ function stepIndex(phase: Phase, hasResult: boolean): number {
 export default function Home() {
   // Capture flow state.
   const [screen, setScreen] = useState<Screen>("capture");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pages, setPages] = useState<PageImage[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("upload");
   const [extracted, setExtracted] = useState<ExtractedMenu | null>(null);
@@ -71,6 +70,10 @@ export default function Home() {
   const [editorImageUrl, setEditorImageUrl] = useState<string | null>(null);
 
   const replaceInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const replaceIndexRef = useRef<number | null>(null);
+  /** Preview URLs currently shown for `pages` (revoked on swap and unmount). */
+  const liveUrlsRef = useRef<string[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<MenuDocument | null>(null);
   const lastSavedRef = useRef<string | null>(null);
@@ -81,7 +84,7 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      liveUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       if (editorImageUrl) URL.revokeObjectURL(editorImageUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -260,49 +263,75 @@ export default function Home() {
     return window.confirm("This will discard the current extracted menu. Continue?");
   }
 
-  function selectFile(next: File) {
+  /**
+   * Swap the whole selection for `nextFiles`: release old preview URLs,
+   * show the new ones, and drop any stale extraction result. Callers have
+   * already confirmed discarding and validated the batch.
+   */
+  function applySelection(nextFiles: File[]) {
+    pages.forEach((page) => URL.revokeObjectURL(page.previewUrl));
+    const next = nextFiles.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }));
+    liveUrlsRef.current = next.map((page) => page.previewUrl);
+    setPages(next);
+    setFileError(null);
+    setExtractError(null);
+    setExtracted(null);
+    setDemoDoc(null);
+    setPhase(next.length > 0 ? "ready" : "upload");
+  }
+
+  /** Start (or restart) a selection from the dropzone — replaces every page. */
+  function selectFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
     if (!confirmDiscard()) return;
-    const check = validateImageFile(next);
+    const check = validateImageBatch(incoming);
     if (!check.valid) {
       setFileError(check.message);
       return;
     }
-    setFileError(null);
-    setExtractError(null);
-    setExtracted(null);
-    setDemoDoc(null);
-    setFile(next);
-    setPreviewUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return URL.createObjectURL(next);
-    });
-    setPhase("ready");
+    applySelection(incoming);
+  }
+
+  /** Append pages to the current selection; the whole set is validated as one batch. */
+  function addPages(incoming: File[]) {
+    if (incoming.length === 0) return;
+    if (!confirmDiscard()) return;
+    const combined = [...pages.map((page) => page.file), ...incoming];
+    const check = validateImageBatch(combined);
+    if (!check.valid) {
+      setFileError(check.message);
+      return;
+    }
+    applySelection(combined);
+  }
+
+  /** Replace one page, keeping the rest of the selection in place. */
+  function replacePageAt(index: number, nextFile: File) {
+    if (!pages[index]) return;
+    const check = validateImageBatch(pages.map((page, i) => (i === index ? nextFile : page.file)));
+    if (!check.valid) {
+      setFileError(check.message);
+      return;
+    }
+    applySelection(pages.map((page, i) => (i === index ? nextFile : page.file)));
+  }
+
+  /** Drop one page; dropping the last one returns to the dropzone. */
+  function removePage(index: number) {
+    if (!confirmDiscard()) return;
+    applySelection(pages.filter((_, i) => i !== index).map((page) => page.file));
   }
 
   function clearCapture() {
-    setFile(null);
-    setPreviewUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return null;
-    });
-    setFileError(null);
-    setExtractError(null);
-    setExtracted(null);
-    setDemoDoc(null);
-    setPhase("upload");
-  }
-
-  function handleRemove() {
-    if (!confirmDiscard()) return;
-    clearCapture();
+    applySelection([]);
   }
 
   async function handleExtract() {
-    if (!file || phase === "extracting") return;
+    if (pages.length === 0 || phase === "extracting") return;
     setPhase("extracting");
     setExtractError(null);
     try {
-      const menu = await extractMenuFromFile(file);
+      const menu = await extractMenuFromFiles(pages.map((page) => page.file));
       setExtracted(menu);
       setSource("ai");
       setPhase("done");
@@ -330,20 +359,22 @@ export default function Home() {
   async function handleEditResult() {
     try {
       if (source === "ai" && extracted) {
+        const firstPage = pages[0];
         const doc = extractedMenuToDocument(extracted, {
           provider: "gemini",
-          originalFileName: file?.name,
+          originalFileName: firstPage?.file.name,
         });
         const saved = storageDownRef.current ? doc : await saveMenu(doc);
-        if (file && !storageDownRef.current) {
+        if (firstPage && !storageDownRef.current) {
           try {
-            await saveImage(saved.id, file);
+            // One blob per menu: the first page stands in as the source image.
+            await saveImage(saved.id, firstPage.file);
           } catch {
             // Image is optional; the menu matters.
           }
         }
         if (!storageDownRef.current) await refreshLibrary();
-        await openDoc(saved, file ? file : null);
+        await openDoc(saved, firstPage ? firstPage.file : null);
       } else {
         const doc = demoDoc ?? createSampleMenuDocument();
         const saved = storageDownRef.current ? doc : await saveMenu(doc);
@@ -502,9 +533,9 @@ export default function Home() {
               ))}
             </ol>
 
-            {phase === "upload" && !file && (
+            {phase === "upload" && pages.length === 0 && (
               <div className="flex flex-col gap-3">
-                <Dropzone onSelect={selectFile} />
+                <Dropzone onSelect={selectFiles} />
                 {fileError && (
                   <p
                     role="alert"
@@ -526,13 +557,29 @@ export default function Home() {
               </div>
             )}
 
-            {file && previewUrl && (
+            {pages.length > 0 && (
               <div className="flex flex-col gap-4">
                 <ImagePreview
-                  file={file}
-                  previewUrl={previewUrl}
-                  onReplace={() => replaceInputRef.current?.click()}
-                  onRemove={handleRemove}
+                  pages={pages}
+                  onAdd={() => addInputRef.current?.click()}
+                  onReplace={(index) => {
+                    replaceIndexRef.current = index;
+                    replaceInputRef.current?.click();
+                  }}
+                  onRemove={removePage}
+                />
+                <input
+                  ref={addInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const added = Array.from(event.target.files ?? []);
+                    event.target.value = "";
+                    if (added.length > 0) addPages(added);
+                  }}
                 />
                 <input
                   ref={replaceInputRef}
@@ -542,8 +589,10 @@ export default function Home() {
                   tabIndex={-1}
                   onChange={(event) => {
                     const next = event.target.files?.[0];
-                    if (next) selectFile(next);
+                    const index = replaceIndexRef.current;
                     event.target.value = "";
+                    replaceIndexRef.current = null;
+                    if (next && index !== null) replacePageAt(index, next);
                   }}
                 />
                 {fileError && (
@@ -582,7 +631,10 @@ export default function Home() {
                   className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-amber-700 border-t-transparent"
                 />
                 <p className="text-sm text-amber-900">
-                  Reading your menu… keep this tab open. The image is processed in memory and never
+                  {pages.length > 1
+                    ? `Reading ${pages.length} pages… keep this tab open.`
+                    : "Reading your menu… keep this tab open."}{" "}
+                  The {pages.length > 1 ? "images are" : "image is"} processed in memory and never
                   stored on the server.
                 </p>
               </div>

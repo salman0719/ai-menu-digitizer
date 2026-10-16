@@ -13,6 +13,7 @@ export type ExtractClientErrorCode =
   | "invalid_file_type"
   | "file_too_large"
   | "empty_file"
+  | "too_many_pages"
   | "missing_api_key"
   | "provider_auth_failed"
   | "quota_exhausted"
@@ -42,6 +43,7 @@ const KNOWN_CODES: readonly string[] = [
   "invalid_file_type",
   "file_too_large",
   "empty_file",
+  "too_many_pages",
   "missing_api_key",
   "provider_auth_failed",
   "quota_exhausted",
@@ -51,12 +53,17 @@ const KNOWN_CODES: readonly string[] = [
   "internal_error",
 ];
 
-export async function extractMenuFromFile(
-  file: File,
+/**
+ * Post one or more page images of the same menu (in reading order). The
+ * server extracts them in a single call and returns one merged menu.
+ */
+export async function extractMenuFromFiles(
+  input: File | File[],
   fetchImpl: typeof fetch = fetch
 ): Promise<ExtractedMenu> {
+  const files = Array.isArray(input) ? input : [input];
   const form = new FormData();
-  form.append("image", file);
+  for (const file of files) form.append("image", file);
 
   let response: Response;
   try {
