@@ -132,6 +132,25 @@ deployed app after the next deploy.
   localStorage. The chip row sticks to the top of the viewport while
   editing long categories (`src/components/menu-editor/menu-editor.tsx`).
 
+## Customer preview — parked ideas
+
+Delivered first: a **Preview menu** toggle in the editor renders the live
+document as a clean customer-facing view — availability, variants, options
+and dietary labels, no review chrome, unset prices shown as an em dash, and
+a "not published" label so it never reads as a hosted page
+(`src/components/menu-editor/menu-preview.tsx`,
+`src/features/menu/preview-utils.ts`, `tests/menu-preview.test.ts`).
+Ideas to revisit after that foundation:
+
+- **Menu themes** — a few branded styles (café, bistro, takeaway) so owners
+  see the menu matching their look.
+- **Phone/QR mockup framing** — render the preview inside a phone frame to
+  show the customer's mobile view (QR code generation stays out of scope).
+- **Print stylesheet / PDF export** — print the preview for the counter,
+  alongside the existing JSON/CSV exports.
+- **Side-by-side editing** — form + live preview in parallel now that the
+  editor canvas is wide (`max-w-6xl`).
+
 ## local/ sandbox convention (untracked)
 
 - `local/samples/menus/` — test images (`cafe-clean-01.jpg`-style names).
