@@ -420,7 +420,7 @@ export function MenuEditor({
       )}
 
       {doc.categories.length > 0 && search.categories.length > 0 && (
-        <div className="flex items-center gap-3">
+        <div className="sticky top-0 z-20 -mx-4 flex items-center gap-3 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm">
           {viewMode === "single" && (
             <div
               role="navigation"
