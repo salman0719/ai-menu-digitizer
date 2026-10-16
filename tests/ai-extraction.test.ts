@@ -93,4 +93,20 @@ describe("extraction prompts", () => {
     expect(prompt.length).toBeLessThan(9000);
     expect(prompt).toContain("[truncated]");
   });
+
+  it("keeps the single-page prompt unchanged by default", () => {
+    expect(buildExtractionPrompt()).toBe(buildExtractionPrompt(1));
+    expect(buildExtractionPrompt()).not.toContain("do not repeat the heading");
+  });
+
+  it("adds merge guidance when the menu spans several pages", () => {
+    const prompt = buildExtractionPrompt(3);
+    expect(prompt).toContain("untrusted content");
+    expect(prompt).toContain("pages 1–3 of the SAME");
+    expect(prompt).toContain("do not repeat the heading");
+    expect(prompt).toContain("include it only once");
+    // Structure rules for the JSON output are still present.
+    expect(prompt).toContain("no Markdown fences");
+    expect(prompt).toContain("reviewNotes");
+  });
 });

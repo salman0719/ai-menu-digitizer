@@ -56,6 +56,9 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
 
   return {
     async generateText(request: ExtractionRequest): Promise<string> {
+      if (request.images.length === 0) {
+        throw new ProviderError("bad_request", "No image was provided for extraction.");
+      }
       const url = `${API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
       let response: Response;
       try {
@@ -68,7 +71,9 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
                 role: "user",
                 parts: [
                   { text: request.promptText },
-                  { inlineData: { mimeType: request.mimeType, data: request.imageBase64 } },
+                  ...request.images.map((image) => ({
+                    inlineData: { mimeType: image.mimeType, data: image.imageBase64 },
+                  })),
                 ],
               },
             ],

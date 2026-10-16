@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatFileSize, MAX_IMAGE_BYTES, validateImageFile } from "../src/lib/image-constraints";
+import {
+  formatFileSize,
+  MAX_IMAGE_BYTES,
+  MAX_MENU_PAGES,
+  MAX_TOTAL_IMAGE_BYTES,
+  validateImageBatch,
+  validateImageFile,
+} from "../src/lib/image-constraints";
 
 describe("validateImageFile", () => {
   it("accepts supported types within the size limit", () => {
@@ -21,6 +28,42 @@ describe("validateImageFile", () => {
 
     const atLimit = validateImageFile({ type: "image/jpeg", size: MAX_IMAGE_BYTES });
     expect(atLimit).toEqual({ valid: true });
+  });
+});
+
+describe("validateImageBatch", () => {
+  const jpeg = (size: number) => ({ type: "image/jpeg", size });
+
+  it("accepts one page up to the page limit within the total budget", () => {
+    expect(validateImageBatch([jpeg(1024)])).toEqual({ valid: true });
+    const pages = Array.from({ length: MAX_MENU_PAGES }, () => jpeg(1024));
+    expect(validateImageBatch(pages)).toEqual({ valid: true });
+  });
+
+  it("rejects an empty selection and too many pages", () => {
+    expect(validateImageBatch([])).toMatchObject({ valid: false, code: "empty_file" });
+    const tooMany = Array.from({ length: MAX_MENU_PAGES + 1 }, () => jpeg(1024));
+    expect(validateImageBatch(tooMany)).toMatchObject({ valid: false, code: "too_many_pages" });
+  });
+
+  it("reports the first invalid file in the batch", () => {
+    expect(validateImageBatch([jpeg(1024), { type: "image/gif", size: 1024 }])).toMatchObject({
+      valid: false,
+      code: "invalid_file_type",
+    });
+    expect(validateImageBatch([jpeg(MAX_IMAGE_BYTES + 1)])).toMatchObject({
+      valid: false,
+      code: "file_too_large",
+    });
+  });
+
+  it("bounds the combined size of all pages, not just each file", () => {
+    // Each file alone is legal; together they exceed the request budget.
+    const half = Math.floor(MAX_TOTAL_IMAGE_BYTES / 2) + 1;
+    expect(validateImageFile({ type: "image/jpeg", size: half })).toEqual({ valid: true });
+    const result = validateImageBatch([jpeg(half), jpeg(half)]);
+    expect(result).toMatchObject({ valid: false, code: "file_too_large" });
+    expect(result.valid === false && result.message).toContain("too large together");
   });
 });
 

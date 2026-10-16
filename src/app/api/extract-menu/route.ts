@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { createGeminiProvider } from "@/lib/ai/gemini-provider";
-import { extractMenuFromImage, ServiceError } from "@/lib/ai/service";
+import { extractMenuFromImages, ServiceError } from "@/lib/ai/service";
 
 /**
- * POST /api/extract-menu — multipart form with an `image` file field.
+ * POST /api/extract-menu — multipart form with one or more `image` file
+ * fields (pages of the same menu, in order).
  * Success: { menu } (validated extraction result, no stable IDs yet).
  * Failure: { error: { code, message } } — never provider internals,
  * credentials, or stack traces. Uploaded bytes are not stored server-side.
@@ -20,27 +21,21 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 400 }
       );
     }
-    const file = form.get("image");
-    if (!(file instanceof File)) {
-      return NextResponse.json(
-        { error: { code: "missing_image", message: "Upload an image file in the `image` field." } },
-        { status: 400 }
-      );
-    }
+    const files = form.getAll("image").filter((entry): entry is File => entry instanceof File);
 
     const apiKey = process.env.GEMINI_API_KEY;
     const provider = apiKey
       ? createGeminiProvider({ apiKey, model: process.env.GEMINI_MODEL || undefined })
       : null;
 
-    const menu = await extractMenuFromImage(
-      {
+    const images = await Promise.all(
+      files.map(async (file) => ({
         bytes: new Uint8Array(await file.arrayBuffer()),
         mimeType: file.type,
         filename: file.name,
-      },
-      { provider }
+      }))
     );
+    const menu = await extractMenuFromImages(images, { provider });
     return NextResponse.json({ menu });
   } catch (error) {
     if (error instanceof ServiceError) {

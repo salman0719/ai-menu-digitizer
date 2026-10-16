@@ -26,11 +26,16 @@ export class ProviderError extends Error {
   }
 }
 
-export interface ExtractionRequest {
-  promptText: string;
+export interface ImagePart {
   /** Raw image bytes encoded as base64 (no data-URL prefix). */
   imageBase64: string;
   mimeType: string;
+}
+
+export interface ExtractionRequest {
+  promptText: string;
+  /** Menu page images in reading order; one entry for a single-page menu. */
+  images: ImagePart[];
 }
 
 export interface ExtractionProvider {
