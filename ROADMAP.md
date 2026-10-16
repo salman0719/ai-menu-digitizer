@@ -123,6 +123,14 @@ Nothing here blocks shipping P0. The newly delivered P1 items are verified
 in the local dev app (browser-tested plus unit tests); re-verify them in the
 deployed app after the next deploy.
 
+## Post-P1 UI polish
+
+- **Category carousel** — the editor's categories now default to a
+  one-at-a-time view behind a horizontally scrolling chip carousel (name +
+  item count, arrow-key navigation, chips filtered by search), with a
+  toggle back to the legacy all-categories stack remembered in
+  localStorage (`src/components/menu-editor/menu-editor.tsx`).
+
 ## local/ sandbox convention (untracked)
 
 - `local/samples/menus/` — test images (`cafe-clean-01.jpg`-style names).
