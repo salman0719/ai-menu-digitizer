@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import {
   addCategory,
@@ -17,7 +17,7 @@ import {
   loadDismissedDuplicateKeys,
   saveDismissedDuplicateKeys,
 } from "@/features/menu/duplicates";
-import type { MenuDocument, MenuItem } from "@/features/menu/schema";
+import type { MenuCategory, MenuDocument, MenuItem } from "@/features/menu/schema";
 import { searchMenu } from "@/features/menu/search";
 import {
   canRestoreDeleteUndo,
@@ -51,6 +51,22 @@ const smallButton =
   "rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors " +
   "hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
 
+/**
+ * Category layout: "single" shows one category at a time behind a horizontal
+ * chip carousel; "all" is the legacy vertical stack of every category. The
+ * choice is a tiny UI preference, so it is remembered in localStorage.
+ */
+type CategoryViewMode = "single" | "all";
+
+const VIEW_MODE_STORAGE_KEY = "menu-editor-category-view";
+
+function viewModeButton(active: boolean): string {
+  return (
+    "rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 " +
+    (active ? "bg-amber-800 text-white" : "text-stone-600 hover:text-amber-900")
+  );
+}
+
 export function MenuEditor({
   doc,
   onChange,
@@ -72,6 +88,58 @@ export function MenuEditor({
   const [query, setQuery] = useState("");
   const search = searchMenu(doc, query);
   const isFiltering = query.trim().length > 0;
+
+  // Category carousel. The active category resolves against the visible
+  // (search-filtered) list, so a deleted category — or one filtered out of a
+  // search — falls back to the first visible category instead of blanking.
+  // Restore the persisted layout preference. The editor only ever mounts
+  // client-side (the page opens it after user interaction), so reading
+  // localStorage in the initializer is hydration-safe; if storage is blocked
+  // or empty, default to the carousel.
+  const [viewMode, setViewMode] = useState<CategoryViewMode>(() => {
+    if (typeof window === "undefined") return "single";
+    try {
+      return window.localStorage.getItem(VIEW_MODE_STORAGE_KEY) === "all" ? "all" : "single";
+    } catch {
+      return "single";
+    }
+  });
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const activeChipRef = useRef<HTMLButtonElement | null>(null);
+  const activeMatch =
+    search.categories.find((match) => match.category.id === activeCategoryId) ??
+    search.categories[0] ??
+    null;
+
+  // Keep the active chip visible inside the horizontally scrolling row.
+  useEffect(() => {
+    activeChipRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeMatch?.category.id, viewMode, query]);
+
+  function changeViewMode(mode: CategoryViewMode) {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+    } catch {
+      /* storage unavailable — the session default is fine */
+    }
+  }
+
+  /** Left/Right/Home/End navigation across the category chips. */
+  function handleChipListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const ids = search.categories.map((match) => match.category.id);
+    const currentIndex = ids.indexOf(activeMatch?.category.id ?? "");
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % ids.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + ids.length) % ids.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = ids.length - 1;
+    if (nextIndex === null || !ids[nextIndex]) return;
+    event.preventDefault();
+    const nextId = ids[nextIndex];
+    setActiveCategoryId(nextId);
+    requestAnimationFrame(() => document.getElementById(`category-chip-${nextId}`)?.focus());
+  }
 
   // Duplicate review (flags only, never auto-deletes — see duplicates.ts).
   // Dismissals are remembered per document, in session state and localStorage.
@@ -108,6 +176,30 @@ export function MenuEditor({
     if (!undo || !canRestoreDeleteUndo(undo, doc)) return;
     setUndo(null);
     onChange(restoreDeleteUndo(undo));
+  }
+
+  /** Delete a category (after confirm), keeping undo and the carousel sane. */
+  function handleDeleteCategory(category: MenuCategory, index: number) {
+    if (
+      !window.confirm(
+        `Delete category “${category.name}” and its ${category.items.length} items? You can undo this until your next change.`
+      )
+    ) {
+      return;
+    }
+    const next = deleteCategory(doc, category.id);
+    setUndo(captureDeleteUndo(doc, next, `deleted category “${category.name}”`));
+    // Keep the carousel on the category that takes this one's place (or the
+    // new last one); null when the menu is now empty.
+    setActiveCategoryId(next.categories[Math.min(index, next.categories.length - 1)]?.id ?? null);
+    onChange(next);
+  }
+
+  /** Add a category and, in single view, open it straight away. */
+  function handleAddCategory() {
+    const next = addCategory(doc, { name: "New category" });
+    setActiveCategoryId(next.categories[next.categories.length - 1]?.id ?? null);
+    onChange(next);
   }
 
   // Bulk reassignment: selection is tracked by item id and pruned against
@@ -327,6 +419,70 @@ export function MenuEditor({
         </div>
       )}
 
+      {doc.categories.length > 0 && search.categories.length > 0 && (
+        <div className="flex items-center gap-3">
+          {viewMode === "single" && (
+            <div
+              role="navigation"
+              aria-label="Menu categories"
+              onKeyDown={handleChipListKeyDown}
+              className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1"
+            >
+              {search.categories.map(({ category, items }) => {
+                const isActive = category.id === activeMatch?.category.id;
+                return (
+                  <button
+                    key={category.id}
+                    id={`category-chip-${category.id}`}
+                    type="button"
+                    aria-current={isActive ? "true" : undefined}
+                    ref={isActive ? activeChipRef : null}
+                    onClick={() => setActiveCategoryId(category.id)}
+                    className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+                      isActive
+                        ? "border-amber-800 bg-amber-800 text-white"
+                        : "border-stone-300 bg-white text-stone-600 hover:border-amber-700 hover:text-amber-900"
+                    }`}
+                  >
+                    {category.name}
+                    <span
+                      className={`ml-1.5 rounded-full px-1.5 text-xs ${
+                        isActive ? "bg-white/20" : "bg-stone-100 text-stone-500"
+                      }`}
+                    >
+                      {items.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {viewMode === "all" && <span className="flex-1" />}
+          <div
+            role="group"
+            aria-label="Category layout"
+            className="flex shrink-0 rounded-full border border-stone-300 bg-white p-0.5"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === "single"}
+              onClick={() => changeViewMode("single")}
+              className={viewModeButton(viewMode === "single")}
+            >
+              One at a time
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === "all"}
+              onClick={() => changeViewMode("all")}
+              className={viewModeButton(viewMode === "all")}
+            >
+              All categories
+            </button>
+          </div>
+        </div>
+      )}
+
       {doc.categories.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No categories yet</p>
@@ -343,97 +499,87 @@ export function MenuEditor({
           </button>
         </div>
       ) : (
-        search.categories.map(({ category, items }) => {
-          const index = doc.categories.findIndex((c) => c.id === category.id);
-          return (
-            <section
-              key={category.id}
-              aria-label={`Category ${category.name}`}
-              className="rounded-2xl border border-stone-200 bg-stone-50/60 p-4"
-            >
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <CommitInput
-                  label={`Category ${index + 1}`}
-                  value={category.name}
-                  onCommit={(name) => onChange(renameCategory(doc, category.id, name.trim()))}
-                />
-                <div className="flex items-end gap-1.5 pb-0.5">
-                  <button
-                    type="button"
-                    aria-label={`Move ${category.name} up`}
-                    disabled={index === 0}
-                    onClick={() => onChange(moveCategory(doc, category.id, index - 1))}
-                    className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${category.name} down`}
-                    disabled={index === doc.categories.length - 1}
-                    onClick={() => onChange(moveCategory(doc, category.id, index + 1))}
-                    className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete category “${category.name}” and its ${category.items.length} items? You can undo this until your next change.`
-                        )
-                      ) {
-                        const next = deleteCategory(doc, category.id);
-                        setUndo(
-                          captureDeleteUndo(doc, next, `deleted category “${category.name}”`)
-                        );
-                        onChange(next);
-                      }
-                    }}
-                    className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-              {items.length === 0 ? (
-                <p className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-3 text-center text-sm text-stone-500">
-                  No items — add the first one below.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-3">
-                  {items.map((item) => (
-                    <ItemEditor
-                      key={item.id}
-                      doc={doc}
-                      categoryId={category.id}
-                      item={item}
-                      categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
-                      onChange={onChange}
-                      onDelete={() => removeItem(category.id, item)}
-                      duplicate={duplicateIds.has(item.id)}
-                      selected={selectedIds.has(item.id)}
-                      onToggle={() => toggleSelected(item.id)}
-                    />
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                onClick={() => onChange(addItem(doc, category.id, { name: "New item" }))}
-                className={`${smallButton} mt-3`}
+        search.categories
+          .filter((match) => viewMode === "all" || match.category.id === activeMatch?.category.id)
+          .map(({ category, items }) => {
+            const index = doc.categories.findIndex((c) => c.id === category.id);
+            return (
+              <section
+                key={category.id}
+                aria-label={`Category ${category.name}`}
+                className="rounded-2xl border border-stone-200 bg-stone-50/60 p-4"
               >
-                + Add item
-              </button>
-            </section>
-          );
-        })
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <CommitInput
+                    label={`Category ${index + 1}`}
+                    value={category.name}
+                    onCommit={(name) => onChange(renameCategory(doc, category.id, name.trim()))}
+                  />
+                  <div className="flex items-end gap-1.5 pb-0.5">
+                    <button
+                      type="button"
+                      aria-label={`Move ${category.name} up`}
+                      disabled={index === 0}
+                      onClick={() => onChange(moveCategory(doc, category.id, index - 1))}
+                      className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${category.name} down`}
+                      disabled={index === doc.categories.length - 1}
+                      onClick={() => onChange(moveCategory(doc, category.id, index + 1))}
+                      className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCategory(category, index)}
+                      className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                {items.length === 0 ? (
+                  <p className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-3 text-center text-sm text-stone-500">
+                    No items — add the first one below.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {items.map((item) => (
+                      <ItemEditor
+                        key={item.id}
+                        doc={doc}
+                        categoryId={category.id}
+                        item={item}
+                        categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
+                        onChange={onChange}
+                        onDelete={() => removeItem(category.id, item)}
+                        duplicate={duplicateIds.has(item.id)}
+                        selected={selectedIds.has(item.id)}
+                        onToggle={() => toggleSelected(item.id)}
+                      />
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onChange(addItem(doc, category.id, { name: "New item" }))}
+                  className={`${smallButton} mt-3`}
+                >
+                  + Add item
+                </button>
+              </section>
+            );
+          })
       )}
 
       <button
         type="button"
-        onClick={() => onChange(addCategory(doc, { name: "New category" }))}
+        onClick={handleAddCategory}
         className="rounded-2xl border-2 border-dashed border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-600 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
       >
         + Add category
