@@ -129,7 +129,8 @@ deployed app after the next deploy.
   one-at-a-time view behind a horizontally scrolling chip carousel (name +
   item count, arrow-key navigation, chips filtered by search), with a
   toggle back to the legacy all-categories stack remembered in
-  localStorage (`src/components/menu-editor/menu-editor.tsx`).
+  localStorage. The chip row sticks to the top of the viewport while
+  editing long categories (`src/components/menu-editor/menu-editor.tsx`).
 
 ## local/ sandbox convention (untracked)
 
