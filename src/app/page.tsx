@@ -433,7 +433,13 @@ export default function Home() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8">
+      <main
+        className={`mx-auto flex w-full flex-1 flex-col gap-6 px-4 py-8 ${
+          // The editor is a dense working surface: give it a wider canvas on
+          // large screens. Capture and library stay at a readable measure.
+          screen === "editor" ? "max-w-6xl" : "max-w-3xl"
+        }`}
+      >
         {screen !== "editor" && (
           <nav aria-label="Sections" className="flex gap-2">
             {(
