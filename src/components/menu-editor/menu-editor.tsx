@@ -28,6 +28,7 @@ import {
 
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
+import { MenuPreview } from "./menu-preview";
 
 export interface SaveState {
   kind: "saved" | "saving" | "error";
@@ -50,6 +51,10 @@ interface MenuEditorProps {
 const smallButton =
   "rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors " +
   "hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
+
+const primaryButton =
+  "rounded-full bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors " +
+  "hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
 
 /**
  * Category layout: "single" shows one category at a time behind a horizontal
@@ -202,6 +207,10 @@ export function MenuEditor({
     onChange(next);
   }
 
+  // Live customer-facing preview: swaps the editing surface for the menu a
+  // diner would see, while the header (back, undo, save state) stays reachable.
+  const [previewing, setPreviewing] = useState(false);
+
   // Bulk reassignment: selection is tracked by item id and pruned against
   // the live document, so deleted or filtered-out items never linger.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
@@ -225,38 +234,60 @@ export function MenuEditor({
     setBulkTarget("");
   }
 
+  const headerRow = (
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={onBack} className={smallButton}>
+        ← All menus
+      </button>
+      {undoLabel && (
+        <button
+          type="button"
+          onClick={handleUndo}
+          className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition-colors hover:border-amber-700 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+        >
+          ↩ Undo {undoLabel}
+        </button>
+      )}
+      <p
+        role="status"
+        className={`text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
+      >
+        {saveState.kind === "saving" ? (
+          <span>
+            <span
+              aria-hidden="true"
+              className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-stone-400 border-t-transparent align-[-2px]"
+            />
+            Saving…
+          </span>
+        ) : (
+          saveState.message
+        )}
+      </p>
+      <span className="flex-1" />
+      <button
+        type="button"
+        aria-pressed={previewing}
+        onClick={() => setPreviewing((value) => !value)}
+        className={previewing ? primaryButton : smallButton}
+      >
+        {previewing ? "← Back to edit" : "Preview menu"}
+      </button>
+    </div>
+  );
+
+  if (previewing) {
+    return (
+      <div className="flex flex-col gap-4">
+        {headerRow}
+        <MenuPreview doc={doc} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={onBack} className={smallButton}>
-          ← All menus
-        </button>
-        {undoLabel && (
-          <button
-            type="button"
-            onClick={handleUndo}
-            className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition-colors hover:border-amber-700 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            ↩ Undo {undoLabel}
-          </button>
-        )}
-        <p
-          role="status"
-          className={`text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
-        >
-          {saveState.kind === "saving" ? (
-            <span>
-              <span
-                aria-hidden="true"
-                className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-stone-400 border-t-transparent align-[-2px]"
-              />
-              Saving…
-            </span>
-          ) : (
-            saveState.message
-          )}
-        </p>
-      </div>
+      {headerRow}
 
       <div className="rounded-2xl border border-stone-200 bg-white p-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
