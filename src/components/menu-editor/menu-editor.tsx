@@ -1,13 +1,22 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   addCategory,
   addItem,
   deleteCategory,
+  deleteItem,
   moveCategory,
   renameCategory,
 } from "@/features/menu/menu-utils";
-import type { MenuDocument } from "@/features/menu/schema";
+import type { MenuDocument, MenuItem } from "@/features/menu/schema";
+import {
+  canRestoreDeleteUndo,
+  captureDeleteUndo,
+  restoreDeleteUndo,
+  type DeleteUndo,
+} from "@/features/menu/undo";
 
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
@@ -51,12 +60,42 @@ export function MenuEditor({
     0
   );
 
+  // One-level undo for deletions. The snapshot only stays offered while the
+  // document still matches the post-delete state — see undo.ts.
+  const [undo, setUndo] = useState<DeleteUndo | null>(null);
+  const undoLabel = undo && canRestoreDeleteUndo(undo, doc) ? undo.label : null;
+
+  /** Delete an item, keeping a one-level undo of the document beforehand. */
+  function removeItem(categoryId: string, item: MenuItem) {
+    if (!window.confirm(`Delete “${item.name}”? You can undo this until your next change.`)) {
+      return;
+    }
+    const next = deleteItem(doc, categoryId, item.id);
+    setUndo(captureDeleteUndo(doc, next, `deleted “${item.name}”`));
+    onChange(next);
+  }
+
+  function handleUndo() {
+    if (!undo || !canRestoreDeleteUndo(undo, doc)) return;
+    setUndo(null);
+    onChange(restoreDeleteUndo(undo));
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <button type="button" onClick={onBack} className={smallButton}>
           ← All menus
         </button>
+        {undoLabel && (
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition-colors hover:border-amber-700 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            ↩ Undo {undoLabel}
+          </button>
+        )}
         <p
           role="status"
           className={`text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
@@ -156,10 +195,14 @@ export function MenuEditor({
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Delete category “${category.name}” and its ${category.items.length} items? This cannot be undone.`
+                        `Delete category “${category.name}” and its ${category.items.length} items? You can undo this until your next change.`
                       )
                     ) {
-                      onChange(deleteCategory(doc, category.id));
+                      const next = deleteCategory(doc, category.id);
+                      setUndo(
+                        captureDeleteUndo(doc, next, `deleted category “${category.name}”`)
+                      );
+                      onChange(next);
                     }
                   }}
                   className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
@@ -182,6 +225,7 @@ export function MenuEditor({
                     item={item}
                     categories={doc.categories.map((c) => ({ id: c.id, name: c.name }))}
                     onChange={onChange}
+                    onDelete={() => removeItem(category.id, item)}
                   />
                 ))}
               </ul>

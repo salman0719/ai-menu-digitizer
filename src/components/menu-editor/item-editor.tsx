@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  deleteItem,
-  duplicateItem,
-  moveItem,
-  moveItemToCategory,
-  updateItem,
-} from "@/features/menu/menu-utils";
+import { duplicateItem, moveItem, moveItemToCategory, updateItem } from "@/features/menu/menu-utils";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
 
 import { CommitInput, CommitNumber } from "./fields";
@@ -18,13 +12,22 @@ interface ItemEditorProps {
   /** All categories, for the move-to-another-category control. */
   categories: Array<{ id: string; name: string }>;
   onChange: (next: MenuDocument) => void;
+  /** Request deletion of this item; the editor confirms and handles undo. */
+  onDelete: () => void;
 }
 
 const smallButton =
   "rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors " +
   "hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
 
-export function ItemEditor({ doc, categoryId, item, categories, onChange }: ItemEditorProps) {
+export function ItemEditor({
+  doc,
+  categoryId,
+  item,
+  categories,
+  onChange,
+  onDelete,
+}: ItemEditorProps) {
   const category = doc.categories.find((c) => c.id === categoryId);
   const index = category ? category.items.findIndex((i) => i.id === item.id) : -1;
   const needsReview = item.price === null || item.reviewNotes.length > 0;
@@ -347,11 +350,7 @@ export function ItemEditor({ doc, categoryId, item, categories, onChange }: Item
         </button>
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm(`Delete “${item.name}”? This cannot be undone.`)) {
-              onChange(deleteItem(doc, categoryId, item.id));
-            }
-          }}
+          onClick={onDelete}
           className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
         >
           Delete
