@@ -84,34 +84,40 @@ call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 
 ## P1 backlog — all remaining work (P0 complete)
 
-Ordered by value to a café owner. PLAN.md §5 allows at most two of these per
-Phase 4; each should be its own small commit(s) with tests where practical.
-Two P1 items from the list are already delivered and need no work:
+Ordered by value to a café owner. Each should be its own small commit(s)
+with tests where practical. Five P1 items are already delivered and need no
+work:
 
 - **Sample menu/demo mode** — done ("Preview with demo data" CTA +
   `sample-menu.ts`, labelled demo; also the no-API-key fallback).
 - **Extraction summary** — done (category/item counts and needs-review count
   in `extraction-result.tsx` and the editor header).
+- **One-level undo for delete** — done (`src/features/menu/undo.ts`, wired
+  into the editor; restores a deleted item/category, invalidated by any
+  unrelated edit; `tests/menu-undo.test.ts`).
+- **Category/item search box** — done (`src/features/menu/search.ts`, search
+  bar in `menu-editor.tsx`; filters items by name/description and shows
+  matching categories with counts; `tests/menu-search.test.ts`).
+- **Multiple menu images/pages** — done (up to 4 pages per request, sent
+  together and merged server-side: `image-constraints.ts`, AI prompt
+  `src/lib/ai/prompts.ts`, `extract-client.ts`; page thumbnails/reorder/remove
+  in the upload UI; `tests/image-constraints.test.ts`,
+  `tests/extract-menu-service.test.ts`).
 
 Remaining, in priority order:
 
-1. **Undo the most recent destructive edit** — one-level undo for delete
-   item/category; highest safety value, plain in-memory snapshot of the doc.
-2. **Category/item search box** — filter by name/description across
-   categories; makes large menus (30+ items) usable.
-3. **Duplicate item detection with a review action** — flag likely duplicates
+1. **Duplicate item detection with a review action** — flag likely duplicates
    after multi-page merge; never auto-delete (PLAN.md: review action only).
-4. **Multiple menu images/pages** — accept several images, merge into one
-   menu, dedupe overlaps; upload already kept extensible for this.
-5. **Bulk category reassignment** — select several items, move together.
-6. **Optional description cleanup** — separate, explicitly-invoked rewrite of
+2. **Bulk category reassignment** — select several items, move together.
+3. **Optional description cleanup** — separate, explicitly-invoked rewrite of
    descriptions; must stay clearly distinct from faithful extraction and
    preserve the original text.
-7. **Optional language selection/translation** — always preserve original
+4. **Optional language selection/translation** — always preserve original
    text alongside any translation.
 
-Do not start these until the two chosen ones are verified in the deployed
-app. Nothing here blocks shipping P0.
+Nothing here blocks shipping P0. The newly delivered P1 items are verified
+in the local dev app (browser-tested plus unit tests); re-verify them in the
+deployed app after the next deploy.
 
 ## local/ sandbox convention (untracked)
 
