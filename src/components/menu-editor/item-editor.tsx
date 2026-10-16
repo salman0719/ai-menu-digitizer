@@ -21,6 +21,9 @@ interface ItemEditorProps {
   onDelete: () => void;
   /** Flagged by duplicate detection (review-only badge, see duplicates.ts). */
   duplicate: boolean;
+  /** Bulk reassignment checkbox state (see menu-editor's bulk actions bar). */
+  selected: boolean;
+  onToggle: () => void;
 }
 
 const smallButton =
@@ -35,6 +38,8 @@ export function ItemEditor({
   onChange,
   onDelete,
   duplicate,
+  selected,
+  onToggle,
 }: ItemEditorProps) {
   const category = doc.categories.find((c) => c.id === categoryId);
   const index = category ? category.items.findIndex((i) => i.id === item.id) : -1;
@@ -302,6 +307,16 @@ export function ItemEditor({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3">
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${item.name} for bulk actions`}
+            className="h-4 w-4 rounded border-stone-300 accent-amber-700"
+          />
+          Select
+        </label>
         <button
           type="button"
           disabled={index <= 0}

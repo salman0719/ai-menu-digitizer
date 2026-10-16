@@ -8,6 +8,7 @@ import {
   deleteCategory,
   deleteItem,
   moveCategory,
+  moveItemsToCategory,
   renameCategory,
 } from "@/features/menu/menu-utils";
 import {
@@ -107,6 +108,29 @@ export function MenuEditor({
     if (!undo || !canRestoreDeleteUndo(undo, doc)) return;
     setUndo(null);
     onChange(restoreDeleteUndo(undo));
+  }
+
+  // Bulk reassignment: selection is tracked by item id and pruned against
+  // the live document, so deleted or filtered-out items never linger.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkTarget, setBulkTarget] = useState("");
+  const presentIds = new Set(doc.categories.flatMap((c) => c.items.map((i) => i.id)));
+  const selected = [...selectedIds].filter((id) => presentIds.has(id));
+
+  function toggleSelected(itemId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }
+
+  function handleBulkMove() {
+    if (selected.length === 0 || !bulkTarget) return;
+    onChange(moveItemsToCategory(doc, selected, bulkTarget));
+    setSelectedIds(new Set());
+    setBulkTarget("");
   }
 
   return (
@@ -264,6 +288,45 @@ export function MenuEditor({
         </p>
       </div>
 
+      {selected.length > 0 && (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-3"
+        >
+          <p className="text-xs font-semibold text-amber-900">
+            {selected.length} {selected.length === 1 ? "item" : "items"} selected
+          </p>
+          <label className="flex items-center gap-1.5 text-xs text-amber-900">
+            Move to
+            <select
+              aria-label="Category to move selected items to"
+              value={bulkTarget}
+              onChange={(event) => setBulkTarget(event.target.value)}
+              className="rounded-full border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 focus:border-amber-700 focus:outline-none"
+            >
+              <option value="">Category…</option>
+              {doc.categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!bulkTarget}
+            onClick={handleBulkMove}
+            className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            Move selected
+          </button>
+          <button type="button" onClick={() => setSelectedIds(new Set())} className={smallButton}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {doc.categories.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No categories yet</p>
@@ -350,6 +413,8 @@ export function MenuEditor({
                       onChange={onChange}
                       onDelete={() => removeItem(category.id, item)}
                       duplicate={duplicateIds.has(item.id)}
+                      selected={selectedIds.has(item.id)}
+                      onToggle={() => toggleSelected(item.id)}
                     />
                   ))}
                 </ul>
