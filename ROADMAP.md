@@ -85,7 +85,7 @@ call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 ## P1 backlog — all remaining work (P0 complete)
 
 Ordered by value to a café owner. Each should be its own small commit(s)
-with tests where practical. Five P1 items are already delivered and need no
+with tests where practical. Seven P1 items are already delivered and need no
 work:
 
 - **Sample menu/demo mode** — done ("Preview with demo data" CTA +
@@ -103,16 +103,20 @@ work:
   `src/lib/ai/prompts.ts`, `extract-client.ts`; page thumbnails/reorder/remove
   in the upload UI; `tests/image-constraints.test.ts`,
   `tests/extract-menu-service.test.ts`).
+- **Duplicate item detection with a review action** — done
+  (`src/features/menu/duplicates.ts`; review panel in `menu-editor.tsx` with
+  per-copy confirmed delete + undo or "Keep all" dismissal remembered per
+  document in localStorage; row badges; `tests/duplicates.test.ts`).
+- **Bulk category reassignment** — done (`moveItemsToCategory` in
+  `menu-utils.ts`; item checkboxes + bulk bar in `menu-editor.tsx`,
+  document order preserved; tests in `tests/menu-utils.test.ts`).
 
 Remaining, in priority order:
 
-1. **Duplicate item detection with a review action** — flag likely duplicates
-   after multi-page merge; never auto-delete (PLAN.md: review action only).
-2. **Bulk category reassignment** — select several items, move together.
-3. **Optional description cleanup** — separate, explicitly-invoked rewrite of
+1. **Optional description cleanup** — separate, explicitly-invoked rewrite of
    descriptions; must stay clearly distinct from faithful extraction and
    preserve the original text.
-4. **Optional language selection/translation** — always preserve original
+2. **Optional language selection/translation** — always preserve original
    text alongside any translation.
 
 Nothing here blocks shipping P0. The newly delivered P1 items are verified
