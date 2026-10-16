@@ -329,6 +329,7 @@ export default function Home() {
   async function handleExtract() {
     if (pages.length === 0 || phase === "extracting") return;
     setPhase("extracting");
+    setFileError(null);
     setExtractError(null);
     try {
       const menu = await extractMenuFromFiles(pages.map((page) => page.file));
