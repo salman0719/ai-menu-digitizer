@@ -51,6 +51,21 @@ body {
     break-inside: avoid;
   }
 
+  /* Table QR cards: two per row, never split across pages. */
+  [data-qr-sheet] {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8mm;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+
+  [data-qr-card] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #d6d3d1 !important;
+  }
+
   @page {
     margin: 12mm;
   }

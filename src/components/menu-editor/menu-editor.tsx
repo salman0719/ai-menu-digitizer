@@ -40,6 +40,7 @@ import {
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
+import { TableQrPanel } from "./table-qr-panel";
 
 export interface SaveState {
   kind: "saved" | "saving" | "error";
@@ -218,9 +219,11 @@ export function MenuEditor({
     onChange(next);
   }
 
-  // Live customer-facing preview: swaps the editing surface for the menu a
-  // diner would see, while the header (back, undo, save state) stays reachable.
-  const [previewing, setPreviewing] = useState(false);
+  // View mode swaps the editing surface for the customer preview or the
+  // printable table QR cards, while the header (back, save state) stays put.
+  // "edit" is the workspace; the other two are read-only presentations.
+  type EditorMode = "edit" | "preview" | "qr";
+  const [mode, setMode] = useState<EditorMode>("edit");
 
   // Preview style is a tiny UI preference (like the category layout above), so
   // it lives in localStorage rather than the menu document.
@@ -318,18 +321,33 @@ export function MenuEditor({
         )}
       </p>
       <span className="flex-1" />
-      <button
-        type="button"
-        aria-pressed={previewing}
-        onClick={() => setPreviewing((value) => !value)}
-        className={previewing ? primaryButton : smallButton}
-      >
-        {previewing ? "← Back to edit" : "Preview menu"}
-      </button>
+      {mode === "edit" ? (
+        <>
+          <button type="button" onClick={() => setMode("qr")} className={smallButton}>
+            Table QR
+          </button>
+          <button type="button" onClick={() => setMode("preview")} className={smallButton}>
+            Preview menu
+          </button>
+        </>
+      ) : (
+        <button type="button" onClick={() => setMode("edit")} className={primaryButton}>
+          ← Back to edit
+        </button>
+      )}
     </div>
   );
 
-  if (previewing) {
+  if (mode === "qr") {
+    return (
+      <div className="flex flex-col gap-4">
+        {headerRow}
+        <TableQrPanel doc={doc} />
+      </div>
+    );
+  }
+
+  if (mode === "preview") {
     return (
       <div className="flex flex-col gap-4">
         {headerRow}
