@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "@/components/layout/site-header";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
+import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
 import { ExtractionResult, PreviewMenu } from "@/components/upload/extraction-result";
@@ -36,7 +37,7 @@ import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 
-type Screen = "capture" | "library" | "editor";
+type Screen = "capture" | "library" | "orders" | "editor";
 type Phase = "upload" | "ready" | "extracting" | "done";
 
 const STEPS = ["Upload image", "Extract menu", "Review draft"] as const;
@@ -518,6 +519,7 @@ export default function Home() {
               [
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
+                { id: "orders", label: "Orders" },
               ] as const
             ).map((tab) => (
               <button
@@ -558,6 +560,8 @@ export default function Home() {
             />
           </div>
         )}
+
+        {screen === "orders" && <OrdersBoard />}
 
         {screen === "editor" && activeDoc && (
           <MenuEditor
