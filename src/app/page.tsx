@@ -54,6 +54,11 @@ export default function Home() {
   const [fileError, setFileError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("upload");
   const [extracted, setExtracted] = useState<ExtractedMenu | null>(null);
+  /** Draft persisted automatically after a successful AI extraction. */
+  const [draftSave, setDraftSave] = useState<"idle" | "saving" | "saved" | "unavailable">("idle");
+  const draftDocRef = useRef<MenuDocument | null>(null);
+  /** Guards autosave state against a newer extraction or a reset. */
+  const draftTokenRef = useRef(0);
   const [demoDoc, setDemoDoc] = useState<MenuDocument | null>(null);
   const [source, setSource] = useState<"ai" | "demo">("ai");
   const [extractError, setExtractError] = useState<ExtractClientError | null>(null);
@@ -270,6 +275,10 @@ export default function Home() {
    * already confirmed discarding and validated the batch.
    */
   function applySelection(nextFiles: File[]) {
+    // Any change of pages invalidates the draft tied to the old selection.
+    draftTokenRef.current += 1;
+    draftDocRef.current = null;
+    setDraftSave("idle");
     pages.forEach((page) => URL.revokeObjectURL(page.previewUrl));
     const next = nextFiles.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }));
     liveUrlsRef.current = next.map((page) => page.previewUrl);
@@ -342,6 +351,7 @@ export default function Home() {
       setExtracted(menu);
       setSource("ai");
       setPhase("done");
+      void autoSaveDraft(menu);
     } catch (error) {
       setExtractError(
         error instanceof ExtractClientError
@@ -364,15 +374,69 @@ export default function Home() {
     scrollToResult();
   }
 
+  /**
+   * Persist an extraction immediately, so reviewing the draft in the editor
+   * is optional rather than the act of saving. Skips empty results (nothing
+   * worth storing) and keeps the newest draft when extractions overlap.
+   */
+  async function autoSaveDraft(menu: ExtractedMenu) {
+    const token = (draftTokenRef.current += 1);
+    if (menu.categories.length === 0) {
+      draftDocRef.current = null;
+      setDraftSave("idle");
+      return;
+    }
+    const doc = extractedMenuToDocument(menu, {
+      provider: "gemini",
+      originalFileName: pages[0]?.file.name,
+    });
+    draftDocRef.current = doc;
+    // One blob per menu: the first page stands in as the source image.
+    const primaryPageBlob = pages[0]?.file ?? null;
+    if (storageDownRef.current) {
+      setDraftSave("unavailable");
+      return;
+    }
+    setDraftSave("saving");
+    try {
+      const saved = await saveMenu(doc);
+      if (primaryPageBlob) {
+        try {
+          await saveImage(saved.id, primaryPageBlob);
+        } catch {
+          // Image is optional; the menu matters.
+        }
+      }
+      if (token !== draftTokenRef.current) return;
+      draftDocRef.current = saved;
+      setDraftSave("saved");
+      await refreshLibrary();
+    } catch (error) {
+      if (token !== draftTokenRef.current) return;
+      setDraftSave("unavailable");
+      setExtractError(
+        new ExtractClientError(
+          "internal_error",
+          error instanceof StorageError
+            ? error.message
+            : "The draft could not be saved in this browser, but you can still edit it."
+        )
+      );
+    }
+  }
+
   /** Save the current result (AI or demo) and open it in the editor. */
   async function handleEditResult() {
     try {
       if (source === "ai" && extracted) {
         const firstPage = pages[0];
-        const doc = extractedMenuToDocument(extracted, {
-          provider: "gemini",
-          originalFileName: firstPage?.file.name,
-        });
+        // Reuse the autosaved draft instead of writing a second record.
+        const doc =
+          draftDocRef.current ??
+          extractedMenuToDocument(extracted, {
+            provider: "gemini",
+            originalFileName: firstPage?.file.name,
+          });
         const saved = storageDownRef.current ? doc : await saveMenu(doc);
         if (firstPage && !storageDownRef.current) {
           try {
@@ -678,6 +742,20 @@ export default function Home() {
                   source={source}
                   onStartOver={clearCapture}
                   onEdit={() => void handleEditResult()}
+                  savedNotice={
+                    source === "ai" && draftSave === "saved"
+                      ? "Draft saved to My menus"
+                      : source === "ai" && draftSave === "saving"
+                        ? "Saving draft…"
+                        : null
+                  }
+                  editLabel={
+                    source === "ai"
+                      ? draftSave === "saved"
+                        ? "Open in editor"
+                        : "Edit menu"
+                      : "Save & open editor"
+                  }
                 />
               </div>
             )}
