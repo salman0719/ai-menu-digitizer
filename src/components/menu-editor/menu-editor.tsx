@@ -27,10 +27,13 @@ import {
 } from "@/features/menu/undo";
 
 import {
+  DEFAULT_PREVIEW_LAYOUT_ID,
   DEFAULT_PREVIEW_THEME_ID,
   PREVIEW_THEMES,
   PREVIEW_THEME_IDS,
+  isPreviewLayoutId,
   isPreviewThemeId,
+  type PreviewLayoutId,
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
 
@@ -241,6 +244,26 @@ export function MenuEditor({
     }
   }
 
+  const PREVIEW_LAYOUT_STORAGE_KEY = "menu-preview-layout";
+  const [previewLayout, setPreviewLayout] = useState<PreviewLayoutId>(() => {
+    if (typeof window === "undefined") return DEFAULT_PREVIEW_LAYOUT_ID;
+    try {
+      const stored = window.localStorage.getItem(PREVIEW_LAYOUT_STORAGE_KEY);
+      return isPreviewLayoutId(stored) ? stored : DEFAULT_PREVIEW_LAYOUT_ID;
+    } catch {
+      return DEFAULT_PREVIEW_LAYOUT_ID;
+    }
+  });
+
+  function changePreviewLayout(id: PreviewLayoutId) {
+    setPreviewLayout(id);
+    try {
+      window.localStorage.setItem(PREVIEW_LAYOUT_STORAGE_KEY, id);
+    } catch {
+      /* storage unavailable — the session choice still applies */
+    }
+  }
+
   // Bulk reassignment: selection is tracked by item id and pruned against
   // the live document, so deleted or filtered-out items never linger.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
@@ -329,8 +352,30 @@ export function MenuEditor({
               </button>
             ))}
           </div>
+          <span className="mx-1 hidden h-5 w-px bg-stone-200 sm:block" aria-hidden="true" />
+          <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Layout</p>
+          <div role="group" aria-label="Preview layout" className="flex flex-wrap gap-1.5">
+            {[
+              { id: "list" as const, label: "List" },
+              { id: "columns" as const, label: "Two columns" },
+            ].map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={previewLayout === option.id}
+                onClick={() => changePreviewLayout(option.id)}
+                className={
+                  previewLayout === option.id
+                    ? "rounded-full bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                    : "rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <MenuPreview doc={doc} themeId={previewThemeId} />
+        <MenuPreview doc={doc} themeId={previewThemeId} layout={previewLayout} />
       </div>
     );
   }

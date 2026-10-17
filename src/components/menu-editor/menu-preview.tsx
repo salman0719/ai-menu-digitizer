@@ -15,15 +15,22 @@
 
 import type { MenuDocument } from "@/features/menu/schema";
 import { formatPreviewPrice, formatPriceDelta } from "@/features/menu/preview-utils";
-import { previewTheme, type PreviewThemeId } from "@/features/menu/preview-themes";
+import {
+  previewLayoutClass,
+  previewTheme,
+  type PreviewLayoutId,
+  type PreviewThemeId,
+} from "@/features/menu/preview-themes";
 
 interface MenuPreviewProps {
   doc: MenuDocument;
   /** Chosen visual theme; defaults to Classic. */
   themeId?: PreviewThemeId | null;
+  /** Section arrangement; defaults to a single list. */
+  layout?: PreviewLayoutId | null;
 }
 
-export function MenuPreview({ doc, themeId }: MenuPreviewProps) {
+export function MenuPreview({ doc, themeId, layout }: MenuPreviewProps) {
   const theme = previewTheme(themeId);
   const itemCount = doc.categories.reduce((sum, category) => sum + category.items.length, 0);
 
@@ -52,8 +59,9 @@ export function MenuPreview({ doc, themeId }: MenuPreviewProps) {
           </p>
         </div>
       ) : (
-        doc.categories.map((category) => (
-          <section
+        <div className={previewLayoutClass(layout)}>
+          {doc.categories.map((category) => (
+            <section
             key={category.id}
             aria-label={`Menu category ${category.name}`}
             className={`rounded-2xl px-6 py-6 ${theme.page}`}
@@ -146,8 +154,9 @@ export function MenuPreview({ doc, themeId }: MenuPreviewProps) {
                 })}
               </ul>
             )}
-          </section>
-        ))
+            </section>
+          ))}
+        </div>
       )}
 
       {doc.currency && (

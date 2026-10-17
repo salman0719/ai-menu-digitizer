@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_PREVIEW_LAYOUT_ID,
   DEFAULT_PREVIEW_THEME_ID,
+  PREVIEW_LAYOUT_IDS,
   PREVIEW_THEMES,
   PREVIEW_THEME_IDS,
+  isPreviewLayoutId,
   isPreviewThemeId,
+  previewLayoutClass,
   previewTheme,
 } from "../src/features/menu/preview-themes";
 
@@ -41,6 +45,15 @@ describe("preview themes", () => {
     // Surfaces must differ, otherwise themes are cosmetic duplicates.
     const surfaces = new Set(PREVIEW_THEME_IDS.map((id) => PREVIEW_THEMES[id].page));
     expect(surfaces.size).toBe(PREVIEW_THEME_IDS.length);
+  });
+
+  it("offers list and two-column layouts with distinct classes", () => {
+    expect(PREVIEW_LAYOUT_IDS).toEqual(["list", "columns"]);
+    expect(previewLayoutClass(DEFAULT_PREVIEW_LAYOUT_ID)).toContain("flex-col");
+    expect(previewLayoutClass("columns")).toContain("sm:grid-cols-2");
+    expect(previewLayoutClass(null)).toBe(previewLayoutClass(DEFAULT_PREVIEW_LAYOUT_ID));
+    expect(isPreviewLayoutId("columns")).toBe(true);
+    expect(isPreviewLayoutId("masonry")).toBe(false);
   });
 
   it("falls back to the default for unknown ids", () => {

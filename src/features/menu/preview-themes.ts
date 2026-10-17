@@ -124,3 +124,23 @@ export function isPreviewThemeId(value: unknown): value is PreviewThemeId {
 export function previewTheme(id: PreviewThemeId | null | undefined): PreviewTheme {
   return isPreviewThemeId(id) ? PREVIEW_THEMES[id] : PREVIEW_THEMES[DEFAULT_PREVIEW_THEME_ID];
 }
+
+/**
+ * Section arrangement. `list` is one category per row (menu-board feel);
+ * `columns` pairs categories side by side on wide screens, which keeps long
+ * menus scannable in a browser or a printed A4 page.
+ */
+export type PreviewLayoutId = "list" | "columns";
+
+export const PREVIEW_LAYOUT_IDS: PreviewLayoutId[] = ["list", "columns"];
+
+export const DEFAULT_PREVIEW_LAYOUT_ID: PreviewLayoutId = "list";
+
+export function isPreviewLayoutId(value: unknown): value is PreviewLayoutId {
+  return value === "list" || value === "columns";
+}
+
+/** Grid classes for the category sections. */
+export function previewLayoutClass(layout: PreviewLayoutId | null | undefined): string {
+  return layout === "columns" ? "grid gap-4 sm:grid-cols-2" : "flex flex-col gap-4";
+}
