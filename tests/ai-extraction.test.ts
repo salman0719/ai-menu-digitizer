@@ -81,6 +81,24 @@ describe("extraction prompts", () => {
     expect(prompt).toContain("Never invent");
   });
 
+  it("teaches the model to record per-size prices as variants", () => {
+    const prompt = buildExtractionPrompt();
+    expect(prompt).toContain("variants");
+    expect(prompt).toContain("Small/Medium/Large");
+    expect(prompt).toContain("is ONE item");
+    expect(prompt).toContain("do not split one item into several items");
+    expect(prompt).toContain("column headers");
+    expect(prompt).toContain("Never invent a tier label");
+    expect(prompt).toContain("spell");
+    expect(prompt).toContain("nested list");
+    expect(prompt).toContain("Size labels not printed; variant names inferred by column order");
+    expect(prompt).toContain("\u21b3 Small (leftmost column): $2.00");
+    expect(prompt).toContain("one note per variant");
+    expect(prompt).toContain("re-read, round, or re-infer them");
+    expect(prompt).toContain("Prefix each with the menu's currency");
+    expect(prompt).toContain("each visible section heading still becomes its own");
+  });
+
   it("repair prompt includes the issues and the previous output", () => {
     const prompt = buildRepairPrompt('{"bad": true}', ["categories: Required"]);
     expect(prompt).toContain("categories: Required");
