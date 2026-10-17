@@ -7,85 +7,98 @@
  * review notes, no controls — review happens in the editor (PLAN.md: AI
  * output is a draft, and the human review surface is not the preview).
  *
- * A "Preview" label stays visible so this never reads as a published page
- * (publishing a public site is out of scope). Unset prices render as an em
- * dash; nothing is ever invented.
+ * Appearance comes from `preview-themes.ts`; this component only applies the
+ * tokens. A "Preview · not published" label stays visible so this never reads
+ * as a published page (publishing a public site is out of scope). Unset prices
+ * render as an em dash; nothing is ever invented.
  */
 
 import type { MenuDocument } from "@/features/menu/schema";
 import { formatPreviewPrice, formatPriceDelta } from "@/features/menu/preview-utils";
+import { previewTheme, type PreviewThemeId } from "@/features/menu/preview-themes";
 
 interface MenuPreviewProps {
   doc: MenuDocument;
+  /** Chosen visual theme; defaults to Classic. */
+  themeId?: PreviewThemeId | null;
 }
 
-export function MenuPreview({ doc }: MenuPreviewProps) {
+export function MenuPreview({ doc, themeId }: MenuPreviewProps) {
+  const theme = previewTheme(themeId);
   const itemCount = doc.categories.reduce((sum, category) => sum + category.items.length, 0);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="rounded-2xl border border-stone-200 bg-white px-6 py-8 text-center">
-        <h2 className="text-2xl font-bold text-stone-900 sm:text-3xl">
-          {doc.title.trim() || "Untitled menu"}
-        </h2>
+    <div className={`flex flex-col gap-4 ${theme.font}`}>
+      <div className={`rounded-2xl px-6 py-10 ${theme.page} ${theme.headerAlign}`}>
+        <p className={theme.eyebrow}>Preview · not published</p>
+        <h2 className={`mt-2 ${theme.title}`}>{doc.title.trim() || "Untitled menu"}</h2>
         {doc.categories.length > 0 && (
-          <p className="mt-2 text-sm text-stone-500">
+          <p className={`mt-3 text-sm ${theme.description}`}>
             {doc.categories.length} {doc.categories.length === 1 ? "category" : "categories"} ·{" "}
             {itemCount} {itemCount === 1 ? "item" : "items"}
           </p>
         )}
-        <p className="mt-3 text-[11px] font-semibold tracking-widest text-stone-400 uppercase">
-          Preview — not published
-        </p>
+        <span
+          aria-hidden="true"
+          className={`mx-auto mt-5 block w-16 border-t ${theme.sectionRule}`}
+        />
       </div>
 
       {doc.categories.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">Nothing on the menu yet</p>
-          <p className="mt-1 text-sm text-stone-600">Add a category and items to see them here.</p>
+        <div className={`rounded-2xl p-8 text-center ${theme.page}`}>
+          <p className={`font-medium ${theme.itemName}`}>Nothing on the menu yet</p>
+          <p className={`mt-1 text-sm ${theme.description}`}>
+            Add a category and items to see them here.
+          </p>
         </div>
       ) : (
         doc.categories.map((category) => (
           <section
             key={category.id}
             aria-label={`Menu category ${category.name}`}
-            className="overflow-hidden rounded-2xl border border-stone-200 bg-white"
+            className={`rounded-2xl px-6 py-6 ${theme.page}`}
           >
-            <h3 className="border-b border-stone-100 bg-stone-50 px-5 py-3 text-sm font-bold tracking-wide text-stone-800 uppercase">
-              {category.name}
-            </h3>
+            <h3 className={theme.sectionHeading}>{category.name}</h3>
             {category.items.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-stone-400 italic">Nothing listed yet.</p>
+              <p className={`mt-3 text-sm italic ${theme.description}`}>Nothing listed yet.</p>
             ) : (
-              <ul className="divide-y divide-stone-100">
+              <ul className={`mt-2 divide-y ${theme.sectionRule}`}>
                 {category.items.map((item) => {
                   const soldOut = item.available === false;
                   return (
-                    <li key={item.id} className={`px-5 py-4 ${soldOut ? "opacity-60" : ""}`}>
-                      <div className="flex items-baseline justify-between gap-4">
-                        <p className="font-medium text-stone-900">
+                    <li key={item.id} className={`py-3 ${soldOut ? "opacity-60" : ""}`}>
+                      <div className="flex items-baseline gap-2">
+                        <p className={theme.itemName}>
                           {item.name}
                           {soldOut && (
-                            <span className="ml-2 rounded-full bg-stone-200 px-2 py-0.5 align-middle text-[11px] font-semibold text-stone-600">
+                            <span
+                              className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${theme.badge}`}
+                            >
                               Sold out
                             </span>
                           )}
                         </p>
-                        <p className="shrink-0 text-sm font-semibold text-stone-900 tabular-nums">
-                          {formatPreviewPrice(item.price, item.currency, doc.currency)}
-                        </p>
+                        <span
+                          aria-hidden="true"
+                          className={`mx-1 flex-1 translate-y-[-2px] border-b border-dotted ${theme.leader}`}
+                        />
+                        {(item.price !== null || item.variants.length === 0) && (
+                          <p className={`shrink-0 text-sm ${theme.price}`}>
+                            {formatPreviewPrice(item.price, item.currency, doc.currency)}
+                          </p>
+                        )}
                       </div>
 
                       {item.description && (
-                        <p className="mt-0.5 text-sm text-stone-600">{item.description}</p>
+                        <p className={`mt-0.5 text-sm ${theme.description}`}>{item.description}</p>
                       )}
 
                       {item.variants.length > 0 && (
-                        <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-stone-600">
+                        <ul className={`mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-xs ${theme.variantName}`}>
                           {item.variants.map((variant, vIndex) => (
                             <li key={`${variant.name}-${vIndex}`} className="tabular-nums">
                               {variant.name}
-                              <span className="ml-1.5 font-medium text-stone-800">
+                              <span className={`ml-1.5 ${theme.variantPrice}`}>
                                 {formatPreviewPrice(variant.price, null, doc.currency)}
                               </span>
                             </li>
@@ -94,10 +107,10 @@ export function MenuPreview({ doc }: MenuPreviewProps) {
                       )}
 
                       {item.options.length > 0 && (
-                        <ul className="mt-2 space-y-1 text-xs text-stone-600">
+                        <ul className={`mt-1.5 space-y-1 text-xs ${theme.variantName}`}>
                           {item.options.map((option, oIndex) => (
                             <li key={`${option.name}-${oIndex}`}>
-                              <span className="font-semibold text-stone-700">{option.name}:</span>{" "}
+                              <span className="font-semibold">{option.name}:</span>{" "}
                               {option.choices.length === 0
                                 ? "ask staff"
                                 : option.choices.map((choice, cIndex) => (
@@ -105,7 +118,7 @@ export function MenuPreview({ doc }: MenuPreviewProps) {
                                       {cIndex > 0 && ", "}
                                       {choice.name}
                                       {choice.priceDelta !== null && (
-                                        <span className="ml-1 font-medium text-stone-800 tabular-nums">
+                                        <span className={`ml-1 ${theme.variantPrice}`}>
                                           {formatPriceDelta(choice.priceDelta)}
                                         </span>
                                       )}
@@ -121,7 +134,7 @@ export function MenuPreview({ doc }: MenuPreviewProps) {
                           {item.dietaryLabels.map((label) => (
                             <span
                               key={label}
-                              className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-900"
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${theme.badge}`}
                             >
                               {label}
                             </span>
@@ -135,6 +148,12 @@ export function MenuPreview({ doc }: MenuPreviewProps) {
             )}
           </section>
         ))
+      )}
+
+      {doc.currency && (
+        <p className={`px-2 text-center text-[11px] tracking-wide ${theme.description}`}>
+          Prices in {doc.currency} as printed on the menu.
+        </p>
       )}
     </div>
   );

@@ -26,6 +26,14 @@ import {
   type DeleteUndo,
 } from "@/features/menu/undo";
 
+import {
+  DEFAULT_PREVIEW_THEME_ID,
+  PREVIEW_THEMES,
+  PREVIEW_THEME_IDS,
+  isPreviewThemeId,
+  type PreviewThemeId,
+} from "@/features/menu/preview-themes";
+
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
@@ -211,6 +219,28 @@ export function MenuEditor({
   // diner would see, while the header (back, undo, save state) stays reachable.
   const [previewing, setPreviewing] = useState(false);
 
+  // Preview style is a tiny UI preference (like the category layout above), so
+  // it lives in localStorage rather than the menu document.
+  const PREVIEW_THEME_STORAGE_KEY = "menu-preview-theme";
+  const [previewThemeId, setPreviewThemeId] = useState<PreviewThemeId>(() => {
+    if (typeof window === "undefined") return DEFAULT_PREVIEW_THEME_ID;
+    try {
+      const stored = window.localStorage.getItem(PREVIEW_THEME_STORAGE_KEY);
+      return isPreviewThemeId(stored) ? stored : DEFAULT_PREVIEW_THEME_ID;
+    } catch {
+      return DEFAULT_PREVIEW_THEME_ID;
+    }
+  });
+
+  function changePreviewTheme(id: PreviewThemeId) {
+    setPreviewThemeId(id);
+    try {
+      window.localStorage.setItem(PREVIEW_THEME_STORAGE_KEY, id);
+    } catch {
+      /* storage unavailable — the session choice still applies */
+    }
+  }
+
   // Bulk reassignment: selection is tracked by item id and pruned against
   // the live document, so deleted or filtered-out items never linger.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
@@ -280,7 +310,27 @@ export function MenuEditor({
     return (
       <div className="flex flex-col gap-4">
         {headerRow}
-        <MenuPreview doc={doc} />
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white p-3">
+          <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Style</p>
+          <div role="group" aria-label="Preview style" className="flex flex-wrap gap-1.5">
+            {PREVIEW_THEME_IDS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={previewThemeId === id}
+                onClick={() => changePreviewTheme(id)}
+                className={
+                  previewThemeId === id
+                    ? "rounded-full bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                    : "rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                }
+              >
+                {PREVIEW_THEMES[id].name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <MenuPreview doc={doc} themeId={previewThemeId} />
       </div>
     );
   }
