@@ -288,7 +288,7 @@ export function MenuEditor({
   }
 
   const headerRow = (
-    <div className="flex items-center gap-3">
+    <div data-print-hide className="flex items-center gap-3">
       <button type="button" onClick={onBack} className={smallButton}>
         ← All menus
       </button>
@@ -333,7 +333,10 @@ export function MenuEditor({
     return (
       <div className="flex flex-col gap-4">
         {headerRow}
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white p-3">
+        <div
+          data-print-hide
+          className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white p-3"
+        >
           <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Style</p>
           <div role="group" aria-label="Preview style" className="flex flex-wrap gap-1.5">
             {PREVIEW_THEME_IDS.map((id) => (
@@ -374,6 +377,10 @@ export function MenuEditor({
               </button>
             ))}
           </div>
+          <span className="flex-1" />
+          <button type="button" onClick={() => window.print()} className={smallButton}>
+            Print / save PDF
+          </button>
         </div>
         <MenuPreview doc={doc} themeId={previewThemeId} layout={previewLayout} />
       </div>

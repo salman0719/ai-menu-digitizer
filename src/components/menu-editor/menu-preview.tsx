@@ -35,7 +35,7 @@ export function MenuPreview({ doc, themeId, layout }: MenuPreviewProps) {
   const itemCount = doc.categories.reduce((sum, category) => sum + category.items.length, 0);
 
   return (
-    <div className={`flex flex-col gap-4 ${theme.font}`}>
+    <div data-menu-preview className={`flex flex-col gap-4 ${theme.font}`}>
       <div className={`rounded-2xl px-6 py-10 ${theme.page} ${theme.headerAlign}`}>
         <p className={theme.eyebrow}>Preview · not published</p>
         <h2 className={`mt-2 ${theme.title}`}>{doc.title.trim() || "Untitled menu"}</h2>

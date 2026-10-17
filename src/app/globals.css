@@ -24,3 +24,34 @@ body {
 ::selection {
   background: #fcd9a8;
 }
+
+/* Printing the customer preview should produce a clean paper menu: chrome
+   hidden, every theme flattened to black on white, sections kept whole. */
+@media print {
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  [data-menu-preview] {
+    background: white !important;
+  }
+
+  [data-menu-preview] * {
+    background-color: transparent !important;
+    color: #1c1917 !important;
+    border-color: #d6d3d1 !important;
+    box-shadow: none !important;
+  }
+
+  [data-menu-preview] section {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

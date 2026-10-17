@@ -513,7 +513,7 @@ export default function Home() {
         }`}
       >
         {screen !== "editor" && (
-          <nav aria-label="Sections" className="flex gap-2">
+          <nav data-print-hide aria-label="Sections" className="flex gap-2">
             {(
               [
                 { id: "capture", label: "Capture" },
@@ -762,7 +762,7 @@ export default function Home() {
           </>
         )}
 
-        <footer className="mt-auto border-t border-stone-200 pt-4 pb-2">
+        <footer data-print-hide className="mt-auto border-t border-stone-200 pt-4 pb-2">
           <p className="text-xs leading-5 text-stone-500">
             Local-first prototype: uploaded images are processed in memory and never stored on the
             server. Saved menus live in this browser only — export JSON backups of anything
