@@ -24,7 +24,9 @@ function fakeProvider(responses: string[]): { provider: ExtractionProvider; call
   };
 }
 
-const tinyPng: Uint8Array = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+// Full headers — the server sniffs real bytes, not file names.
+const tinyPng: Uint8Array = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const tinyJpeg: Uint8Array = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
 function onePage(deps: { provider: ExtractionProvider | null }, bytes = tinyPng) {
   return extractMenuFromImages([{ bytes, mimeType: "image/png" }], deps);
@@ -58,7 +60,8 @@ describe("extractMenuFromImages", () => {
     const { provider } = fakeProvider([validMenuJson]);
     const generateText = provider.generateText as ReturnType<typeof vi.fn>;
 
-    const badType = await extractMenuFromImages([{ bytes: tinyPng, mimeType: "image/gif" }], {
+    const notAnImage = Uint8Array.from("GIF89a", (char) => char.charCodeAt(0));
+    const badType = await extractMenuFromImages([{ bytes: notAnImage, mimeType: "image/gif" }], {
       provider,
     }).catch((e: unknown) => e);
     expect((badType as ServiceError).code).toBe("invalid_file_type");
@@ -101,6 +104,62 @@ describe("extractMenuFromImages", () => {
     expect((error as ServiceError).code).toBe("quota_exhausted");
   });
 
+  it("uses sniffed bytes over a mislabeled declared type", async () => {
+    const requests: ExtractionRequest[] = [];
+    const provider: ExtractionProvider = {
+      generateText: vi.fn(async (request: ExtractionRequest) => {
+        requests.push(request);
+        return validMenuJson;
+      }),
+    };
+    await extractMenuFromImages([{ bytes: tinyPng, mimeType: "image/jpeg" }], { provider });
+    expect(requests[0].images[0].mimeType).toBe("image/png");
+  });
+
+  it("rejects AVIF bytes with guidance to re-upload through the app", async () => {
+    const avif = new Uint8Array([
+      0,
+      0,
+      0,
+      0x1c,
+      ...Uint8Array.from("ftypavif", (char) => char.charCodeAt(0)),
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const { provider } = fakeProvider([validMenuJson]);
+    const error = await extractMenuFromImages([{ bytes: avif, mimeType: "image/jpeg" }], {
+      provider,
+    }).catch((e: unknown) => e);
+    expect((error as ServiceError).code).toBe("invalid_file_type");
+    expect((error as ServiceError).message).toContain("AVIF");
+    expect(provider.generateText).not.toHaveBeenCalled();
+  });
+
+  it("passes HEIC bytes through with the correct MIME type", async () => {
+    const requests: ExtractionRequest[] = [];
+    const provider: ExtractionProvider = {
+      generateText: vi.fn(async (request: ExtractionRequest) => {
+        requests.push(request);
+        return validMenuJson;
+      }),
+    };
+    const heic = new Uint8Array([
+      0,
+      0,
+      0,
+      0x1c,
+      ...Uint8Array.from("ftypheic", (char) => char.charCodeAt(0)),
+      0,
+      0,
+      0,
+      0,
+    ]);
+    await extractMenuFromImages([{ bytes: heic, mimeType: "" }], { provider });
+    expect(requests[0].images[0].mimeType).toBe("image/heic");
+  });
+
   it("extracts all pages in one provider call with page-aware guidance", async () => {
     const requests: ExtractionRequest[] = [];
     const provider: ExtractionProvider = {
@@ -112,7 +171,7 @@ describe("extractMenuFromImages", () => {
     const menu = await extractMenuFromImages(
       [
         { bytes: tinyPng, mimeType: "image/png", filename: "page-1.png" },
-        { bytes: tinyPng, mimeType: "image/jpeg", filename: "page-2.jpg" },
+        { bytes: tinyJpeg, mimeType: "image/jpeg", filename: "page-2.jpg" },
       ],
       { provider }
     );

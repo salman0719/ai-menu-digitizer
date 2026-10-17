@@ -1,6 +1,6 @@
 "use client";
 
-import { formatFileSize, MAX_MENU_PAGES } from "@/lib/image-constraints";
+import { formatFileSize, MAX_MENU_PAGES, mimeTypeFromFileName } from "@/lib/image-constraints";
 
 /** One selected page: the file plus its live preview URL (owned by the page). */
 export interface PageImage {
@@ -70,7 +70,9 @@ export function ImagePreview({ pages, onAdd, onReplace, onRemove }: ImagePreview
               </div>
               <p className="mt-1 text-[11px] text-stone-500">
                 {formatFileSize(page.file.size)} ·{" "}
-                {page.file.type.replace("image/", "").toUpperCase()}
+                {(mimeTypeFromFileName(page.file.name) ?? page.file.type)
+                  .replace("image/", "")
+                  .toUpperCase()}
               </p>
               <div className="mt-2 flex gap-2">
                 <button

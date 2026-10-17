@@ -75,7 +75,7 @@ export function Dropzone({ onSelect, disabled = false }: DropzoneProps) {
         </p>
         <p className="mt-1 text-sm text-stone-600">
           or <span className="font-medium text-amber-800 underline">browse files</span> — JPEG, PNG,
-          or WebP, up to 4&nbsp;MB each (max 4 pages, merged into one menu)
+          WebP, AVIF, or HEIC, up to 4&nbsp;MB each (max 4 pages, merged into one menu)
         </p>
       </div>
       <input

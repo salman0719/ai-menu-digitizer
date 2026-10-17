@@ -33,7 +33,8 @@ import {
 } from "@/features/menu/storage";
 import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
-import { validateImageBatch } from "@/lib/image-constraints";
+import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
+import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 
 type Screen = "capture" | "library" | "editor";
 type Phase = "upload" | "ready" | "extracting" | "done";
@@ -332,7 +333,12 @@ export default function Home() {
     setFileError(null);
     setExtractError(null);
     try {
-      const menu = await extractMenuFromFiles(pages.map((page) => page.file));
+      // Normalize first: AVIF is transcoded to JPEG here because the provider
+      // cannot read it, and mislabeled files get their real MIME type.
+      const prepared = await Promise.all(pages.map((page) => prepareImageForUpload(page.file)));
+      const menu = await extractMenuFromFiles(
+        prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
+      );
       setExtracted(menu);
       setSource("ai");
       setPhase("done");
@@ -340,7 +346,9 @@ export default function Home() {
       setExtractError(
         error instanceof ExtractClientError
           ? error
-          : new ExtractClientError("internal_error", "Something went wrong. Try again.")
+          : error instanceof PrepareImageError
+            ? new ExtractClientError("invalid_file_type", error.message)
+            : new ExtractClientError("internal_error", "Something went wrong. Try again.")
       );
       setPhase("ready");
     }
@@ -579,7 +587,7 @@ export default function Home() {
                   ref={addInputRef}
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
                   className="sr-only"
                   tabIndex={-1}
                   onChange={(event) => {
@@ -591,7 +599,7 @@ export default function Home() {
                 <input
                   ref={replaceInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
                   className="sr-only"
                   tabIndex={-1}
                   onChange={(event) => {

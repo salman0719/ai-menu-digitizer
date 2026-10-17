@@ -1,19 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyImageBytes,
+  detectImageMimeType,
   formatFileSize,
   MAX_IMAGE_BYTES,
   MAX_MENU_PAGES,
   MAX_TOTAL_IMAGE_BYTES,
+  mimeTypeFromFileName,
   validateImageBatch,
   validateImageFile,
 } from "../src/lib/image-constraints";
 
 describe("validateImageFile", () => {
   it("accepts supported types within the size limit", () => {
-    for (const type of ["image/jpeg", "image/png", "image/webp"]) {
+    for (const type of [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/avif",
+      "image/heic",
+      "image/heif",
+    ]) {
       expect(validateImageFile({ type, size: 1024 })).toEqual({ valid: true });
     }
+  });
+
+  it("falls back to the file extension when the browser reports no type", () => {
+    expect(validateImageFile({ type: "", size: 1024, name: "menu.HEIC" })).toEqual({ valid: true });
+    expect(validateImageFile({ type: "", size: 1024, name: "notes.txt" }).valid).toBe(false);
   });
 
   it("rejects unsupported types, empty files, and oversized files", () => {
@@ -64,6 +79,84 @@ describe("validateImageBatch", () => {
     const result = validateImageBatch([jpeg(half), jpeg(half)]);
     expect(result).toMatchObject({ valid: false, code: "file_too_large" });
     expect(result.valid === false && result.message).toContain("too large together");
+  });
+});
+
+const bytes = (...values: number[]) => new Uint8Array(values);
+const ascii = (text: string) => Uint8Array.from(text, (char) => char.charCodeAt(0));
+const isoBmff = (brand: string) =>
+  new Uint8Array([0, 0, 0, 0x1c, ...ascii("ftyp"), ...ascii(brand), 0, 0, 0, 0]);
+
+const jpegHeader = bytes(0xff, 0xd8, 0xff, 0xe0, 0, 0x10);
+const pngHeader = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+const webpHeader = new Uint8Array([...ascii("RIFF"), 0, 0, 0, 0, ...ascii("WEBP")]);
+
+ describe("detectImageMimeType", () => {
+  it("identifies each supported header", () => {
+    expect(detectImageMimeType(jpegHeader)).toBe("image/jpeg");
+    expect(detectImageMimeType(pngHeader)).toBe("image/png");
+    expect(detectImageMimeType(webpHeader)).toBe("image/webp");
+    expect(detectImageMimeType(isoBmff("avif"))).toBe("image/avif");
+    expect(detectImageMimeType(isoBmff("avis"))).toBe("image/avif");
+    expect(detectImageMimeType(isoBmff("heic"))).toBe("image/heic");
+    expect(detectImageMimeType(isoBmff("mif1"))).toBe("image/heif");
+  });
+
+  it("returns null for unknown, truncated, or empty data", () => {
+    expect(detectImageMimeType(ascii("GIF89a"))).toBeNull();
+    expect(detectImageMimeType(new Uint8Array(0))).toBeNull();
+    expect(detectImageMimeType(bytes(0xff, 0xd8))).toBeNull();
+    expect(detectImageMimeType(ascii("ftypavif"))).toBeNull();
+  });
+});
+
+describe("classifyImageBytes", () => {
+  it("trusts the real header over a mislabeled declared type", () => {
+    // The sample that motivated this: AVIF bytes behind a .jpg name.
+    expect(classifyImageBytes(isoBmff("avif"), "image/jpeg", "board.jpg")).toEqual({
+      action: "transcode",
+      mimeType: "image/avif",
+    });
+    expect(classifyImageBytes(pngHeader, "image/jpeg", "page.jpg")).toEqual({
+      action: "pass",
+      mimeType: "image/png",
+    });
+  });
+
+  it("passes HEIC and HEIF through to the provider", () => {
+    expect(classifyImageBytes(isoBmff("heic"), "", "photo.HEIC")).toEqual({
+      action: "pass",
+      mimeType: "image/heic",
+    });
+    expect(classifyImageBytes(isoBmff("mif1"), "image/heif")).toEqual({
+      action: "pass",
+      mimeType: "image/heif",
+    });
+  });
+
+  it("falls back to the declared type and extension when bytes are unknown", () => {
+    expect(classifyImageBytes(bytes(0, 0, 0), "image/webp")).toEqual({
+      action: "pass",
+      mimeType: "image/webp",
+    });
+    expect(classifyImageBytes(bytes(0, 0, 0), "", "menu.avif")).toEqual({
+      action: "transcode",
+      mimeType: "image/avif",
+    });
+    expect(classifyImageBytes(bytes(0, 0, 0), "text/plain", "menu.txt")).toEqual({
+      action: "unsupported",
+      mimeType: null,
+    });
+  });
+});
+
+describe("mimeTypeFromFileName", () => {
+  it("maps known extensions case-insensitively", () => {
+    expect(mimeTypeFromFileName("A.JPG")).toBe("image/jpeg");
+    expect(mimeTypeFromFileName("menu.avif")).toBe("image/avif");
+    expect(mimeTypeFromFileName("photo.heic")).toBe("image/heic");
+    expect(mimeTypeFromFileName("archive.zip")).toBeNull();
+    expect(mimeTypeFromFileName(undefined)).toBeNull();
   });
 });
 

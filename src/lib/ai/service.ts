@@ -5,10 +5,13 @@
  */
 
 import {
+  detectImageMimeType,
   MAX_IMAGE_BYTES,
   MAX_MENU_PAGES,
   MAX_TOTAL_IMAGE_BYTES,
   SUPPORTED_IMAGE_MIME_TYPES,
+  type ProviderImageMimeType,
+  type SupportedImageMimeType,
 } from "../image-constraints";
 import { ExtractedMenu, extractedMenuSchema } from "./extraction-schema";
 import { buildExtractionPrompt, buildRepairPrompt } from "./prompts";
@@ -45,7 +48,14 @@ export class ServiceError extends Error {
 
 export interface ImageInput {
   bytes: Uint8Array;
+  /** Declared type; the real bytes win when they carry a recognisable header. */
   mimeType: string;
+  filename?: string;
+}
+
+interface NormalizedImage {
+  bytes: Uint8Array;
+  mimeType: ProviderImageMimeType;
   filename?: string;
 }
 
@@ -110,10 +120,11 @@ function mapProviderError(error: ProviderError): ServiceError {
 }
 
 /**
- * Validate a batch of page images (count, per-file type/size, total size).
- * Runs before any provider call; throws {@link ServiceError}.
+ * Validate a batch of page images (count, per-file type/size, total size) and
+ * return them with sniffed MIME types. Runs before any provider call; throws
+ * {@link ServiceError}.
  */
-function validateImages(images: ImageInput[]): void {
+function validateImages(images: ImageInput[]): NormalizedImage[] {
   if (images.length === 0) {
     throw new ServiceError(400, "missing_image", "Upload an image file in the `image` field.");
   }
@@ -125,16 +136,29 @@ function validateImages(images: ImageInput[]): void {
     );
   }
   let totalBytes = 0;
+  const normalized: NormalizedImage[] = [];
   for (const input of images) {
-    if (
-      !SUPPORTED_IMAGE_MIME_TYPES.includes(
-        input.mimeType as (typeof SUPPORTED_IMAGE_MIME_TYPES)[number]
-      )
-    ) {
+    // Prefer the real header over the declared type: browsers and camera
+    // exports mislabel files (AVIF under .jpg, HEIC with an empty type).
+    const sniffed = detectImageMimeType(input.bytes);
+    const declared = SUPPORTED_IMAGE_MIME_TYPES.includes(
+      input.mimeType as SupportedImageMimeType
+    )
+      ? (input.mimeType as SupportedImageMimeType)
+      : null;
+    const mimeType = sniffed ?? declared;
+    if (!mimeType) {
       throw new ServiceError(
         400,
         "invalid_file_type",
         `Unsupported image type. Use one of: ${SUPPORTED_IMAGE_MIME_TYPES.join(", ")}.`
+      );
+    }
+    if (mimeType === "image/avif") {
+      throw new ServiceError(
+        400,
+        "invalid_file_type",
+        "AVIF images can't be read by the AI provider directly. Re-upload it through the app so it can be converted to JPEG first."
       );
     }
     if (input.bytes.length === 0) {
@@ -148,6 +172,11 @@ function validateImages(images: ImageInput[]): void {
       );
     }
     totalBytes += input.bytes.length;
+    normalized.push({
+      bytes: input.bytes,
+      mimeType: mimeType as ProviderImageMimeType,
+      filename: input.filename,
+    });
   }
   if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
     throw new ServiceError(
@@ -156,6 +185,7 @@ function validateImages(images: ImageInput[]): void {
       `The page images are too large in total (max ${MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)} MB for all pages together).`
     );
   }
+  return normalized;
 }
 
 /**
@@ -167,7 +197,7 @@ export async function extractMenuFromImages(
   images: ImageInput[],
   deps: ServiceDeps
 ): Promise<ExtractedMenu> {
-  validateImages(images);
+  const normalized = validateImages(images);
   if (!deps.provider) {
     throw new ServiceError(
       503,
@@ -176,7 +206,7 @@ export async function extractMenuFromImages(
     );
   }
 
-  const parts = images.map((input) => ({
+  const parts = normalized.map((input) => ({
     imageBase64: Buffer.from(input.bytes).toString("base64"),
     mimeType: input.mimeType,
   }));
