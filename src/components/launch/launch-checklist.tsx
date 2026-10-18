@@ -213,7 +213,9 @@ export function LaunchChecklist() {
                 </p>
                 <p className="mt-0.5 text-xs text-stone-600">{step.guidance}</p>
                 <p className="mt-1 text-xs text-stone-500">{step.detail}</p>
-                {!step.done ? (
+                {/* Manual steps keep their control after being ticked,
+                    otherwise a mis-click could never be undone. */}
+                {!step.done || step.manual ? (
                   <div className="mt-1.5 flex flex-wrap items-center gap-3">
                     <Link
                       href={stepHref(step, status)}
@@ -229,7 +231,7 @@ export function LaunchChecklist() {
                           onChange={(event) => toggleCardsPrinted(event.target.checked)}
                           className="h-3.5 w-3.5 rounded border-stone-300 accent-amber-700"
                         />
-                        I printed them
+                        {cardsPrinted ? "I printed them (untick to undo)" : "I printed them"}
                       </label>
                     ) : null}
                   </div>
