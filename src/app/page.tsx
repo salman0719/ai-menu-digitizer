@@ -42,6 +42,14 @@ import {
   SyncError,
   updateServerMenu,
 } from "@/features/menus/sync";
+import {
+  fetchPublication,
+  publishMenu,
+  setPublicationSlug,
+  unpublishMenu,
+} from "@/features/publishing/client";
+import type { PublicationStatus } from "@/features/publishing/schema";
+import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-themes";
 import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
 import { authClient } from "@/lib/auth-client";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
@@ -115,6 +123,16 @@ export default function Home() {
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
+  // Publishing (Step 9): the open menu's public-link state, loaded on open
+  // and refreshed whenever the preview is shown (that is when an owner looks
+  // for "are my changes live?").
+  const [publication, setPublication] = useState<PublicationStatus | null>(null);
+  /** Which menu the loaded publication belongs to (guards against leaks). */
+  const [publicationMenuId, setPublicationMenuId] = useState<string | null>(null);
+  const [publicationLoaded, setPublicationLoaded] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
   useEffect(() => {
     signedInRef.current = signedIn;
   }, [signedIn]);
@@ -147,6 +165,7 @@ export default function Home() {
     if (doc && serverBaseRef.current === null && !conflictRef.current) {
       void syncWithAccount(doc);
     }
+    if (doc) void refreshPublication(doc.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
 
@@ -345,6 +364,11 @@ export default function Home() {
   }
 
   async function openDoc(doc: MenuDocument, imageBlob: Blob | null) {
+    setPublication(null);
+    setPublicationMenuId(null);
+    setPublicationLoaded(false);
+    setPublishError(null);
+    void refreshPublication(doc.id);
     docRef.current = doc;
     lastSavedRef.current = JSON.stringify(doc);
     setActiveDoc(doc);
@@ -565,6 +589,107 @@ export default function Home() {
     }
   }
 
+  /** Load the open menu's publication state (signed in only). */
+  async function refreshPublication(menuId: string) {
+    if (!signedInRef.current) {
+      setPublication(null);
+      setPublicationMenuId(null);
+      setPublicationLoaded(false);
+      return;
+    }
+    setPublicationMenuId(menuId);
+    try {
+      const status = await fetchPublication(menuId);
+      if (docRef.current?.id !== menuId) return;
+      setPublication(status);
+      setPublishError(null);
+    } catch (error) {
+      if (docRef.current?.id !== menuId) return;
+      if (error instanceof SyncError && error.code === "not_found") {
+        setPublication(null);
+      } else {
+        setPublishError("Could not check the public link. Try again in a moment.");
+      }
+    } finally {
+      if (docRef.current?.id === menuId) setPublicationLoaded(true);
+    }
+  }
+
+  function publishErrorMessage(error: unknown): string {
+    if (error instanceof SyncError) {
+      switch (error.code) {
+        case "unauthorized":
+          return "Sign in again to publish this menu.";
+        case "forbidden":
+          return "Only the restaurant owner can publish this menu.";
+        case "not_found":
+          return "The account copy of this menu no longer exists. Open it again to reconcile.";
+        case "slug_taken":
+          return "That link is already used by another menu — pick another address.";
+        case "not_published":
+          return "This menu is not published.";
+        case "invalid":
+          return error.message;
+        default:
+          return "Could not reach the server. Try again when you are online.";
+      }
+    }
+    return "Something went wrong. Your edits are safe in this browser.";
+  }
+
+  /**
+   * Publish (or publish changes): flush the pending save first so the
+   * snapshot is of what the owner just saw, never of a stale draft.
+   */
+  async function handlePublish(theme: PreviewThemeId, layout: PreviewLayoutId) {
+    const doc = docRef.current;
+    if (!doc) return;
+    setPublishError(null);
+    setPublishBusy(true);
+    try {
+      await flushSave();
+      if (!serverIdsRef.current.has(doc.id)) {
+        setPublishError("Move this menu to your account first, then publish it.");
+        return;
+      }
+      const status = await publishMenu(doc.id, { theme, layout });
+      setPublication(status);
+      setPublicationLoaded(true);
+    } catch (error) {
+      setPublishError(publishErrorMessage(error));
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  async function handleUnpublish() {
+    const doc = docRef.current;
+    if (!doc) return;
+    setPublishError(null);
+    setPublishBusy(true);
+    try {
+      setPublication(await unpublishMenu(doc.id));
+    } catch (error) {
+      setPublishError(publishErrorMessage(error));
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  async function handleChangeSlug(slug: string) {
+    const doc = docRef.current;
+    if (!doc) return;
+    setPublishError(null);
+    setPublishBusy(true);
+    try {
+      setPublication(await setPublicationSlug(doc.id, slug));
+    } catch (error) {
+      setPublishError(publishErrorMessage(error));
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
   async function handleDeleteMenu(id: string) {
     try {
       // Remove the account copy first when there is one, so a failure is
@@ -601,6 +726,10 @@ export default function Home() {
         setActiveDoc(null);
         setEditorImage(null);
       }
+      setPublication(null);
+      setPublicationMenuId(null);
+      setPublicationLoaded(false);
+      setPublishError(null);
       await refreshLibrary();
       if (accountNote) setLibraryError(accountNote);
       setScreen("library");
@@ -868,6 +997,13 @@ export default function Home() {
   const libraryMenus = menus.map((menu) => ({ ...menu, onServer: serverIds.has(menu.id) }));
   const localOnlyCount = libraryMenus.filter((menu) => !menu.onServer).length;
 
+  // Publish state is only ever shown for the menu it was loaded for; a stale
+  // answer for a previously opened menu is never displayed.
+  const activePublicationMenuId = activeDoc?.id ?? null;
+  const activePublication = publicationMenuId === activePublicationMenuId ? publication : null;
+  const activePublicationLoaded =
+    publicationMenuId === activePublicationMenuId && publicationLoaded;
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <SiteHeader />
@@ -957,6 +1093,19 @@ export default function Home() {
               importError={importError}
               onDeleteMenu={() => void handleDeleteMenu(activeDoc.id)}
               onBack={() => void handleBackToLibrary()}
+              publishing={{
+                status: activePublication,
+                loaded: activePublicationLoaded,
+                busy: publishBusy,
+                error: publishError,
+                inAccount: serverIds.has(activeDoc.id),
+                onPublish: (theme, layout) => void handlePublish(theme, layout),
+                onUnpublish: () => void handleUnpublish(),
+                onChangeSlug: (slug) => void handleChangeSlug(slug),
+              }}
+              onPreviewOpen={() => {
+                if (docRef.current) void refreshPublication(docRef.current.id);
+              }}
             />
           </>
         )}

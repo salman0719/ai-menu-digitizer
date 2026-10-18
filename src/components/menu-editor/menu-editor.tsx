@@ -40,6 +40,7 @@ import {
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
+import { PublishPanel, type PublishingControls } from "./publish-panel";
 import { TableQrPanel } from "./table-qr-panel";
 
 export interface SaveState {
@@ -63,6 +64,13 @@ interface MenuEditorProps {
   importError: string | null;
   onDeleteMenu: () => void;
   onBack: () => void;
+  /**
+   * Publishing state and actions (Step 9). Absent when nothing can publish
+   * in this context, in which case the preview simply omits the panel.
+   */
+  publishing?: PublishingControls;
+  /** Fired when the customer preview opens; the page refreshes publish state. */
+  onPreviewOpen?: () => void;
 }
 
 const smallButton =
@@ -72,6 +80,23 @@ const smallButton =
 const primaryButton =
   "rounded-full bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors " +
   "hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
+
+/**
+ * The preview's eyebrow must never claim the draft is what visitors see:
+ * "Live page preview" only when the live snapshot matches both the document
+ * and the selected style.
+ */
+function previewEyebrow(
+  status: PublishingControls["status"],
+  themeId: PreviewThemeId,
+  layout: PreviewLayoutId
+): string {
+  if (!status?.isLive) return "Preview · not published";
+  const styleDiffers = status.theme !== themeId || status.layout !== layout;
+  return status.hasUnpublishedChanges || styleDiffers
+    ? "Draft preview · public page is older"
+    : "Live page preview";
+}
 
 /**
  * Category layout: "single" shows one category at a time behind a horizontal
@@ -101,6 +126,8 @@ export function MenuEditor({
   importError,
   onDeleteMenu,
   onBack,
+  publishing,
+  onPreviewOpen,
 }: MenuEditorProps) {
   const reviewCount = doc.categories.reduce(
     (sum, c) => sum + c.items.filter((i) => i.price === null || i.reviewNotes.length > 0).length,
@@ -231,6 +258,11 @@ export function MenuEditor({
   type EditorMode = "edit" | "preview" | "qr";
   const [mode, setMode] = useState<EditorMode>("edit");
 
+  function changeMode(next: EditorMode) {
+    setMode(next);
+    if (next === "preview") onPreviewOpen?.();
+  }
+
   // Preview style is a tiny UI preference (like the category layout above), so
   // it lives in localStorage rather than the menu document.
   const PREVIEW_THEME_STORAGE_KEY = "menu-preview-theme";
@@ -329,15 +361,15 @@ export function MenuEditor({
       <span className="flex-1" />
       {mode === "edit" ? (
         <>
-          <button type="button" onClick={() => setMode("qr")} className={smallButton}>
+          <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
             Table QR
           </button>
-          <button type="button" onClick={() => setMode("preview")} className={smallButton}>
+          <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
             Preview menu
           </button>
         </>
       ) : (
-        <button type="button" onClick={() => setMode("edit")} className={primaryButton}>
+        <button type="button" onClick={() => changeMode("edit")} className={primaryButton}>
           ← Back to edit
         </button>
       )}
@@ -406,7 +438,20 @@ export function MenuEditor({
             Print / save PDF
           </button>
         </div>
-        <MenuPreview doc={doc} themeId={previewThemeId} layout={previewLayout} />
+        {publishing && (
+          <PublishPanel
+            signedIn={syncMode === "account"}
+            themeId={previewThemeId}
+            layout={previewLayout}
+            controls={publishing}
+          />
+        )}
+        <MenuPreview
+          doc={doc}
+          themeId={previewThemeId}
+          layout={previewLayout}
+          eyebrow={previewEyebrow(publishing?.status ?? null, previewThemeId, previewLayout)}
+        />
       </div>
     );
   }
