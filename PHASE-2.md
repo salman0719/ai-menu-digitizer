@@ -1,7 +1,7 @@
-# PHASE-2.md — Going live: accounts, ordering backend, B2B API, paid pilot
+# PHASE-2.md — Going live: accounts, ordering backend, one-click publish, B2B API (later)
 
-Status: **scoping, not started.** Written 2026-10-18 on branch
-`docs/phase-2-scope` (based on `feat/table-ordering`).
+Status: **scoped; decisions settled 2026-10-18 (§9); work not started.**
+Written on branch `docs/phase-2-scope` (based on `feat/table-ordering`).
 
 Phase 1 (the `PLAN.md` P0/P1 prototype) is shipped and deployed on Vercel:
 local-first menus in IndexedDB, Gemini extraction through a server route, an
@@ -9,7 +9,7 @@ editable workspace, JSON/CSV import-export, a themed customer preview, and
 table ordering that lives entirely in one browser (QR page + local staff
 board). This document scopes Phase 2, where the app stops being a demo and
 becomes something unrelated people can sign up for, use on two devices at
-once, and pay for.
+once, and — after the free launch — pay for.
 
 Build order lives in `ROADMAP.md` (Step 7+). This document is the _what and
 why_; the roadmap is the _when_.
@@ -20,25 +20,27 @@ why_; the roadmap is the _when_.
 | --- | ------------------------------------------- | ------------------------------------------------------------------- | -------------------------- | ---- | ---- |
 | I1  | Hosted backend (accounts + server DB)       | A customer's phone and the owner's device see the same order stream | Café owner (through pilot) | L    | Med  |
 | I2  | B2B extraction API with usage-based billing | Sell menu digitization as an API to POS resellers and agencies      | Reseller/agency developer  | L    | High |
-| I3  | One-click publish to a real public URL      | An extracted menu is live at a shareable link in under a minute     | Café owner (paid pilot)    | M    | Low  |
+| I3  | One-click publish to a real public URL      | An extracted menu is live at a shareable link in under a minute     | Café owner (free first)    | M    | Low  |
 
 They are not three parallel projects. They share one platform (accounts, a
-server DB, tenancy) and can be sold as one thing:
+server DB, tenancy) and on the café side ship as one thing:
 
-- **The paid pilot = I1 + I3.** A café pays for a hosted menu at a public URL
-  with QR table ordering that syncs to the owner's board. That is the whole
-  pilot product; neither half is worth paying for alone.
-- **I2 is a separate product line** with a different buyer, a different
-  support burden, and its own pricing. It reuses the platform layer
-  (accounts, API keys, metering, billing) but must not distort the café app.
+- **The first release = I1 + I3.** A café gets a hosted menu at a public URL
+  with QR table ordering that syncs to the owner's board — **free during the
+  launch promotion** (§6), with no payment step anywhere in the product.
+  That is the whole café product for this phase.
+- **I2 is a separate product line** with a different buyer, different support
+  burden, and its own pricing. It reuses the platform layer (accounts, API
+  keys, metering, billing), must not distort the café app, and is **parked
+  until after the free launch** — with billing as the very last thing built.
 
 ### Adjustments made while scoping (vs. the original three bullets)
 
 1. **Platform first, pilot second, B2B third.** All three initiatives need
-   accounts + a server DB, so that is one shared step, not three. Selling the
-   pilot first (I1+I3) produces revenue and real usage data before the B2B
-   line needs pricing decisions. Doing I2 first would mean inventing a price
-   with no measured cost per extraction.
+   accounts + a server DB, so that is one shared step, not three. Shipping
+   I1+I3 first (free) gathers real usage data and demand before the B2B
+   line needs any pricing decision. Doing I2 first would mean inventing a
+   price with no measured cost per extraction.
 2. **Measuring real cost per extraction is a work item.** Usage-based pricing
    cannot be set before we know what a Gemini call costs per page-image (and
    what fraction of calls need the repair retry). This is a Step, not an
@@ -51,25 +53,40 @@ server DB, tenancy) and can be sold as one thing:
    diner ordering at a table never signs up — one less conversion step for
    the pilot and no customer PII to worry about.
 5. **Local-first mode is not deleted.** Anonymous use of the prototype keeps
-   working exactly as today. The server is an upgrade path (\"move my menus
-   to my account\"), never a forced migration.
+   working exactly as today. The server is an upgrade path ("move my menus
+   to my account"), never a forced migration.
+6. **Free first, billing last (user decision, 2026-10-18).** Nothing is
+   charged in the café track: no checkout, no payment links, no plans — the
+   launch is advertised as free while it lasts. Stripe stays the agreed
+   billing provider but is parked until the B2B API (and that sits after the
+   free launch). Consequence: with no billing to throttle usage,
+   **per-account extraction caps become the cost brake** (§7).
+7. **One-click publish goes first; B2B and billing close the phase.** After
+   the platform foundation, the published-menu URL (I3) is the first
+   user-facing feature, then cross-device ordering (I1); the B2B API (I2) and
+   usage billing are deliberately last.
 
 ## 2. Recommended sequence
 
 ```text
-M0  Foundation        accounts, tenancy, server DB, migrations, staging      (I1/I2/I3 shared)
-M1  Publish MVP       one-click publish -> public URL, themes, QR            (I3 core)
-M2  Live ordering     orders API, live staff board, public table links       (I1 done)
-M3  Pilot running     packaging: price, payment link, terms, onboarding      (I3/I1 shipped + sold)
-M4  B2B API beta      extraction API + key dashboard, metering, billing      (I2)
-M5  Harden            observability, rate limits, retention, backup pass     (all)
+M0  Foundation        decided stack: Neon+Drizzle, Better Auth magic link    (I1/I2/I3 shared)
+                      (Resend), tenancy, migrations, staging
+M1  Publish first     one-click publish -> public /m/<slug>, themes, QR      (I3 core, free)
+M2  Live ordering     orders API, live staff board, public table links       (I1 done, free)
+M3  Free launch       "free while it lasts": checklist, terms, observability,  (launch)
+                      retention, per-account cost caps
+M4  PARKED            B2B API + usage metering + Stripe billing, priced       (I2, no start date)
+                      after measured cost
 ```
 
 M1 before M2 deliberately: publishing a menu needs the DB but no ordering
 sync, so the first café-visible win lands early and de-risks the tenancy
-model before the harder realtime-ish work. M5's concerns are also built into
-each step — M5 is a verification pass, not the first time we think about
-security.
+model before the harder realtime-ish work. **Nothing in M0–M3 collects money**
+(user decision): no checkout, no payment link, nothing in the café track is
+charged for. Billing (Stripe) is the last thing built, riding with the parked
+M4 step, and its price depends on the measured cost per extraction. Hardening
+concerns (§7) are built into every step and verified before the free launch,
+not saved for last.
 
 ## 3. Foundation — shared platform (M0)
 
@@ -150,6 +167,54 @@ anyone who never signs in.
   (DB URL, auth secret, email provider, Stripe keys) follow the same rule:
   `.env.example` placeholders, real values only in Vercel env vars.
 
+### 3.6 Magic link — usage and extent (user question, answered)
+
+Decided 2026-10-18: **magic link is the only way humans sign in** (Better Auth,
+email delivered by Resend). Where it applies, and where it deliberately does
+not:
+
+- **Where it is used:** owners and staff, for every sign-in — entering an
+  email address covers both signing up and signing in. Flow: type email →
+  receive a one-time link (default expiry **5 minutes**, consumed atomically
+  on first use) → session cookie is set. Better Auth is mounted at
+  `app/api/auth/[...all]/route.ts` (`toNextJsHandler`); the client call is
+  `authClient.signIn.magicLink({ email, callbackURL })`.
+- **Where it never appears:** diners ordering at a table (anonymous — no
+  account, ever), API clients (Bearer API keys from Better Auth's API-key
+  plugin, a completely separate mechanism used by I2), and visitors of the
+  public `/m/<slug>` page.
+- **Staying signed in:** sessions default to **7 days**, rolling (refreshed
+  roughly daily). There is no documented `remember-me` option on magic-link
+  sign-in, so session lifetime is the knob: plan for `session.expiresIn` of
+  30–60 days so an owner's laptop and the staff-board device don't
+  re-authenticate weekly. Tokens stay single-use regardless of session
+  length.
+- **Do not rely on "newest link wins":** only single-use consumption is
+  documented, not older-link invalidation. Expiry + single use is the
+  security model.
+- **Scanned-link fallback:** corporate mail gateways can prefetch links and
+  consume a one-time token (seen in Better Auth's community). If a café's
+  email provider does this, switch on Better Auth's `emailOTP` plugin
+  alongside magic link — same email, a 6-digit code typed instead of clicked
+  (`authClient.signIn.emailOtp`). Additive: one plugin, no user migration.
+- **Adding methods later is additive:** Google OAuth and passkeys can join
+  without replacing the user system (OAuth uses Better Auth's `account`
+  model, passkeys add their own table), though identity linking is an
+  explicit step, not automatic by matching email.
+- **Why not passwords:** nothing stored or resettable to phish or leak, no
+  reset flows to support, and a café owner logs in rarely enough that one
+  email round trip is fine.
+- **Deliverability (Resend Free):** 3,000 emails/month, 100/day — far above
+  sign-in volume. Needs a verified sending domain (SPF + DKIM; DMARC
+  recommended, start `p=none`), a dedicated sending subdomain, and
+  open/link tracking disabled for transactional auth mail.
+
+Sources: [magic link](https://better-auth.com/docs/plugins/magic-link),
+[session management](https://better-auth.com/docs/concepts/session-management),
+[email OTP](https://better-auth.com/docs/plugins/email-otp),
+[Resend pricing](https://resend.com/pricing),
+[Resend verified domains](https://resend.com/docs/dashboard/domains/introduction).
+
 ## 4. I1 — Hosted backend: accounts + server DB for table ordering
 
 **Outcome:** a diner orders from their phone; the owner's board shows the
@@ -216,6 +281,10 @@ time), offline-first sync engine, push notifications, native apps.
 | Menu edited while orders arrive                 | Order lines are snapshots (already in Phase 1 schema) — history is immune by design.      |
 
 ## 5. I2 — B2B extraction API with usage-based billing
+
+> **Parked (user decision, 2026-10-18).** Everything in this section stays
+> scoped but starts only after the free launch (M4) — and **billing is the
+> last thing to be built**, after the API itself proves demand.
 
 **Outcome:** a reseller's backend calls our API with an API key, gets a
 validated menu JSON back, and is billed per unit of usage they can audit.
@@ -298,11 +367,11 @@ contract, batch/async jobs, on-prem or regional endpoints, storing the
 customer's uploaded images, multi-tenant reseller sub-accounts. All are
 phase-3 candidates once someone is paying.
 
-## 6. I3 — One-click publish + the paid pilot
+## 6. I3 — One-click publish + the free promotion
 
-**Outcome:** an owner clicks **Publish**, gets
-`https://<app>/m/<their-cafe>` that works on any phone with no login, and can
-pay for that as a pilot package.
+**Outcome:** an owner clicks **Publish** and gets
+`https://<app>/m/<their-cafe>` that works on any phone with no login — **free,
+while the promotion lasts**. This is the first user-facing feature of Phase 2.
 
 ### In scope
 
@@ -323,11 +392,14 @@ pay for that as a pilot package.
 - **Ordering on the page:** once M2 lands, the published page routes to the
   table order flow for the chosen table (or shows the printed-card flow). A
   pilot café gets menu + QR ordering as one package.
-- **Pilot packaging:** a fixed pilot price (decision needed, §9) sold via a
-  Stripe Payment Link; an onboarding checklist (extract → review → pick theme
-  → print table cards → publish → first order); a one-page "what you get"
-  description. Success metrics: time-from-image-to-live-URL < 10 minutes,
-  N pilot cafés live, weekly ordering activity on their boards.
+- **Free promotion packaging (user decision):** no checkout anywhere — no
+  payment link, no plan, no card, nothing to buy. Advertise it plainly as
+  free while it lasts: a one-page "what you get", an onboarding checklist
+  (extract → review → pick theme → print table cards → publish → first
+  order), and an honest "free during the promotion" notice. When billing
+  returns much later (parked with M4), early users are grandfathered rather
+  than surprised. Success metrics: time-from-image-to-live-URL < 10 minutes,
+  N cafés live, weekly ordering activity on their boards.
 
 ### Out of scope for I3
 
@@ -348,8 +420,9 @@ view count.
       slugs unaffected.
 - [ ] Table cards printed from the app open the working order flow on a
       customer phone (M2), and the owner board receives the order.
-- [ ] Pilot purchase (payment link) → onboarding completed by a real café,
-      end to end, once, before charging a second one.
+- [ ] A real café completes onboarding through the checklist end to end with
+      **no payment step anywhere**, before the promotion is advertised more
+      widely.
 
 ## 7. Cross-cutting: what "live and usable by anyone" forces on us
 
@@ -365,11 +438,13 @@ DB create them. Not optional polish.
 - **Privacy, retention, deletion:** orders are purged after a configurable
   window (default suggestion: 90 days) so the DB does not grow forever;
   owners can export and delete their data; a privacy policy + terms page
-  exist before the first paid pilot sign-up (payment providers and diners
-  both expect it). We deliberately collect no diner PII — table label and an
-  optional free-text note only — and say so.
-- **Cost visibility:** Gemini spend per restaurant and per API key, with a
-  warning threshold. This is also the data needed to price I2.
+  exist before the free public launch (no payments yet, but diner-facing
+  pages still warrant them). We deliberately collect no diner PII — table
+  label and an optional free-text note only — and say so.
+- **Cost visibility:** Gemini spend per restaurant (and per API key, once keys
+  exist), with a warning threshold. While everything is free there is no
+  billing to throttle usage, so **per-account extraction caps are the cost
+  brake**. This data is also what eventually prices I2.
 - **Security pass:** security headers, CORS scoped to the API origin,
   dependency audit, and re-verification that no secret reaches any client
   bundle (the Phase 1 rule, re-checked after adding auth/DB code).
@@ -388,29 +463,33 @@ enterprise security questionnaires; no marketplace or directory listings; the
 two remaining Phase 1 P1 items (description cleanup, translation) stay in the
 backlog below Phase 2 revenue work.
 
-## 9. Decisions needed from the user
+## 9. Decisions — settled 2026-10-18
 
-| Decision                   | Recommendation                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| Server DB                  | Neon Postgres + Drizzle (§3.3)                                                  |
-| Auth                       | Better Auth with magic links + its API-key plugin; Resend for email             |
-| Billing provider           | Stripe: Payment Links for the pilot, own ledger now, Billing Meters later       |
-| Pilot price                | needs a number from us — suggest pricing after M1 measures real effort per café |
-| Pilot size                 | 3–5 cafés before automating any metered billing                                 |
-| Public URL shape           | `/m/<slug>` on the current domain (defer custom domains)                        |
-| Local vs server mode       | keep both: signed-out = local prototype, signed-in = server (recommended)       |
-| Error tracking / analytics | error tracking yes (Sentry free tier); cookie-free view counts only             |
-| Dependency exception       | approve DB driver/ORM + auth library as the documented `AGENTS.md` exception    |
+| Decision             | Settled outcome                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Server DB            | **Neon Postgres + Drizzle** — approved.                                                                                         |
+| Auth                 | **Better Auth + Resend** — approved; magic link is the only human sign-in, extent documented in §3.6.                           |
+| Dependency exception | **Granted** for the DB driver/ORM and the auth library.                                                                         |
+| Billing provider     | **Stripe — parked.** Billing is the last thing built, riding with the parked B2B step.                                          |
+| Charge anything now  | **No.** Free launch promotion: no checkout or payment links anywhere; pricing revisited after measurement, early users in mind. |
+| Pilot price          | Deferred by design: suggest pricing only after real cost-per-extraction and effort are measured.                                |
+| Public URL shape     | **`/m/<slug>`** on the current domain — approved; custom domains stay out of scope.                                             |
+| Local vs server mode | **Keep both** — signed-out = local prototype, signed-in = server.                                                               |
+| Error tracking       | **Approved:** Sentry (free tier) plus cookie-free view counts only.                                                             |
+
+Still open before M3 (not blocking M0/M1): start date and endgame of the
+"free while it lasts" promotion (what happens when it ends), and creating the
+accounts themselves — Resend + verified sending domain, Neon project, Sentry —
+tracked in the "Things needed from the user — Phase 2" list in `ROADMAP.md`.
 
 ## 10. Milestone exit criteria
 
-| Milestone | Exit criteria                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------- |
-| M0        | Migrations run in staging; sign-in works; tenancy isolation tests green; local-only mode unbroken |
-| M1        | Publish → public URL verified on a stranger's phone; unpublish works; og tags + QR correct        |
-| M2        | Two-device order flow passes the I1 acceptance list on real networks                              |
-| M3        | One real café onboarded through the pilot checklist and has taken orders                          |
-| M4        | External developer completes the I2 acceptance list in test mode, credits bought                  |
-| M5        | Hardening checklist (§7) verified; incident runbook = documented first-response steps             |
+| Milestone        | Exit criteria                                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0 Foundation    | Decided stack runs in staging; migrations explicit; tenancy isolation tests green; local-only mode unbroken                                                            |
+| M1 Publish       | Publish → public URL verified on a stranger's phone; unpublish works; og tags + QR correct; "unpublished changes" honest                                               |
+| M2 Live ordering | Two-device order flow passes the I1 acceptance list on real networks                                                                                                   |
+| M3 Free launch   | Promotion live with honest free framing; terms/privacy in place; §7 hardening verified; per-account caps active; one café self-onboarded with no payment step anywhere |
+| M4 (parked)      | No start date until the free launch is running: an external developer passes the I2 list in test mode and the usage ledger matches Stripe test data                    |
 
 `ROADMAP.md` turns these into ordered steps with checkmarks as they land.
