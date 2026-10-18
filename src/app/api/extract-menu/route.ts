@@ -174,7 +174,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new ServiceError(
         503,
         "missing_api_key",
-        "AI extraction is not configured on this server (missing API key)."
+        "AI extraction isn't available right now. You can still explore with demo data."
       );
     }
 
