@@ -15,7 +15,13 @@ import {
 } from "../image-constraints";
 import { ExtractedMenu, extractedMenuSchema } from "./extraction-schema";
 import { buildExtractionPrompt, buildRepairPrompt } from "./prompts";
-import { ExtractionProvider, ProviderError } from "./provider";
+import {
+  addUsage,
+  ExtractionProvider,
+  NO_USAGE,
+  ProviderError,
+  ProviderUsage,
+} from "./provider";
 
 export { MAX_IMAGE_BYTES, MAX_MENU_PAGES, MAX_TOTAL_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES };
 
@@ -37,13 +43,31 @@ export type ServiceErrorCode =
 export class ServiceError extends Error {
   readonly status: number;
   readonly code: ServiceErrorCode;
+  /**
+   * Tokens the provider already billed for before this failure, when known.
+   * A failed extraction is still a paid API call, so the cost brake counts it.
+   */
+  readonly usage: ProviderUsage | null;
 
-  constructor(status: number, code: ServiceErrorCode, message: string) {
+  constructor(
+    status: number,
+    code: ServiceErrorCode,
+    message: string,
+    usage: ProviderUsage | null = null
+  ) {
     super(message);
     this.name = "ServiceError";
     this.status = status;
     this.code = code;
+    this.usage = usage;
   }
+}
+
+/** A successful extraction plus what it cost the provider account. */
+export interface ExtractionOutcome {
+  menu: ExtractedMenu;
+  /** Summed across the first call and the repair retry. */
+  usage: ProviderUsage;
 }
 
 export interface ImageInput {
@@ -196,7 +220,7 @@ function validateImages(images: ImageInput[]): NormalizedImage[] {
 export async function extractMenuFromImages(
   images: ImageInput[],
   deps: ServiceDeps
-): Promise<ExtractedMenu> {
+): Promise<ExtractionOutcome> {
   const normalized = validateImages(images);
   if (!deps.provider) {
     throw new ServiceError(
@@ -210,29 +234,46 @@ export async function extractMenuFromImages(
     imageBase64: Buffer.from(input.bytes).toString("base64"),
     mimeType: input.mimeType,
   }));
+
+  // Token usage accumulates across calls so the recorded cost reflects every
+  // billed request, including a repair retry that still ended in failure.
+  let usage: ProviderUsage = NO_USAGE;
+  const track = (next: ProviderUsage): void => {
+    usage = addUsage(usage, next);
+  };
+
   try {
     const first = await deps.provider.generateText({
       promptText: buildExtractionPrompt(images.length),
       images: parts,
     });
-    const menu = parseMenu(first);
-    if (menu) return menu;
+    track(first.usage);
+    const menu = parseMenu(first.text);
+    if (menu) return { menu, usage };
 
     // One controlled repair retry, then give up with a useful error.
     const repair = await deps.provider.generateText({
-      promptText: buildRepairPrompt(first.slice(0, MAX_REPAIR_INPUT_CHARS), describeIssues(first)),
+      promptText: buildRepairPrompt(
+        first.text.slice(0, MAX_REPAIR_INPUT_CHARS),
+        describeIssues(first.text)
+      ),
       images: parts,
     });
-    const repaired = parseMenu(repair);
-    if (repaired) return repaired;
+    track(repair.usage);
+    const repaired = parseMenu(repair.text);
+    if (repaired) return { menu: repaired, usage };
     throw new ServiceError(
       502,
       "invalid_ai_response",
-      "The AI returned data in an unexpected format. Try again or use a clearer image."
+      "The AI returned data in an unexpected format. Try again or use a clearer image.",
+      usage
     );
   } catch (error) {
     if (error instanceof ServiceError) throw error;
-    if (error instanceof ProviderError) throw mapProviderError(error);
+    if (error instanceof ProviderError) {
+      const mapped = mapProviderError(error);
+      throw new ServiceError(mapped.status, mapped.code, mapped.message, usage);
+    }
     throw error;
   }
 }

@@ -8,7 +8,14 @@
 
 import { logEvent } from "@/lib/observability/log";
 
-import { ExtractionProvider, ExtractionRequest, ProviderError } from "./provider";
+import {
+  ExtractionProvider,
+  ExtractionRequest,
+  NO_USAGE,
+  ProviderError,
+  ProviderResult,
+  ProviderUsage,
+} from "./provider";
 
 /**
  * Default for new projects (overridable via `GEMINI_MODEL`).
@@ -46,6 +53,23 @@ function extractText(body: unknown): string | null {
   return text ? text : null;
 }
 
+/** Read `usageMetadata`; missing or non-numeric counts stay null (honest). */
+function readUsage(body: unknown): ProviderUsage {
+  if (!isRecord(body)) return NO_USAGE;
+  const meta = body.usageMetadata;
+  if (!isRecord(meta)) return NO_USAGE;
+  const read = (key: string): number | null => {
+    const value = meta[key];
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? Math.round(value)
+      : null;
+  };
+  return {
+    inputTokens: read("promptTokenCount"),
+    outputTokens: read("candidatesTokenCount"),
+  };
+}
+
 function blockReason(body: unknown): string | null {
   if (!isRecord(body) || !isRecord(body.promptFeedback)) return null;
   return typeof body.promptFeedback.blockReason === "string"
@@ -59,7 +83,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
   if (!apiKey) throw new ProviderError("auth", "Gemini API key is missing.");
 
   return {
-    async generateText(request: ExtractionRequest): Promise<string> {
+    async generateText(request: ExtractionRequest): Promise<ProviderResult> {
       if (request.images.length === 0) {
         throw new ProviderError("bad_request", "No image was provided for extraction.");
       }
@@ -132,7 +156,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
       if (!text) {
         throw new ProviderError("unavailable", "The AI provider returned an empty response.");
       }
-      return text;
+      return { text, usage: readUsage(body) };
     },
   };
 }

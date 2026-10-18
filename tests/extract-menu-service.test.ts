@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { MAX_MENU_PAGES, MAX_TOTAL_IMAGE_BYTES } from "../src/lib/image-constraints";
-import { ExtractionProvider, ExtractionRequest } from "../src/lib/ai/provider";
+import { ExtractionProvider, ExtractionRequest, NO_USAGE } from "../src/lib/ai/provider";
 import { extractMenuFromImages, MAX_IMAGE_BYTES, ServiceError } from "../src/lib/ai/service";
 
 const validMenuJson = JSON.stringify({
@@ -18,7 +18,7 @@ function fakeProvider(responses: string[]): { provider: ExtractionProvider; call
       generateText: vi.fn(async () => {
         const next = responses[Math.min(calls, responses.length - 1)];
         calls += 1;
-        return next;
+        return { text: next, usage: NO_USAGE };
       }),
     },
   };
@@ -35,16 +35,44 @@ function onePage(deps: { provider: ExtractionProvider | null }, bytes = tinyPng)
 describe("extractMenuFromImages", () => {
   it("returns the parsed menu on the first attempt", async () => {
     const { provider, calls } = fakeProvider([validMenuJson]);
-    const menu = await onePage({ provider });
+    const { menu } = await onePage({ provider });
     expect(menu.title).toBe("Test Café");
     expect(calls()).toBe(1);
   });
 
   it("repairs once when the first response is malformed", async () => {
     const { provider, calls } = fakeProvider(["not json at all", validMenuJson]);
-    const menu = await onePage({ provider });
+    const { menu } = await onePage({ provider });
     expect(menu.title).toBe("Test Café");
     expect(calls()).toBe(2);
+  });
+
+  it("sums token usage across the first call and the repair retry", async () => {
+    const usages = [
+      { inputTokens: 1000, outputTokens: 100 },
+      { inputTokens: 1100, outputTokens: 120 },
+    ];
+    let call = 0;
+    const provider: ExtractionProvider = {
+      generateText: async () => ({
+        text: call++ === 0 ? "not json" : validMenuJson,
+        usage: usages[Math.min(call - 1, usages.length - 1)],
+      }),
+    };
+    const outcome = await onePage({ provider });
+    expect(outcome.usage).toEqual({ inputTokens: 2100, outputTokens: 220 });
+  });
+
+  it("keeps the billed usage on a failure so the cost brake sees it", async () => {
+    let call = 0;
+    const provider: ExtractionProvider = {
+      generateText: async () => ({
+        text: "still not json",
+        usage: call++ === 0 ? { inputTokens: 900, outputTokens: 40 } : { inputTokens: 950, outputTokens: 45 },
+      }),
+    };
+    const error = await onePage({ provider }).catch((e: unknown) => e);
+    expect((error as ServiceError).usage).toEqual({ inputTokens: 1850, outputTokens: 85 });
   });
 
   it("fails usefully after the repair retry also fails", async () => {
@@ -109,7 +137,7 @@ describe("extractMenuFromImages", () => {
     const provider: ExtractionProvider = {
       generateText: vi.fn(async (request: ExtractionRequest) => {
         requests.push(request);
-        return validMenuJson;
+        return { text: validMenuJson, usage: NO_USAGE };
       }),
     };
     await extractMenuFromImages([{ bytes: tinyPng, mimeType: "image/jpeg" }], { provider });
@@ -142,7 +170,7 @@ describe("extractMenuFromImages", () => {
     const provider: ExtractionProvider = {
       generateText: vi.fn(async (request: ExtractionRequest) => {
         requests.push(request);
-        return validMenuJson;
+        return { text: validMenuJson, usage: NO_USAGE };
       }),
     };
     const heic = new Uint8Array([
@@ -165,10 +193,10 @@ describe("extractMenuFromImages", () => {
     const provider: ExtractionProvider = {
       generateText: vi.fn(async (request: ExtractionRequest) => {
         requests.push(request);
-        return validMenuJson;
+        return { text: validMenuJson, usage: NO_USAGE };
       }),
     };
-    const menu = await extractMenuFromImages(
+    const { menu } = await extractMenuFromImages(
       [
         { bytes: tinyPng, mimeType: "image/png", filename: "page-1.png" },
         { bytes: tinyJpeg, mimeType: "image/jpeg", filename: "page-2.jpg" },

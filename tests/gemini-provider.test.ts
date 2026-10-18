@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createGeminiProvider } from "../src/lib/ai/gemini-provider";
-import { ProviderError } from "../src/lib/ai/provider";
+import { NO_USAGE, ProviderError } from "../src/lib/ai/provider";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -23,7 +23,7 @@ describe("createGeminiProvider", () => {
         promptText: "p",
         images: [{ imageBase64: "AAA", mimeType: "image/png" }],
       })
-    ).resolves.toBe('{"ok":true}');
+    ).resolves.toEqual({ text: '{"ok":true}', usage: NO_USAGE });
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
@@ -50,6 +50,33 @@ describe("createGeminiProvider", () => {
     expect(parts[0].text).toBe("prompt");
     expect(parts[1].inlineData).toEqual({ mimeType: "image/png", data: "AAA" });
     expect(parts[2].inlineData).toEqual({ mimeType: "image/webp", data: "BBB" });
+  });
+
+  it("reports token usage, and nulls when the provider omits it", async () => {
+    const withUsage = createGeminiProvider({
+      apiKey: "test-key",
+      fetchImpl: vi.fn(async () =>
+        jsonResponse({
+          ...successBody(),
+          usageMetadata: { promptTokenCount: 1234, candidatesTokenCount: 567 },
+        })
+      ),
+    });
+    const result = await withUsage.generateText({
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    });
+    expect(result.usage).toEqual({ inputTokens: 1234, outputTokens: 567 });
+
+    const without = createGeminiProvider({
+      apiKey: "test-key",
+      fetchImpl: vi.fn(async () => jsonResponse(successBody())),
+    });
+    const plain = await without.generateText({
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    });
+    expect(plain.usage).toEqual(NO_USAGE);
   });
 
   it("rejects a request without any image", async () => {

@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -319,6 +320,45 @@ export const orderRateLimit = pgTable("order_rate_limit", {
   count: integer("count").notNull().default(0),
 });
 
+/**
+ * One Gemini extraction, recorded for the free-launch cost brake (Step 11).
+ *
+ * `user_id` is null for the anonymous local-first flow, which is instead
+ * identified by `caller_hash` — a one-way hash of the caller's address, never
+ * the address itself. `input_tokens`/`output_tokens` are what the provider
+ * reported (null when it reported nothing), and `cost_micros` is null unless
+ * both token counts and per-token rates are configured: no invented prices.
+ *
+ * Rows are the source of truth for the monthly per-account cap and for the
+ * spend panel; they are kept as an audit trail even after the cap changes.
+ */
+export const extractionUsage = pgTable(
+  "extraction_usage",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    /** Hashed caller address for anonymous extraction; null when signed in. */
+    callerHash: text("caller_hash"),
+    requestId: text("request_id").notNull(),
+    model: text("model").notNull(),
+    pages: integer("pages").notNull(),
+    imageBytes: integer("image_bytes").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    /** Micro-USD (1e-6 dollars); null when rates or token counts are unknown. */
+    costMicros: bigint("cost_micros", { mode: "number" }),
+    status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
+    errorCode: text("error_code"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    userCreatedIdx: index("extraction_usage_user_created_idx").on(t.userId, t.createdAt),
+    callerCreatedIdx: index("extraction_usage_caller_created_idx").on(t.callerHash, t.createdAt),
+  })
+);
+
 /** Everything the Drizzle adapter and app code share. */
 export const schema = {
   user,
@@ -333,6 +373,7 @@ export const schema = {
   order,
   orderLine,
   orderRateLimit,
+  extractionUsage,
 };
 
 /** A restaurant as seen by a member: restaurant fields + that member's role. */

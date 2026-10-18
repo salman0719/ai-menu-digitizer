@@ -38,7 +38,34 @@ export interface ExtractionRequest {
   images: ImagePart[];
 }
 
+/**
+ * Token accounting as reported by the provider. Either side can be null when
+ * the provider did not tell us — a cost built on half the data would be a
+ * made-up number.
+ */
+export interface ProviderUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface ProviderResult {
+  /** The model's raw text output (expected to be JSON). */
+  text: string;
+  usage: ProviderUsage;
+}
+
+export const NO_USAGE: ProviderUsage = { inputTokens: null, outputTokens: null };
+
+/** Sum two usage records; null wins only when *both* sides are null. */
+export function addUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
+  const sum = (left: number | null, right: number | null): number | null => {
+    if (left === null) return right;
+    if (right === null) return left;
+    return left + right;
+  };
+  return { inputTokens: sum(a.inputTokens, b.inputTokens), outputTokens: sum(a.outputTokens, b.outputTokens) };
+}
+
 export interface ExtractionProvider {
-  /** Returns the model's raw text output (expected to be JSON). */
-  generateText(request: ExtractionRequest): Promise<string>;
+  generateText(request: ExtractionRequest): Promise<ProviderResult>;
 }
