@@ -61,6 +61,7 @@ import {
   parseAppRoute,
   type AppRoute,
   type AppScreen,
+  type EditorMode,
 } from "@/features/navigation/routes";
 
 type Phase = "upload" | "ready" | "extracting" | "done";
@@ -83,6 +84,9 @@ export default function Home() {
   const [route, setRoute] = useState<AppRoute>({ screen: "capture" });
   const screen: AppScreen = route.screen === "item" ? "editor" : route.screen;
   const selectedItemId = route.screen === "item" ? route.itemId : null;
+  // Which editor surface the URL asks for (edit, reorder, table QR,
+  // preview); an item deep link is always the edit workspace.
+  const editorMode: EditorMode = route.screen === "editor" ? route.mode : "edit";
   const routeRef = useRef<AppRoute>(route);
   const navigationReadyRef = useRef(false);
   const openedRouteMenuRef = useRef<string | null>(null);
@@ -490,7 +494,7 @@ export default function Home() {
     );
     setImportError(null);
     setEditorImage(imageBlob ? URL.createObjectURL(imageBlob) : null);
-    if (updateRoute) navigateTo({ screen: "editor", menuId: doc.id });
+    if (updateRoute) navigateTo({ screen: "editor", menuId: doc.id, mode: "edit" });
     void syncWithAccount(doc);
   }
 
@@ -611,7 +615,7 @@ export default function Home() {
 
   function handleOpenMenu(id: string) {
     setLibraryError(null);
-    navigateTo({ screen: "editor", menuId: id });
+    navigateTo({ screen: "editor", menuId: id, mode: "edit" });
   }
 
   async function handleNewMenu() {
@@ -1185,6 +1189,8 @@ export default function Home() {
               doc={activeDoc}
               selectedItemId={selectedItemId}
               onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
+              mode={editorMode}
+              onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
               onChange={handleDocChange}
               saveState={saveState}
               syncMode={signedIn ? "account" : "local"}

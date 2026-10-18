@@ -23,6 +23,7 @@ import {
 import type { MenuCategory, MenuDocument, MenuItem } from "@/features/menu/schema";
 import { appendExtractionToDocument } from "@/features/menu/convert";
 import { searchMenu } from "@/features/menu/search";
+import type { EditorMode } from "@/features/navigation/routes";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
@@ -59,6 +60,13 @@ interface MenuEditorProps {
   doc: MenuDocument;
   selectedItemId?: string | null;
   onOpenItem: (itemId: string) => void;
+  /**
+   * Which surface is shown (edit workspace, reorder list, table QR cards,
+   * customer preview). Owned by the URL so each mode is deep-linkable and
+   * works with browser back/forward (see navigation/routes.ts).
+   */
+  mode: EditorMode;
+  onModeChange: (mode: EditorMode) => void;
   onChange: (next: MenuDocument) => void;
   saveState: SaveState;
   /**
@@ -132,6 +140,8 @@ export function MenuEditor({
   doc,
   selectedItemId = null,
   onOpenItem,
+  mode,
+  onModeChange,
   onChange,
   saveState,
   syncMode,
@@ -283,12 +293,11 @@ export function MenuEditor({
   // printable table QR cards, or the compact reorder list, while the header
   // (back, save state) stays put. "edit" is the workspace; "preview" is a
   // read-only presentation; "reorder" arranges without the editing boxes.
-  type EditorMode = "edit" | "preview" | "qr" | "reorder";
-  const [mode, setMode] = useState<EditorMode>("edit");
-
+  // The mode itself lives in the URL (via onModeChange), so each surface
+  // has its own link and back/forward moves between them.
   function changeMode(next: EditorMode) {
-    setMode(next);
     if (next === "preview") onPreviewOpen?.();
+    onModeChange(next);
   }
 
   // Preview style is a tiny UI preference (like the category layout above), so
