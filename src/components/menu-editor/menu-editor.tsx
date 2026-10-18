@@ -18,7 +18,11 @@ import {
   saveDismissedDuplicateKeys,
 } from "@/features/menu/duplicates";
 import type { MenuCategory, MenuDocument, MenuItem } from "@/features/menu/schema";
+import { appendExtractionToDocument } from "@/features/menu/convert";
 import { searchMenu } from "@/features/menu/search";
+import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
+import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
+import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 import {
   canRestoreDeleteUndo,
   captureDeleteUndo,
@@ -326,6 +330,65 @@ export function MenuEditor({
     onChange(moveItemsToCategory(doc, selected, bulkTarget));
     setSelectedIds(new Set());
     setBulkTarget("");
+  }
+
+  // Latest document for async completions: an extraction can take a
+  // minute, and edits made while it runs must survive the merge.
+  const docRef = useRef(doc);
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
+
+  // Add pages: photograph more of the same menu later and merge the new
+  // extraction in. Repeats are flagged by the duplicate review, never
+  // deleted or merged away.
+  type AddPagesState =
+    | { status: "idle" }
+    | { status: "working" }
+    | { status: "added"; items: number; categories: number }
+    | { status: "error"; message: string };
+  const [addPages, setAddPages] = useState<AddPagesState>({ status: "idle" });
+
+  async function handleAddPages(files: File[]) {
+    const check = validateImageBatch(files);
+    if (!check.valid) {
+      setAddPages({ status: "error", message: check.message });
+      return;
+    }
+    setAddPages({ status: "working" });
+    try {
+      // Normalize first, mirroring the capture screen: AVIF is transcoded
+      // here because the provider cannot read it.
+      const prepared = await Promise.all(files.map((file) => prepareImageForUpload(file)));
+      const menu = await extractMenuFromFiles(
+        prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
+      );
+      if (menu.categories.length === 0) {
+        setAddPages({
+          status: "error",
+          message: "The new pages added no readable items — nothing changed.",
+        });
+        return;
+      }
+      const merged = appendExtractionToDocument(docRef.current, menu, {
+        provider: "gemini",
+        originalFileName: files[0]?.name,
+      });
+      onChange(merged.doc);
+      setAddPages({
+        status: "added",
+        items: merged.addedItems,
+        categories: merged.addedCategories,
+      });
+    } catch (error) {
+      setAddPages({
+        status: "error",
+        message:
+          error instanceof ExtractClientError || error instanceof PrepareImageError
+            ? error.message
+            : "Something went wrong. Try again.",
+      });
+    }
   }
 
   const headerRow = (
@@ -813,6 +876,21 @@ export function MenuEditor({
             }}
           />
         </label>
+        <label className={`${smallButton} cursor-pointer`}>
+          {addPages.status === "working" ? "Reading pages…" : "Add pages"}
+          <input
+            type="file"
+            multiple
+            accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
+            className="sr-only"
+            disabled={addPages.status === "working"}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (files.length > 0) void handleAddPages(files);
+            }}
+          />
+        </label>
         <span className="flex-1" />
         <button
           type="button"
@@ -836,6 +914,32 @@ export function MenuEditor({
           className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
         >
           {importError}
+        </p>
+      )}
+      {addPages.status === "working" && (
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          Reading the new pages… keep this tab open. Your edits are safe.
+        </p>
+      )}
+      {addPages.status === "added" && (
+        <p
+          role="status"
+          className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+        >
+          Added {addPages.items} {addPages.items === 1 ? "item" : "items"} in{" "}
+          {addPages.categories} {addPages.categories === 1 ? "category" : "categories"} from
+          the new pages. Repeats with the existing menu appear in the duplicate review.
+        </p>
+      )}
+      {addPages.status === "error" && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {addPages.message}
         </p>
       )}    <p className="text-xs leading-5 text-stone-500">
       {syncMode === "account"
