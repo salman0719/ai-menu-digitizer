@@ -10,6 +10,7 @@ import {
 import { changeSlugBodySchema, publishBodySchema } from "@/features/publishing/schema";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * GET    /api/menus/[menuId]/publication — the menu's public-link state
@@ -81,6 +82,9 @@ export async function GET(_request: Request, { params }: MenuParams) {
 }
 
 export async function POST(request: Request, { params }: MenuParams) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
   const { menuId } = await params;
@@ -108,6 +112,9 @@ export async function POST(request: Request, { params }: MenuParams) {
 }
 
 export async function PATCH(request: Request, { params }: MenuParams) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
   const { menuId } = await params;
@@ -134,7 +141,10 @@ export async function PATCH(request: Request, { params }: MenuParams) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: MenuParams) {
+export async function DELETE(request: Request, { params }: MenuParams) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
   const { menuId } = await params;

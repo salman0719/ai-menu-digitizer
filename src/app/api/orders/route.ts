@@ -10,6 +10,7 @@ import {
 } from "@/features/orders/repo";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 import { alertOps, reportError } from "@/lib/observability/alerts";
 import { logEvent, requestIdFrom } from "@/lib/observability/log";
 
@@ -93,6 +94,10 @@ function callerBucket(request: Request, now: Date): string {
 }
 
 export async function POST(request: Request) {
+  // A table QR always posts from this origin; a foreign page may not.
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const requestId = requestIdFrom(request);
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {

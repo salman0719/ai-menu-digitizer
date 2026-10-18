@@ -10,6 +10,7 @@ import {
 import { menuDocumentSchema } from "@/features/menu/schema";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * GET    /api/menus/[menuId] — one menu (any member of its restaurant).
@@ -88,6 +89,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ men
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ menuId: string }> }) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
   const { menuId } = await params;
@@ -124,9 +128,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ menu
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ menuId: string }> }
 ) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
   const { menuId } = await params;

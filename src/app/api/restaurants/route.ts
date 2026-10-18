@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createRestaurant, listRestaurantsForUser } from "@/features/tenancy/repo";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * GET  /api/restaurants — the signed-in user's restaurants (with their role).
@@ -53,6 +54,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
 

@@ -5,6 +5,7 @@ import { createMenuForUser, listMenusForUser, MenuRepoError } from "@/features/m
 import { menuDocumentSchema } from "@/features/menu/schema";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * GET  /api/menus — every menu across the restaurants the caller belongs to.
@@ -80,6 +81,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const userId = await requireUser();
   if (userId instanceof NextResponse) return userId;
 

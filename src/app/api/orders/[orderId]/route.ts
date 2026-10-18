@@ -5,6 +5,7 @@ import { OrderRepoError, updateOrderStatusForStaff } from "@/features/orders/rep
 import { ORDER_STATUSES } from "@/features/orders/schema";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * PATCH /api/orders/[orderId] — move an order's status (owner or staff).
@@ -48,6 +49,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   let userId: string | null;
   try {
     userId = await getSessionUserId();
