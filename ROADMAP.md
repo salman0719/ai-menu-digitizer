@@ -85,7 +85,7 @@ Anonymous local-only mode untouched.
 **Done when:** a signed-in owner has a restaurant, tenancy isolation tests
 pass, and the anonymous prototype still works end to end.
 
-**Scaffolded 2026-10-18** (9 commits on `phase-2`, renamed from
+**Scaffolded 2026-10-18** (atomic commits on `phase-2`, renamed from
 `docs/phase-2-scope` since it carries all Phase 2 work, not just docs):
 Drizzle
 schema (Better Auth core + `restaurant`/`restaurant_membership`) with an
