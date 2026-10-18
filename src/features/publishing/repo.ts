@@ -69,9 +69,12 @@ export interface PublishInput {
   slug?: string;
 }
 
-/** A live published page, prepared for the public route. */
+/** A live published page, prepared for the public route and ordering. */
 export interface PublishedMenuPage {
   slug: string;
+  /** The menu and tenant this snapshot belongs to (orders are scoped by them). */
+  menuId: string;
+  restaurantId: string;
   restaurantName: string;
   doc: MenuDocument;
   theme: PreviewThemeId;
@@ -383,6 +386,8 @@ export async function getPublishedMenuBySlug(
   const rows = await db
     .select({
       slug: publishedMenu.slug,
+      menuId: publishedMenu.menuId,
+      restaurantId: publishedMenu.restaurantId,
       publishedAt: publishedMenu.publishedAt,
       viewCount: publishedMenu.viewCount,
       restaurantName: restaurant.name,
@@ -409,6 +414,8 @@ export async function getPublishedMenuBySlug(
 
   return {
     slug: row.slug,
+    menuId: row.menuId,
+    restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
     doc: parsedDoc.data,
     theme: row.theme,

@@ -31,7 +31,8 @@ export const orderLineSchema = z.object({
 
 export const orderSchema = z.object({
   id: z.string().min(1),
-  menuId: z.string().min(1),
+  /** The menu it was ordered from; null once that menu is deleted. */
+  menuId: z.string().min(1).nullable(),
   /** Menu title snapshot, so the board reads without loading the menu. */
   menuTitle: z.string().min(1),
   /** Free-form table label: "3", "Patio 2", "Bar". */
@@ -119,6 +120,23 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus> = {
 
 export function nextOrderStatus(status: OrderStatus): OrderStatus {
   return NEXT_STATUS[status];
+}
+
+/**
+ * The documented status rule (Step 10): orders move forward only —
+ * new → preparing → served — with cancelling possible while the kitchen is
+ * still working. A served order is final; nothing moves backwards or
+ * resurrects a cancelled one.
+ */
+const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  new: ["preparing", "cancelled"],
+  preparing: ["served", "cancelled"],
+  served: [],
+  cancelled: [],
+};
+
+export function canTransitionOrderStatus(from: OrderStatus, to: OrderStatus): boolean {
+  return from === to || ALLOWED_TRANSITIONS[from].includes(to);
 }
 
 export function isOrderStatus(value: unknown): value is OrderStatus {
