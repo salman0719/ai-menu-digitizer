@@ -144,6 +144,9 @@ export async function alertOps(
       });
       return "failed";
     }
+    // The `ops_alert` line above does not say whether mail left, and a
+    // suppressed or throttled alert looks identical in the logs. This one does.
+    logEvent("info", "ops_alert.sent", { alertKey: alert.dedupeKey });
     return "sent";
   } catch (error) {
     logEvent("error", "ops_alert.delivery_failed", {
