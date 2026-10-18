@@ -57,6 +57,8 @@ export interface SaveState {
 
 interface MenuEditorProps {
   doc: MenuDocument;
+  selectedItemId?: string | null;
+  onOpenItem: (itemId: string) => void;
   onChange: (next: MenuDocument) => void;
   saveState: SaveState;
   /**
@@ -128,6 +130,8 @@ function viewModeButton(active: boolean): string {
 
 export function MenuEditor({
   doc,
+  selectedItemId = null,
+  onOpenItem,
   onChange,
   saveState,
   syncMode,
@@ -172,6 +176,17 @@ export function MenuEditor({
     search.categories.find((match) => match.category.id === activeCategoryId) ??
     search.categories[0] ??
     null;
+
+  useEffect(() => {
+    if (!selectedItemId) return;
+    const frame = requestAnimationFrame(() =>
+      document.getElementById(`menu-item-${selectedItemId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      })
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [selectedItemId]);
 
   // Keep the active chip visible inside the horizontally scrolling row.
   useEffect(() => {
@@ -555,7 +570,10 @@ export function MenuEditor({
           ) : (
             <ol className="mt-3 space-y-4">
               {doc.categories.map((category, categoryIndex) => (
-                <li key={category.id} className="overflow-hidden rounded-xl border border-stone-200">
+                <li
+                  key={category.id}
+                  className="overflow-hidden rounded-xl border border-stone-200"
+                >
                   <div className="flex items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
                       {category.name || "Untitled category"}
@@ -690,7 +708,6 @@ export function MenuEditor({
   return (
     <div className="flex flex-col gap-4">
       {headerRow}
-
       <div className="rounded-2xl border border-stone-200 bg-white p-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
           <CommitInput
@@ -729,7 +746,6 @@ export function MenuEditor({
           </p>
         )}
       </div>
-
       {duplicateGroups.length > 0 && (
         <section
           aria-label="Possible duplicates"
@@ -812,7 +828,6 @@ export function MenuEditor({
             : `${search.totalItems} ${search.totalItems === 1 ? "item" : "items"}`}
         </p>
       </div>
-
       {selected.length > 0 && (
         <div
           role="region"
@@ -851,7 +866,6 @@ export function MenuEditor({
           </button>
         </div>
       )}
-
       {doc.categories.length > 0 && search.categories.length > 0 && (
         <div className="sticky top-0 z-20 -mx-4 flex items-center gap-3 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm">
           {viewMode === "single" && (
@@ -915,7 +929,6 @@ export function MenuEditor({
           </div>
         </div>
       )}
-
       {doc.categories.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No categories yet</p>
@@ -985,6 +998,8 @@ export function MenuEditor({
                     {items.map((item) => (
                       <ItemEditor
                         key={item.id}
+                        isRouteTarget={selectedItemId === item.id}
+                        onOpenItem={() => onOpenItem(item.id)}
                         doc={doc}
                         categoryId={category.id}
                         item={item}
@@ -1009,7 +1024,6 @@ export function MenuEditor({
             );
           })
       )}
-
       <button
         type="button"
         onClick={handleAddCategory}
@@ -1017,7 +1031,6 @@ export function MenuEditor({
       >
         + Add category
       </button>
-
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white p-4">
         <span className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Menu</span>
         <button type="button" onClick={onExportJson} className={smallButton}>
@@ -1092,9 +1105,9 @@ export function MenuEditor({
           role="status"
           className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
         >
-          Added {addPages.items} {addPages.items === 1 ? "item" : "items"} in{" "}
-          {addPages.categories} {addPages.categories === 1 ? "category" : "categories"} from
-          the new pages. Repeats with the existing menu appear in the duplicate review.
+          Added {addPages.items} {addPages.items === 1 ? "item" : "items"} in {addPages.categories}{" "}
+          {addPages.categories === 1 ? "category" : "categories"} from the new pages. Repeats with
+          the existing menu appear in the duplicate review.
         </p>
       )}
       {addPages.status === "error" && (
@@ -1104,11 +1117,12 @@ export function MenuEditor({
         >
           {addPages.message}
         </p>
-      )}    <p className="text-xs leading-5 text-stone-500">
-      {syncMode === "account"
-        ? "This menu syncs to your account — signing in on another device shows the same data. A local copy stays in this browser as an offline cache."
-        : "Menus are stored locally in this browser on this device — they don't follow you to other devices. Sign in to sync them to your account, or export JSON backups."}
-    </p>
+      )}{" "}
+      <p className="text-xs leading-5 text-stone-500">
+        {syncMode === "account"
+          ? "This menu syncs to your account — signing in on another device shows the same data. A local copy stays in this browser as an offline cache."
+          : "Menus are stored locally in this browser on this device — they don't follow you to other devices. Sign in to sync them to your account, or export JSON backups."}
+      </p>
     </div>
   );
 }
