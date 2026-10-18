@@ -135,6 +135,9 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof OrderRepoError) return mapRepoError(error);
+    // Server-side only: the browser gets a plain 503, the operator gets the
+    // cause in the logs (never the other way around).
+    console.error("[orders] placing an order failed", error);
     return errorResponse("server_db_unavailable", "Could not place the order. Try again.", 503);
   }
 }
