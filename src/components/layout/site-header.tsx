@@ -27,6 +27,12 @@ export function SiteHeader() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href="/launch"
+            className="hidden rounded-lg px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-50 hover:text-amber-900 sm:inline"
+          >
+            Get started
+          </a>
           {isPending ? null : user ? (
             <>
               <span className="hidden text-[11px] text-stone-500 sm:inline" title={user.email}>
