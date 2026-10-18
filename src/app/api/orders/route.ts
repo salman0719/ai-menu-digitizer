@@ -1,0 +1,178 @@
+import { createHash } from "node:crypto";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import {
+  consumeOrderRateLimit,
+  listOrdersForStaff,
+  OrderRepoError,
+  placeOrderFromSlug,
+} from "@/features/orders/repo";
+import { getSessionUserId } from "@/lib/auth/session";
+import { getDb } from "@/lib/db";
+
+/**
+ * POST /api/orders — place an order from a public table link. Anonymous by
+ * design: no session, no cookie, nothing about the diner stored.
+ *
+ * The body carries item ids, variants, and quantities only. Names, prices,
+ * and the total are resolved server-side from the published snapshot (the
+ * menu the diner actually saw). Guards on this untrusted endpoint:
+ * - payload caps (header size, 30 lines, 20 per line, 280-char note),
+ * - a honeypot field humans never fill,
+ * - a fixed-window rate limit per hashed caller+minute, stored in the DB so
+ *   serverless instances share it, answering 429 `rate_limited`.
+ *
+ * GET /api/orders — staff board query (session required). Reads orders across
+ * the caller's restaurants, optionally one via `restaurantId`, and returns
+ * everything changed after `since` so status edits propagate as well as new
+ * orders. Personalised data is never cached.
+ */
+
+const MAX_BODY_BYTES = 8 * 1024;
+
+const orderBodySchema = z.object({
+  slug: z.string().trim().min(1).max(64),
+  tableLabel: z.string().trim().min(1).max(24),
+  note: z.string().max(280).nullable().optional(),
+  lines: z
+    .array(
+      z.object({
+        menuItemId: z.string().min(1).max(64),
+        variantName: z.string().min(1).max(48).nullable().optional(),
+        quantity: z.number().int().min(1).max(20),
+      })
+    )
+    .min(1)
+    .max(30),
+  /** Honeypot: rendered off-screen, so only a script fills it. */
+  website: z.string().max(200).optional(),
+});
+
+function errorResponse(
+  code: string,
+  message: string,
+  status: number,
+  extra: Record<string, unknown> = {}
+) {
+  return NextResponse.json({ error: { code, message, ...extra } }, { status });
+}
+
+function mapRepoError(error: OrderRepoError): NextResponse {
+  switch (error.code) {
+    case "menu_not_live":
+      return errorResponse("menu_not_live", error.message, 404);
+    case "unknown_item":
+    case "item_unavailable":
+      return errorResponse(error.code, error.message, 409);
+    case "rate_limited":
+      return errorResponse("rate_limited", error.message, 429);
+    case "stale":
+      return errorResponse("order_stale", error.message, 409, { order: error.current });
+    case "not_found":
+      return errorResponse("not_found", error.message, 404);
+    case "forbidden":
+      return errorResponse("forbidden", error.message, 403);
+    case "invalid":
+    default:
+      return errorResponse("invalid_body", error.message, 400);
+  }
+}
+
+/**
+ * One-way bucket id for the rate limiter: the caller's address is hashed with
+ * the current minute, so no raw IP is stored and every window starts fresh.
+ */
+function callerBucket(request: Request, now: Date): string {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const address = forwarded || request.headers.get("x-real-ip") || "local";
+  const digest = createHash("sha256").update(address).digest("hex").slice(0, 24);
+  return `order:${Math.floor(now.getTime() / 60_000)}:${digest}`;
+}
+
+export async function POST(request: Request) {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_BODY_BYTES) {
+    return errorResponse("payload_too_large", "That order is too large to submit.", 413);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("invalid_body", "Expected a JSON body.", 400);
+  }
+  const parsed = orderBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return errorResponse("invalid_body", parsed.error.issues[0]?.message ?? "Invalid body.", 400);
+  }
+  if (parsed.data.website?.trim()) {
+    // Bot bait. Refuse without touching the database so nothing is counted.
+    return errorResponse("invalid_body", "That submission could not be accepted.", 400);
+  }
+
+  const now = new Date();
+  try {
+    const limit = await consumeOrderRateLimit(getDb(), callerBucket(request, now), now);
+    if (!limit.allowed) {
+      const response = errorResponse(
+        "rate_limited",
+        "Too many orders from this connection. Wait a minute and try again.",
+        429
+      );
+      response.headers.set("Retry-After", "60");
+      return response;
+    }
+
+    const order = await placeOrderFromSlug(getDb(), {
+      slug: parsed.data.slug,
+      tableLabel: parsed.data.tableLabel,
+      note: parsed.data.note ?? null,
+      lines: parsed.data.lines,
+    });
+    const response = NextResponse.json({ order }, { status: 201 });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  } catch (error) {
+    if (error instanceof OrderRepoError) return mapRepoError(error);
+    return errorResponse("server_db_unavailable", "Could not place the order. Try again.", 503);
+  }
+}
+
+function requireUser(): Promise<string | NextResponse> {
+  return getSessionUserId()
+    .then((userId) =>
+      userId ?? errorResponse("unauthorized", "Sign in to continue.", 401)
+    )
+    .catch(() =>
+      errorResponse(
+        "server_db_unavailable",
+        "Server sync is not available yet — keep working locally.",
+        503
+      )
+    );
+}
+
+export async function GET(request: Request) {
+  const userId = await requireUser();
+  if (userId instanceof NextResponse) return userId;
+
+  const url = new URL(request.url);
+  const since = url.searchParams.get("since");
+  const restaurantId = url.searchParams.get("restaurantId");
+  const limitParam = Number(url.searchParams.get("limit") ?? "");
+
+  try {
+    const result = await listOrdersForStaff(getDb(), userId, {
+      since,
+      restaurantId,
+      limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined,
+    });
+    const response = NextResponse.json(result);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  } catch (error) {
+    if (error instanceof OrderRepoError) return mapRepoError(error);
+    return errorResponse("server_db_unavailable", "Could not load orders. Try again.", 503);
+  }
+}

@@ -60,6 +60,7 @@ export type SyncErrorCode =
   | "invalid"
   | "slug_taken"
   | "not_published"
+  | "rate_limited"
   | "unavailable";
 
 export class SyncError extends Error {
@@ -88,6 +89,8 @@ function mapErrorCode(code: string, status: number): SyncErrorCode {
       return "slug_taken";
     case "not_published":
       return "not_published";
+    case "rate_limited":
+      return "rate_limited";
     case "forbidden":
       return "forbidden";
     case "not_found":
