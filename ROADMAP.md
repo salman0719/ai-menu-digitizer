@@ -112,7 +112,7 @@ tests, build). Outside this step's done-when and tracked below: Vercel
 deploy (env vars + prod `db:migrate`) and a verified Resend sending
 domain.
 
-### Step 8 — Server-backed menus + "Move my menus to my account" ◻️ next
+### Step 8 — Server-backed menus + "Move my menus to my account" ✅ done (browser-verified against Neon)
 
 Editor reads/writes the server when signed in (IndexedDB stays the local
 store and offline cache), `updatedAt` conflict check that surfaces
@@ -124,7 +124,31 @@ Decisions).
 **Done when:** the same menu edits from two browsers converge predictably,
 and a local import preserves ids, order, variants, and review notes.
 
-### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature)
+**Verified 2026-10-18 (all done-when criteria met):** the `menu` table
+migration was generated offline and applied explicitly to Neon
+(`npm run db:migrate`, applied twice explicitly — tip: drizzle-kit does not
+load `.env.local` itself, so run it through a loader when the URL lives
+there). `GET|POST /api/menus` + `GET|PUT|DELETE /api/menus/[menuId]` are
+tenancy-scoped (owner writes, staff reads, cross-tenant ids 404), Zod-
+validate documents in both directions, and detect conflicts with a
+conditional `UPDATE … WHERE updated_at = expected` — one statement, safe on
+the Neon HTTP driver without transactions (409 `stale_menu` carries the
+current server `updatedAt`). The typed client (`src/features/menus/sync.ts`)
+and `moveLocalMenusToAccount` (one-way, import-by-id, skip-existing) sit on
+top; the editor, when signed in, adopts a newer account revision on open,
+saves locally first and pushes with the last-seen `updatedAt`, and surfaces
+a "changed elsewhere" banner offering an explicit load/keep choice instead
+of silently overwriting. **Live acceptance:** 7 local menus moved intact
+into "My Café" through the real API (ids/order/variants/review notes
+preserved), a re-run reported 0 moved / 7 already-there, and two browser
+tabs converged through *both* conflict resolutions — "Load the server
+version" adopted the other tab's revision, "Keep my version" overwrote the
+account copy (confirmed in the DB). Source images stay browser-local for
+now — documents (ids, order, variants, prices, review notes) are what
+sync. Signed-out local mode unchanged; 159 tests green (new: menus-repo,
+menus-api, menus-sync, move-to-account); lint, typecheck, build green.
+
+### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature) ◻️ next
 
 This is the flagship feature of the phase (user decision 2026-10-18), built
 right after the foundation and always free — no checkout anywhere.

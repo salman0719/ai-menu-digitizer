@@ -88,9 +88,18 @@ errors, or add lint/type suppressions just to make checks pass.
   `src/app/sign-in/` — Better Auth magic-link config, email sender, route,
   session guard, sign-in page
 - `src/features/tenancy/repo.ts`, `src/app/api/restaurants/` —
-  ownership-scoped restaurant repository + API (session id only)
+  ownership-scoped restaurant repository + API (session id only);
+  `src/features/tenancy/client.ts` — typed browser client for it
+- `src/features/menus/` — Step 8 server menus: `repo.ts` (tenancy-scoped,
+  conditional-UPDATE `updatedAt` conflict detection), `sync.ts` (typed
+  browser client with `SyncError` codes), `move-to-account.ts` (one-way
+  local import); routes in `src/app/api/menus/`; editor UI in
+  `src/components/menu-editor/conflict-banner.tsx` + `move-to-account-panel.tsx`
 - `tests/helpers/pg-test-db.ts`, `tests/tenancy.test.ts`,
-  `tests/auth-magic-link.test.ts` — Step 7 isolation/auth tests (PGlite)
+  `tests/auth-magic-link.test.ts` — Step 7 isolation/auth tests (PGlite);
+  `tests/menus-repo.test.ts`, `tests/menus-api.test.ts`,
+  `tests/menus-sync.test.ts`, `tests/move-to-account.test.ts` — Step 8
+  (PGlite + stubbed fetch; conflict, tenancy, import fidelity)
 - `PHASE-2.md` — Phase 2 scope, service choices, acceptance criteria
 - `ROADMAP.md` — current build order (Phase 1 steps done, Phase 2 steps planned)
 
