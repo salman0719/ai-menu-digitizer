@@ -212,6 +212,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   } catch (error) {
     if (error instanceof ServiceError) {
+      // Two provider codes mean the deployment needs a human: a rejected key
+      // and exhausted quota. Others (a blurry photo) are the caller's
+      // problem, and alerting on them would train us to ignore the inbox.
+      if (error.code === "provider_auth_failed" || error.code === "quota_exhausted") {
+        await alertOps({
+          subject: `Extraction needs attention: ${error.code}`,
+          details: `${error.message} (request ${requestId})`,
+          dedupeKey: `extract:${error.code}`,
+        });
+      }
       return NextResponse.json(
         { error: { code: error.code, message: error.message } },
         { status: error.status }
