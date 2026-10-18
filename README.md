@@ -73,9 +73,11 @@ npm run db:generate  # generate a SQL migration from the schema (offline)
 npm run db:migrate   # apply migrations to DATABASE_URL (explicit, never at request time)
 ```
 
-## Accounts (Phase 2 scaffolding — not live yet)
+## Accounts (Phase 2 — built and locally verified; not deployed yet)
 
-Step 7 groundwork is in the repo, gated by credentials:
+Step 7 is complete in code and proven locally: magic-link sign-in →
+session → first restaurant against Neon through the real API (2026-10-18).
+What's left is deployment plus a verified sending domain:
 
 - **Sign-in** — `/sign-in` sends a one-time magic link (Better Auth, implicit
   sign-up) for owners and staff only; diners and public menu visitors stay

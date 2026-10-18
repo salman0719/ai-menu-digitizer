@@ -75,7 +75,7 @@ sequential steps, small atomic commits, quality gates green before a step
 counts as done. Each step may expand into its own sub-commits; do not start a
 step before the previous step's acceptance list passes.
 
-### Step 7 — Foundation: server DB, tenancy, accounts ◻️ in progress
+### Step 7 — Foundation: server DB, tenancy, accounts ✅ done
 
 Decided stack (user sign-off 2026-10-18, PHASE-2.md §9): **Neon Postgres +
 Drizzle**, migrations run explicitly (never at request time), **Better Auth
@@ -99,15 +99,20 @@ read-only and cascade deletes, plus magic-link E2E (one link → implicit
 sign-up → session → single-use token consumed) — running against the real
 generated DDL on PGlite; all gates green (128 tests). Locally: `/sign-in`
 renders and fails gracefully without a DB; anonymous flow untouched.
-**Status 2026-10-18:** Neon + Resend credentials are in (migration
-applied to the real DB, endpoints verified live). Email testing uses the
-**Resend sandbox sender `onboarding@resend.dev`** — clearly marked in
-`.env.local`; it delivers only to the Resend account's own address — and
-swaps to a verified domain later (`.env.example` documents both).
-**Remaining for this step:** deploy, and verifying "a signed-in owner has
-a restaurant" end to end in two browsers.
+**Verified 2026-10-18 (all done-when criteria met):** credentials landed —
+migration applied to the real Neon DB (6 tables), endpoints verified live
+(anonymous 401, signed-out mode untouched). Magic-link sign-in ran end to
+end: link delivered by Resend through the **sandbox sender
+`onboarding@resend.dev`** (clearly marked in `.env.local`; swaps to a
+verified domain later — `.env.example` documents both), clicked → session
+→ `POST /api/restaurants` 201 → owner-role restaurant listed scoped to
+that session, against Neon through the real API. Tenancy isolation tests
+pass (PGlite, real generated DDL); gates green (lint, typecheck, 128
+tests, build). Outside this step's done-when and tracked below: Vercel
+deploy (env vars + prod `db:migrate`) and a verified Resend sending
+domain.
 
-### Step 8 — Server-backed menus + "Move my menus to my account"
+### Step 8 — Server-backed menus + "Move my menus to my account" ◻️ next
 
 Editor reads/writes the server when signed in (IndexedDB stays the local
 store and offline cache), `updatedAt` conflict check that surfaces
@@ -215,8 +220,12 @@ it live.
 - [x] **Pilot price** — deferred until after real measurement; the free
       promotion runs first, and early users are kept in mind when pricing
       arrives.
-- [ ] **Accounts to create before the free launch:** Resend + verified
-      sending domain, Neon project (env vars in Vercel), Sentry project.
+- [x] **Neon project** — created; migration applied and sign-in verified
+      against it locally (2026-10-18). Env vars land in Vercel at deploy.
+- [ ] **Resend sending domain** — account + API key are live and sending
+      (sandbox `onboarding@resend.dev`, marked in `.env.local`); add a
+      verified domain before anything beyond throwaway testing.
+- [ ] **Sentry project** — needed by Step 11 (error tracking).
 - [ ] **Promotion start date + endgame** — when "free while it lasts" opens
       and what happens when it ends (decide before advertising widely).
 
