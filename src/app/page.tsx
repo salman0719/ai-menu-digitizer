@@ -36,6 +36,7 @@ import {
   type MenuSummary,
 } from "@/features/menu/storage";
 import {
+  deleteServerMenu,
   fetchServerMenu,
   fetchServerMenus,
   SyncError,
@@ -505,6 +506,9 @@ export default function Home() {
   async function handleRenameMenu(id: string, title: string) {
     try {
       const renamed = await renameMenu(id, title);
+      if (signedInRef.current && serverIdsRef.current.has(id)) {
+        await pushRenameToAccount(renamed);
+      }
       await refreshLibrary();
       if (docRef.current?.id === id) {
         docRef.current = renamed;
@@ -518,16 +522,87 @@ export default function Home() {
     }
   }
 
+  /**
+   * Push a library rename to the account. The base revision is fetched
+   * first — a library rename can target a menu the editor doesn't have
+   * open, so there is no `serverBaseRef` to lean on. A conflict is
+   * reported, never overwritten; it resolves on the next editor open,
+   * which adopts the account revision. The local rename always stands.
+   */
+  async function pushRenameToAccount(renamed: MenuDocument) {
+    try {
+      const serverMenu = await fetchServerMenu(renamed.id);
+      try {
+        const pushed = await updateServerMenu(renamed.id, renamed, serverMenu.updatedAt);
+        if (docRef.current?.id === renamed.id) serverBaseRef.current = pushed.updatedAt;
+      } catch (error) {
+        if (error instanceof SyncError && error.code === "not_found") {
+          removeServerId(renamed.id); // Gone on the server; nothing to push.
+        } else if (error instanceof SyncError && error.code === "conflict") {
+          setLibraryError(
+            "Renamed in this browser — the account copy changed elsewhere. Open the menu to reconcile."
+          );
+        } else if (error instanceof SyncError && error.code === "forbidden") {
+          setLibraryError(
+            "Renamed in this browser — only the restaurant owner can change the account copy."
+          );
+        } else if (error instanceof SyncError && error.code === "unauthorized") {
+          setLibraryError("Renamed in this browser — sign in again to update the account copy.");
+        } else {
+          setLibraryError(
+            "Renamed in this browser — the account copy could not be updated. Try again when online."
+          );
+        }
+      }
+    } catch (error) {
+      if (error instanceof SyncError && error.code === "not_found") {
+        removeServerId(renamed.id);
+        return;
+      }
+      setLibraryError(
+        "Renamed in this browser — the account copy could not be reached. Try again when online."
+      );
+    }
+  }
+
   async function handleDeleteMenu(id: string) {
     try {
+      // Remove the account copy first when there is one, so a failure is
+      // reported before the local menu is gone. The local delete always
+      // proceeds — it is the user's data and their explicit intent.
+      let accountNote: string | null = null;
+      if (signedInRef.current && serverIdsRef.current.has(id)) {
+        try {
+          await deleteServerMenu(id);
+          removeServerId(id);
+        } catch (error) {
+          if (error instanceof SyncError && error.code === "not_found") {
+            removeServerId(id); // Already gone on the server.
+          } else if (error instanceof SyncError && error.code === "forbidden") {
+            accountNote =
+              "Deleted from this browser — only the restaurant owner can remove the account copy.";
+          } else if (error instanceof SyncError && error.code === "unauthorized") {
+            accountNote =
+              "Deleted from this browser — sign in again to remove the account copy.";
+          } else {
+            accountNote =
+              "Deleted from this browser — the account copy could not be removed. Try again when online.";
+          }
+        }
+      }
       await deleteMenu(id);
+      removeServerId(id);
       if (docRef.current?.id === id) {
         docRef.current = null;
         lastSavedRef.current = null;
+        serverBaseRef.current = null;
+        conflictRef.current = null;
+        setConflict(null);
         setActiveDoc(null);
         setEditorImage(null);
       }
       await refreshLibrary();
+      if (accountNote) setLibraryError(accountNote);
       setScreen("library");
     } catch (error) {
       setLibraryError(
