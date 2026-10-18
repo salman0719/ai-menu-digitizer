@@ -44,6 +44,8 @@ schedules them**, and nothing outside `PHASE-2.md`'s scope.
 - `npm run typecheck`
 - `npm run test`
 - `npm run build`
+- `npm run secrets:check` (after the build: fails if a server secret reached
+  the client bundle; prints env names, never values)
 
 If a gate fails, fix the cause. Do not skip tests, weaken assertions, swallow
 errors, or add lint/type suppressions just to make checks pass.
@@ -129,6 +131,27 @@ errors, or add lint/type suppressions just to make checks pass.
   Invariants: a diner sends ids/variants/quantities only — names, prices, and
   totals are resolved server-side from the published snapshot and the total
   is null when any line is unpriced; statuses only move forward.
+- `src/lib/observability/` — Step 11 structured logs (`log.ts`: JSON lines,
+  request ids, credential redaction, no stacks) and operator alerts
+  (`alerts.ts`: Resend email to `OPS_ALERT_EMAIL`, deduped per process)
+- `src/proxy.ts` — Next 16 proxy that mints/echoes `x-request-id`; not an
+  authorization layer
+- `src/lib/http/origin.ts` — same-origin guard (`rejectCrossOrigin`) used by
+  every state-changing route; `next.config.ts` carries the security headers
+- `src/features/usage/` — Step 11 extraction ledger + cost brake: `schema.ts`
+  (cap, month window), `pricing.ts` (cost only from configured rates),
+  `repo.ts` (record/summarize/count), `client.ts`; `src/app/api/usage/`
+- `src/features/launch/` — onboarding snapshot (`repo.ts`), pure checklist
+  derivation (`steps.ts`), schemas + client; `/api/launch`, page `/launch`,
+  UI in `src/components/launch/` (checklist, usage panel, data controls)
+- `src/features/retention/` — Step 11 retention: `schema.ts` (window config),
+  `repo.ts` (`purgeOldOrders`, `buildAccountExport`, `deleteAccountForUser`,
+  `isCronAuthorized`), `client.ts`; routes `/api/cron/retention`,
+  `/api/account` (DELETE), `/api/account/export`; schedule in `vercel.json`
+- `src/app/privacy/`, `src/app/terms/`, `src/lib/site.ts` — legal pages and
+  shared site constants (`CONTACT_EMAIL` lookup)
+- `scripts/check-client-secrets.mjs` — client-bundle secret scan
+- `docs/` — launch runbook, two-device test script, backup/restore drill
 - `PHASE-2.md` — Phase 2 scope, service choices, acceptance criteria
 - `ROADMAP.md` — current build order (Phase 1 steps done, Phase 2 steps planned)
 

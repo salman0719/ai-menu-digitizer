@@ -48,6 +48,12 @@ sample data, so the editor, persistence, and export can all be exercised.
 | `BETTER_AUTH_URL`    | Server            | App base URL (local `http://localhost:3200`; prod = site URL).    |
 | `RESEND_API_KEY`     | Server only       | Resend key for sign-in emails (placeholder until account exists). |
 | `EMAIL_FROM`         | Server only       | Verified sending address for sign-in mail.                        |
+| `OPS_ALERT_EMAIL`    | Server only       | Inbox for failure and volume alerts (Step 11).                    |
+| `CONTACT_EMAIL`      | Server            | Address shown on `/privacy` and `/terms`; unset renders an explicit notice. |
+| `CRON_SECRET`        | Server only       | Bearer secret for `/api/cron/retention`; Vercel sends it automatically. |
+| `EXTRACTION_MONTHLY_CAP` | Server (optional) | Per-account monthly extraction cap (default 150).             |
+| `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | Server (optional) | Enables cost in the spend panel; unset means cost is reported as unavailable. |
+| `ORDER_RETENTION_DAYS` | Server (optional) | Order history window before the daily purge (default 90).       |
 
 Rules enforced by the code:
 
@@ -75,13 +81,16 @@ npm run test:watch   # Vitest watch mode
 npm run format       # Prettier write
 npm run db:generate  # generate a SQL migration from the schema (offline)
 npm run db:migrate   # apply migrations to DATABASE_URL (explicit, never at request time)
+npm run secrets:check  # after build: fail if a server secret reached the client bundle
 ```
 
-## Accounts (Phase 2 — built and locally verified; not deployed yet)
+## Accounts, publishing, and ordering (Phase 2 — built and locally verified)
 
-Step 7 is complete in code and proven locally: magic-link sign-in →
-session → first restaurant against Neon through the real API (2026-10-18).
-What's left is deployment plus a verified sending domain:
+Steps 7–11 are complete in code and proven against Neon locally: magic-link
+sign-in → session → restaurant → server menus → published public page →
+cross-device table ordering. What's left before a public launch is the deploy
+plus the open items in `docs/launch-runbook.md` (Sentry project, verified
+sending domain, contact address, promotion dates):
 
 - **Sign-in** — `/sign-in` sends a one-time magic link (Better Auth, implicit
   sign-up) for owners and staff only; diners and public menu visitors stay
@@ -130,15 +139,29 @@ What's left is deployment plus a verified sending domain:
 `npm run test` covers the schema, menu utilities, extraction conversion,
 provider error mapping, API service/validation, image constraints, the
 extraction client, IndexedDB storage (via `fake-indexeddb`), and JSON/CSV
-import/export escaping, plus tenancy isolation and magic-link sign-in run
-end to end against an in-process Postgres (PGlite) using the real generated
-migrations.
+import/export escaping, plus tenancy isolation, magic-link sign-in, server
+menus, publishing, ordering, extraction usage, the launch checklist, and
+retention/export/deletion — the server-side suites run against an in-process
+Postgres (PGlite) using the real generated migrations.
 
 Before finishing a change, run the full gate:
 
 ```bash
 npm run lint && npm run typecheck && npm run test && npm run build
+npm run secrets:check   # needs the build output above
 ```
+
+## Launch operations
+
+- [`docs/launch-runbook.md`](docs/launch-runbook.md) — configuration, the
+  alert drill, onboarding one café, first-week watch list.
+- [`docs/two-device-test.md`](docs/two-device-test.md) — the publishing and
+  ordering acceptance script, on real devices and networks.
+- [`docs/backup-restore.md`](docs/backup-restore.md) — what lives in Postgres,
+  the quarterly restore drill, and the bad-migration runbook.
+
+The launch promotion is free, with no payment step anywhere; the app enforces
+per-account extraction caps instead, and shows them on `/launch`.
 
 ## Deployment (Vercel)
 
@@ -158,16 +181,15 @@ sign-in works in production.
 
 ## Scope
 
-What is live today is the local-first prototype (see `PLAN.md`): menus and
-table orders live in this browser's IndexedDB — there are still no accounts
-or server database in use. Step 7 of Phase 2 is scaffolded but inert:
-magic-link sign-in, the Postgres schema, and ownership-scoped APIs exist in
-the repo and wait on credentials. Themed customer previews and printable QR table cards are
-included; on a customer's phone the QR page is honest that the menu lives on
-the owner's device.
+Two modes exist side by side. **Signed out**, the local-first prototype still
+works exactly as before: menus and table orders live in this browser's
+IndexedDB, nothing leaves the device except extraction, and the QR page says
+honestly that the menu lives on the owner's device. **Signed in**, menus sync
+to Postgres, publishing gives a real public page at `/m/<slug>`, and table
+orders reach every staff device through the live board.
 
-Phase 2 makes it live and usable by anyone — accounts with a server database
-so ordering works across devices, one-click publish to a public menu URL,
-and a usage-billed B2B extraction API. Scope is in `PHASE-2.md`, build order
-in `ROADMAP.md`. Still out of scope: POS integrations, delivery/booking, and
-inventory management.
+The free launch (Steps 7–11) is built and locally verified. The B2B extraction
+API and usage billing are parked by decision (Steps 12–13): nothing in the
+café product charges anyone, and no card is ever requested. Scope is in
+`PHASE-2.md`, build order in `ROADMAP.md`. Still out of scope: POS
+integrations, delivery/booking, inventory, and custom domains.

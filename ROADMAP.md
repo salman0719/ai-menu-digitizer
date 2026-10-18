@@ -245,7 +245,7 @@ half of the done-when (same-origin tabs were used), and a real deploy/restart
 ordering was not exercised end to end (signing out would cost the magic-link
 session), but that code is unchanged and its tests pass.
 
-### Step 11 — Free launch packaging + hardening (nothing is charged) ◻️ next
+### Step 11 — Free launch packaging + hardening (nothing is charged) ◐ built; needs a deploy + a real café
 
 "Free while it lasts" promotion for the café track: onboarding checklist
 (extract → review → theme → print table cards → publish → first order) and a
@@ -261,6 +261,45 @@ buy — Stripe stays the eventual provider but is parked with Steps 12–13.
 the packaged checklist with no payment step anywhere, a second café could be
 onboarded the same way, and the PHASE-2.md §7 hardening checklist is verified
 end to end (a production failure is visible to us without a user report).
+
+**Built (2026-10-18):** `/launch` states the free offer and runs the six-step
+checklist, deriving five steps from the account (menu exists, nothing left to
+review, published, orders received) and marking printing as a manual tick
+because the server cannot see a printer. Privacy and terms pages say what the
+code actually stores — no menu photos, no diner identity, no payment data —
+and link from a shared footer. Every request gets an `x-request-id` from the
+proxy; server logs are single-line JSON with credential redaction and no
+stack traces; unexpected failures and provider auth/quota failures email
+`OPS_ALERT_EMAIL` through the existing Resend account, throttled per event.
+Security headers are set app-wide (HSTS production-only) and every mutation
+refuses a foreign `Origin` before touching the DB. Extraction usage is
+recorded per attempt (pages, tokens, cost only from configured rates), the
+per-account monthly cap is the cost brake, and anonymous extraction is capped
+per caller per hour by a hashed address; `/launch` shows the allowance.
+Orders older than `ORDER_RETENTION_DAYS` (90) are purged daily by a cron route
+gated on `CRON_SECRET`, which also sweeps stale rate-limit windows; owners can
+export everything as JSON and delete their account (typed confirmation).
+`npm run secrets:check` scans the built client bundle for configured secret
+values and fails on a hit. `docs/` carries the launch runbook, the two-device
+script, and the backup/restore drill.
+
+**Verified 2026-10-18 (local, PGlite + browser):** 52 new tests (264 total) cover log
+redaction and alert throttling, the same-origin guard, pricing/caps/usage
+summaries, checklist derivation and the launch endpoint, retention purge,
+export scoping, deletion cascades, and cron authorization. Lint, typecheck,
+build green; the secret scan reports no leak and was proved to fail on a
+planted value. The checklist, legal pages, and usage panel were checked in the
+browser (checklist read real account state — 7 menus, 4 orders, live slug —
+with the manual tick undone again); the alert path and the cron route were
+exercised locally, migration 0004 was applied explicitly to the dev Neon
+database, and the payment-free claim was checked by searching the UI for any
+payment surface (only the sentences saying there is none).
+
+**Still needed from the user before this is fully done:** deploy, set
+`CRON_SECRET` / `OPS_ALERT_EMAIL` / `CONTACT_EMAIL` / token rates in Vercel,
+onboard one real café with the checklist, run the alert drill against the
+deployed app, and create the Sentry project (logs + email alerts work without
+it; a third-party error dashboard does not exist yet).
 
 ### Step 12 — 🔒 parked: B2B extraction API surface (I2)
 
@@ -335,7 +374,11 @@ it live.
 - [ ] **Resend sending domain** — account + API key are live and sending
       (sandbox `onboarding@resend.dev`, marked in `.env.local`); add a
       verified domain before anything beyond throwaway testing.
-- [ ] **Sentry project** — needed by Step 11 (error tracking).
+- [ ] **Sentry project** — Step 11 ships structured logs + email alerts;
+      the Sentry DSN is still needed for a third-party error dashboard.
+- [ ] **Contact address** — `CONTACT_EMAIL` for `/privacy` and `/terms`.
+- [ ] **Launch secrets** — `CRON_SECRET` and `OPS_ALERT_EMAIL` in Vercel
+      before the retention cron and the alert path can run in production.
 - [ ] **Promotion start date + endgame** — when "free while it lasts" opens
       and what happens when it ends (decide before advertising widely).
 
