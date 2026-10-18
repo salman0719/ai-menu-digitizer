@@ -4,12 +4,26 @@
  * Server-only. Throws {@link ServiceError} with HTTP-ready status/code.
  */
 
-import { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES } from "../image-constraints";
+import {
+  detectImageMimeType,
+  MAX_IMAGE_BYTES,
+  MAX_MENU_PAGES,
+  MAX_TOTAL_IMAGE_BYTES,
+  SUPPORTED_IMAGE_MIME_TYPES,
+  type ProviderImageMimeType,
+  type SupportedImageMimeType,
+} from "../image-constraints";
 import { ExtractedMenu, extractedMenuSchema } from "./extraction-schema";
 import { buildExtractionPrompt, buildRepairPrompt } from "./prompts";
-import { ExtractionProvider, ProviderError } from "./provider";
+import {
+  addUsage,
+  ExtractionProvider,
+  NO_USAGE,
+  ProviderError,
+  ProviderUsage,
+} from "./provider";
 
-export { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES };
+export { MAX_IMAGE_BYTES, MAX_MENU_PAGES, MAX_TOTAL_IMAGE_BYTES, SUPPORTED_IMAGE_MIME_TYPES };
 
 const MAX_REPAIR_INPUT_CHARS = 8000;
 
@@ -18,6 +32,7 @@ export type ServiceErrorCode =
   | "invalid_file_type"
   | "file_too_large"
   | "empty_file"
+  | "too_many_pages"
   | "missing_api_key"
   | "provider_auth_failed"
   | "quota_exhausted"
@@ -28,18 +43,43 @@ export type ServiceErrorCode =
 export class ServiceError extends Error {
   readonly status: number;
   readonly code: ServiceErrorCode;
+  /**
+   * Tokens the provider already billed for before this failure, when known.
+   * A failed extraction is still a paid API call, so the cost brake counts it.
+   */
+  readonly usage: ProviderUsage | null;
 
-  constructor(status: number, code: ServiceErrorCode, message: string) {
+  constructor(
+    status: number,
+    code: ServiceErrorCode,
+    message: string,
+    usage: ProviderUsage | null = null
+  ) {
     super(message);
     this.name = "ServiceError";
     this.status = status;
     this.code = code;
+    this.usage = usage;
   }
+}
+
+/** A successful extraction plus what it cost the provider account. */
+export interface ExtractionOutcome {
+  menu: ExtractedMenu;
+  /** Summed across the first call and the repair retry. */
+  usage: ProviderUsage;
 }
 
 export interface ImageInput {
   bytes: Uint8Array;
+  /** Declared type; the real bytes win when they carry a recognisable header. */
   mimeType: string;
+  filename?: string;
+}
+
+interface NormalizedImage {
+  bytes: Uint8Array;
+  mimeType: ProviderImageMimeType;
   filename?: string;
 }
 
@@ -103,31 +143,85 @@ function mapProviderError(error: ProviderError): ServiceError {
   }
 }
 
-export async function extractMenuFromImage(
-  input: ImageInput,
-  deps: ServiceDeps
-): Promise<ExtractedMenu> {
-  if (
-    !SUPPORTED_IMAGE_MIME_TYPES.includes(
-      input.mimeType as (typeof SUPPORTED_IMAGE_MIME_TYPES)[number]
-    )
-  ) {
+/**
+ * Validate a batch of page images (count, per-file type/size, total size) and
+ * return them with sniffed MIME types. Runs before any provider call; throws
+ * {@link ServiceError}.
+ */
+function validateImages(images: ImageInput[]): NormalizedImage[] {
+  if (images.length === 0) {
+    throw new ServiceError(400, "missing_image", "Upload an image file in the `image` field.");
+  }
+  if (images.length > MAX_MENU_PAGES) {
     throw new ServiceError(
       400,
-      "invalid_file_type",
-      `Unsupported image type. Use one of: ${SUPPORTED_IMAGE_MIME_TYPES.join(", ")}.`
+      "too_many_pages",
+      `Too many pages in one request (max ${MAX_MENU_PAGES} page images).`
     );
   }
-  if (input.bytes.length === 0) {
-    throw new ServiceError(400, "empty_file", "The uploaded image is empty.");
+  let totalBytes = 0;
+  const normalized: NormalizedImage[] = [];
+  for (const input of images) {
+    // Prefer the real header over the declared type: browsers and camera
+    // exports mislabel files (AVIF under .jpg, HEIC with an empty type).
+    const sniffed = detectImageMimeType(input.bytes);
+    const declared = SUPPORTED_IMAGE_MIME_TYPES.includes(
+      input.mimeType as SupportedImageMimeType
+    )
+      ? (input.mimeType as SupportedImageMimeType)
+      : null;
+    const mimeType = sniffed ?? declared;
+    if (!mimeType) {
+      throw new ServiceError(
+        400,
+        "invalid_file_type",
+        `Unsupported image type. Use one of: ${SUPPORTED_IMAGE_MIME_TYPES.join(", ")}.`
+      );
+    }
+    if (mimeType === "image/avif") {
+      throw new ServiceError(
+        400,
+        "invalid_file_type",
+        "AVIF images can't be read by the AI provider directly. Re-upload it through the app so it can be converted to JPEG first."
+      );
+    }
+    if (input.bytes.length === 0) {
+      throw new ServiceError(400, "empty_file", "The uploaded image is empty.");
+    }
+    if (input.bytes.length > MAX_IMAGE_BYTES) {
+      throw new ServiceError(
+        413,
+        "file_too_large",
+        `Image is too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)} MB).`
+      );
+    }
+    totalBytes += input.bytes.length;
+    normalized.push({
+      bytes: input.bytes,
+      mimeType: mimeType as ProviderImageMimeType,
+      filename: input.filename,
+    });
   }
-  if (input.bytes.length > MAX_IMAGE_BYTES) {
+  if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
     throw new ServiceError(
       413,
       "file_too_large",
-      `Image is too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)} MB).`
+      `The page images are too large in total (max ${MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)} MB for all pages together).`
     );
   }
+  return normalized;
+}
+
+/**
+ * Extract one menu from one or more page images in a single provider call,
+ * so a menu that spans pages comes back merged (categories continue across
+ * pages instead of being extracted twice).
+ */
+export async function extractMenuFromImages(
+  images: ImageInput[],
+  deps: ServiceDeps
+): Promise<ExtractionOutcome> {
+  const normalized = validateImages(images);
   if (!deps.provider) {
     throw new ServiceError(
       503,
@@ -136,32 +230,50 @@ export async function extractMenuFromImage(
     );
   }
 
-  const imageBase64 = Buffer.from(input.bytes).toString("base64");
+  const parts = normalized.map((input) => ({
+    imageBase64: Buffer.from(input.bytes).toString("base64"),
+    mimeType: input.mimeType,
+  }));
+
+  // Token usage accumulates across calls so the recorded cost reflects every
+  // billed request, including a repair retry that still ended in failure.
+  let usage: ProviderUsage = NO_USAGE;
+  const track = (next: ProviderUsage): void => {
+    usage = addUsage(usage, next);
+  };
+
   try {
     const first = await deps.provider.generateText({
-      promptText: buildExtractionPrompt(),
-      imageBase64,
-      mimeType: input.mimeType,
+      promptText: buildExtractionPrompt(images.length),
+      images: parts,
     });
-    const menu = parseMenu(first);
-    if (menu) return menu;
+    track(first.usage);
+    const menu = parseMenu(first.text);
+    if (menu) return { menu, usage };
 
     // One controlled repair retry, then give up with a useful error.
     const repair = await deps.provider.generateText({
-      promptText: buildRepairPrompt(first.slice(0, MAX_REPAIR_INPUT_CHARS), describeIssues(first)),
-      imageBase64,
-      mimeType: input.mimeType,
+      promptText: buildRepairPrompt(
+        first.text.slice(0, MAX_REPAIR_INPUT_CHARS),
+        describeIssues(first.text)
+      ),
+      images: parts,
     });
-    const repaired = parseMenu(repair);
-    if (repaired) return repaired;
+    track(repair.usage);
+    const repaired = parseMenu(repair.text);
+    if (repaired) return { menu: repaired, usage };
     throw new ServiceError(
       502,
       "invalid_ai_response",
-      "The AI returned data in an unexpected format. Try again or use a clearer image."
+      "The AI returned data in an unexpected format. Try again or use a clearer image.",
+      usage
     );
   } catch (error) {
     if (error instanceof ServiceError) throw error;
-    if (error instanceof ProviderError) throw mapProviderError(error);
+    if (error instanceof ProviderError) {
+      const mapped = mapProviderError(error);
+      throw new ServiceError(mapped.status, mapped.code, mapped.message, usage);
+    }
     throw error;
   }
 }

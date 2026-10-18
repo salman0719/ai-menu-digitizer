@@ -81,6 +81,24 @@ describe("extraction prompts", () => {
     expect(prompt).toContain("Never invent");
   });
 
+  it("teaches the model to record per-size prices as variants", () => {
+    const prompt = buildExtractionPrompt();
+    expect(prompt).toContain("variants");
+    expect(prompt).toContain("Small/Medium/Large");
+    expect(prompt).toContain("is ONE item");
+    expect(prompt).toContain("do not split one item into several items");
+    expect(prompt).toContain("column headers");
+    expect(prompt).toContain("Never invent a tier label");
+    expect(prompt).toContain("spell");
+    expect(prompt).toContain("nested list");
+    expect(prompt).toContain("Size labels not printed; variant names inferred by column order");
+    expect(prompt).toContain("\u21b3 Small (leftmost column): $2.00");
+    expect(prompt).toContain("one note per variant");
+    expect(prompt).toContain("re-read, round, or re-infer them");
+    expect(prompt).toContain("Prefix each with the menu's currency");
+    expect(prompt).toContain("each visible section heading still becomes its own");
+  });
+
   it("repair prompt includes the issues and the previous output", () => {
     const prompt = buildRepairPrompt('{"bad": true}', ["categories: Required"]);
     expect(prompt).toContain("categories: Required");
@@ -92,5 +110,21 @@ describe("extraction prompts", () => {
     const prompt = buildRepairPrompt("x".repeat(9000), ["some issue"]);
     expect(prompt.length).toBeLessThan(9000);
     expect(prompt).toContain("[truncated]");
+  });
+
+  it("keeps the single-page prompt unchanged by default", () => {
+    expect(buildExtractionPrompt()).toBe(buildExtractionPrompt(1));
+    expect(buildExtractionPrompt()).not.toContain("do not repeat the heading");
+  });
+
+  it("adds merge guidance when the menu spans several pages", () => {
+    const prompt = buildExtractionPrompt(3);
+    expect(prompt).toContain("untrusted content");
+    expect(prompt).toContain("pages 1–3 of the SAME");
+    expect(prompt).toContain("do not repeat the heading");
+    expect(prompt).toContain("include it only once");
+    // Structure rules for the JSON output are still present.
+    expect(prompt).toContain("no Markdown fences");
+    expect(prompt).toContain("reviewNotes");
   });
 });

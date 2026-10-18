@@ -6,7 +6,16 @@
  * Docs: https://ai.google.dev/gemini-api/docs/models
  */
 
-import { ExtractionProvider, ExtractionRequest, ProviderError } from "./provider";
+import { logEvent } from "@/lib/observability/log";
+
+import {
+  ExtractionProvider,
+  ExtractionRequest,
+  NO_USAGE,
+  ProviderError,
+  ProviderResult,
+  ProviderUsage,
+} from "./provider";
 
 /**
  * Default for new projects (overridable via `GEMINI_MODEL`).
@@ -23,6 +32,8 @@ export interface GeminiProviderOptions {
   model?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Correlates provider failures with the request log line. */
+  requestId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,6 +53,23 @@ function extractText(body: unknown): string | null {
   return text ? text : null;
 }
 
+/** Read `usageMetadata`; missing or non-numeric counts stay null (honest). */
+function readUsage(body: unknown): ProviderUsage {
+  if (!isRecord(body)) return NO_USAGE;
+  const meta = body.usageMetadata;
+  if (!isRecord(meta)) return NO_USAGE;
+  const read = (key: string): number | null => {
+    const value = meta[key];
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? Math.round(value)
+      : null;
+  };
+  return {
+    inputTokens: read("promptTokenCount"),
+    outputTokens: read("candidatesTokenCount"),
+  };
+}
+
 function blockReason(body: unknown): string | null {
   if (!isRecord(body) || !isRecord(body.promptFeedback)) return null;
   return typeof body.promptFeedback.blockReason === "string"
@@ -50,12 +78,15 @@ function blockReason(body: unknown): string | null {
 }
 
 export function createGeminiProvider(options: GeminiProviderOptions): ExtractionProvider {
-  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
+  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch, requestId } = options;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!apiKey) throw new ProviderError("auth", "Gemini API key is missing.");
 
   return {
-    async generateText(request: ExtractionRequest): Promise<string> {
+    async generateText(request: ExtractionRequest): Promise<ProviderResult> {
+      if (request.images.length === 0) {
+        throw new ProviderError("bad_request", "No image was provided for extraction.");
+      }
       const url = `${API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
       let response: Response;
       try {
@@ -68,7 +99,9 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
                 role: "user",
                 parts: [
                   { text: request.promptText },
-                  { inlineData: { mimeType: request.mimeType, data: request.imageBase64 } },
+                  ...request.images.map((image) => ({
+                    inlineData: { mimeType: image.mimeType, data: image.imageBase64 },
+                  })),
                 ],
               },
             ],
@@ -82,9 +115,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
         });
       } catch (fetchError) {
         // Server log only: transport detail contains no keys or bodies.
-        console.error(
-          `gemini fetch failed: ${fetchError instanceof Error ? `${fetchError.name}: ${fetchError.message}` : String(fetchError)}`
-        );
+        logEvent("error", "gemini.fetch_failed", { requestId, model, error: fetchError });
         throw new ProviderError(
           "unavailable",
           "Could not reach the AI provider. Check your connection and try again."
@@ -94,7 +125,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
       if (!response.ok) {
         // Server log only: status + model aid debugging without exposing
         // keys, request bodies, or provider internals to the browser.
-        console.error(`gemini generateContent failed: model=${model} status=${response.status}`);
+        logEvent("error", "gemini.request_failed", { requestId, model, status: response.status });
         if (response.status === 401 || response.status === 403) {
           throw new ProviderError("auth", "The server's AI credentials were rejected.");
         }
@@ -125,7 +156,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
       if (!text) {
         throw new ProviderError("unavailable", "The AI provider returned an empty response.");
       }
-      return text;
+      return { text, usage: readUsage(body) };
     },
   };
 }

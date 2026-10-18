@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  deleteItem,
   duplicateItem,
   moveItem,
   moveItemToCategory,
@@ -18,13 +17,30 @@ interface ItemEditorProps {
   /** All categories, for the move-to-another-category control. */
   categories: Array<{ id: string; name: string }>;
   onChange: (next: MenuDocument) => void;
+  /** Request deletion of this item; the editor confirms and handles undo. */
+  onDelete: () => void;
+  /** Flagged by duplicate detection (review-only badge, see duplicates.ts). */
+  duplicate: boolean;
+  /** Bulk reassignment checkbox state (see menu-editor's bulk actions bar). */
+  selected: boolean;
+  onToggle: () => void;
 }
 
 const smallButton =
   "rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors " +
   "hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
 
-export function ItemEditor({ doc, categoryId, item, categories, onChange }: ItemEditorProps) {
+export function ItemEditor({
+  doc,
+  categoryId,
+  item,
+  categories,
+  onChange,
+  onDelete,
+  duplicate,
+  selected,
+  onToggle,
+}: ItemEditorProps) {
   const category = doc.categories.find((c) => c.id === categoryId);
   const index = category ? category.items.findIndex((i) => i.id === item.id) : -1;
   const needsReview = item.price === null || item.reviewNotes.length > 0;
@@ -291,6 +307,16 @@ export function ItemEditor({ doc, categoryId, item, categories, onChange }: Item
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3">
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${item.name} for bulk actions`}
+            className="h-4 w-4 rounded border-stone-300 accent-amber-700"
+          />
+          Select
+        </label>
         <button
           type="button"
           disabled={index <= 0}
@@ -338,6 +364,11 @@ export function ItemEditor({ doc, categoryId, item, categories, onChange }: Item
             Needs review
           </span>
         )}
+        {duplicate && (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
+            Possible duplicate
+          </span>
+        )}
         <button
           type="button"
           onClick={() => onChange(duplicateItem(doc, categoryId, item.id))}
@@ -347,11 +378,7 @@ export function ItemEditor({ doc, categoryId, item, categories, onChange }: Item
         </button>
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm(`Delete “${item.name}”? This cannot be undone.`)) {
-              onChange(deleteItem(doc, categoryId, item.id));
-            }
-          }}
+          onClick={onDelete}
           className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
         >
           Delete

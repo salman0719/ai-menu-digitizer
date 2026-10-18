@@ -201,7 +201,9 @@ export function moveItem(
   return finalize(next);
 }
 
-/** Move an item to another category (appended at `toIndex`, default end). */
+/**
+ * Move an item to another category (appended at `toIndex`, default end).
+ */
 export function moveItemToCategory(
   doc: MenuDocument,
   fromCategoryId: string,
@@ -220,6 +222,43 @@ export function moveItemToCategory(
     0,
     item
   );
+  return finalize(next);
+}
+
+/**
+ * Move several items to another category at once (bulk reassignment).
+ *
+ * `itemIds` are item ids (unique within a document); repeated ids are
+ * ignored. Moved items keep their document order and land at the end of the
+ * target category. Unknown item or category ids throw; an empty selection
+ * returns the document unchanged.
+ */
+export function moveItemsToCategory(
+  doc: MenuDocument,
+  itemIds: ReadonlyArray<string>,
+  toCategoryId: string
+): MenuDocument {
+  if (itemIds.length === 0) return doc;
+  const next = clone(doc);
+  const target = findCategory(next, toCategoryId);
+  const wanted = new Set(itemIds);
+
+  const collected: MenuItem[] = [];
+  for (const category of next.categories) {
+    const staying: MenuItem[] = [];
+    for (const item of category.items) {
+      if (wanted.has(item.id)) collected.push(item);
+      else staying.push(item);
+    }
+    category.items = staying;
+  }
+
+  const found = new Set(collected.map((item) => item.id));
+  for (const id of wanted) {
+    if (!found.has(id)) throw new Error(`Unknown item id: ${id}`);
+  }
+
+  target.items.push(...collected);
   return finalize(next);
 }
 

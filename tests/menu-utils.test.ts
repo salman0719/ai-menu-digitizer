@@ -10,6 +10,7 @@ import {
   moveCategory,
   moveItem,
   moveItemToCategory,
+  moveItemsToCategory,
   renameCategory,
   setItemAvailability,
   updateItem,
@@ -88,6 +89,46 @@ describe("menu-utils", () => {
     const afterCatDelete = deleteCategory(afterDelete, foodId);
     expect(afterCatDelete.categories).toHaveLength(1);
     expect(afterCatDelete.categories[0].sortOrder).toBe(0);
+  });
+
+  it("moves multiple items across categories at once", () => {
+    const { doc } = setupTwoCategoryMenu();
+    const three = addCategory(doc, { name: "Sides" });
+    const sidesId = three.categories[2].id;
+    const espressoId = three.categories[0].items[0].id; // in Drinks
+    const toastId = three.categories[1].items[0].id; // in Food
+
+    // Ref order is scrambled on purpose: output must follow document order.
+    const moved = moveItemsToCategory(three, [toastId, espressoId], sidesId);
+
+    expect(moved.categories[0].items.map((i) => i.name)).toEqual(["Latte"]);
+    expect(moved.categories[1].items).toHaveLength(0);
+    expect(moved.categories[2].items.map((i) => i.id)).toEqual([espressoId, toastId]);
+    expect(moved.categories[2].items.map((i) => i.sortOrder)).toEqual([0, 1]);
+    expect(moved.categories.map((c) => c.sortOrder)).toEqual([0, 1, 2]);
+    // Inputs are never mutated.
+    expect(three.categories[0].items).toHaveLength(2);
+    expect(doc.categories[0].items).toHaveLength(2);
+  });
+
+  it("deduplicates repeated ids, no-ops on an empty selection, throws on unknown ids", () => {
+    const { doc, drinksId, foodId } = setupTwoCategoryMenu();
+    const espressoId = doc.categories[0].items[0].id;
+
+    const moved = moveItemsToCategory(doc, [espressoId, espressoId], foodId);
+    expect(moved.categories[1].items.filter((i) => i.id === espressoId)).toHaveLength(1);
+    expect(moved.categories[1].items.map((i) => i.sortOrder)).toEqual([0, 1]);
+
+    // Moving into the item's own category appends it there (reordered, kept).
+    const self = moveItemsToCategory(doc, [espressoId], drinksId);
+    expect(self.categories[0].items.map((i) => i.id)).toEqual([
+      doc.categories[0].items[1].id,
+      espressoId,
+    ]);
+
+    expect(moveItemsToCategory(doc, [], foodId)).toBe(doc);
+    expect(() => moveItemsToCategory(doc, ["nope"], foodId)).toThrow();
+    expect(() => moveItemsToCategory(doc, [espressoId], "nope")).toThrow();
   });
 
   it("marks availability without deleting", () => {

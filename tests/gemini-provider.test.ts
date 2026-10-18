@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createGeminiProvider } from "../src/lib/ai/gemini-provider";
-import { ProviderError } from "../src/lib/ai/provider";
+import { NO_USAGE, ProviderError } from "../src/lib/ai/provider";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -19,9 +19,74 @@ describe("createGeminiProvider", () => {
     const fetchImpl = vi.fn(async () => jsonResponse(successBody('{"ok":true}')));
     const provider = createGeminiProvider({ apiKey: "test-key", fetchImpl });
     await expect(
-      provider.generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" })
-    ).resolves.toBe('{"ok":true}');
+      provider.generateText({
+        promptText: "p",
+        images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+      })
+    ).resolves.toEqual({ text: '{"ok":true}', usage: NO_USAGE });
     expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("sends every page as an ordered inlineData part after the prompt", async () => {
+    let body: {
+      contents: Array<{
+        parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
+      }>;
+    } | null = null;
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body)) as typeof body;
+      return jsonResponse(successBody());
+    });
+    const provider = createGeminiProvider({ apiKey: "test-key", fetchImpl });
+    await provider.generateText({
+      promptText: "prompt",
+      images: [
+        { imageBase64: "AAA", mimeType: "image/png" },
+        { imageBase64: "BBB", mimeType: "image/webp" },
+      ],
+    });
+    const parts = body!.contents[0].parts;
+    expect(parts).toHaveLength(3);
+    expect(parts[0].text).toBe("prompt");
+    expect(parts[1].inlineData).toEqual({ mimeType: "image/png", data: "AAA" });
+    expect(parts[2].inlineData).toEqual({ mimeType: "image/webp", data: "BBB" });
+  });
+
+  it("reports token usage, and nulls when the provider omits it", async () => {
+    const withUsage = createGeminiProvider({
+      apiKey: "test-key",
+      fetchImpl: vi.fn(async () =>
+        jsonResponse({
+          ...successBody(),
+          usageMetadata: { promptTokenCount: 1234, candidatesTokenCount: 567 },
+        })
+      ),
+    });
+    const result = await withUsage.generateText({
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    });
+    expect(result.usage).toEqual({ inputTokens: 1234, outputTokens: 567 });
+
+    const without = createGeminiProvider({
+      apiKey: "test-key",
+      fetchImpl: vi.fn(async () => jsonResponse(successBody())),
+    });
+    const plain = await without.generateText({
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    });
+    expect(plain.usage).toEqual(NO_USAGE);
+  });
+
+  it("rejects a request without any image", async () => {
+    const provider = createGeminiProvider({
+      apiKey: "test-key",
+      fetchImpl: vi.fn(async () => jsonResponse(successBody())),
+    });
+    await expect(provider.generateText({ promptText: "p", images: [] })).rejects.toMatchObject({
+      code: "bad_request",
+    });
   });
 
   it("sends the key in a header, never in the URL", async () => {
@@ -33,7 +98,10 @@ describe("createGeminiProvider", () => {
       return jsonResponse(successBody());
     });
     const provider = createGeminiProvider({ apiKey: "secret-key", fetchImpl });
-    await provider.generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" });
+    await provider.generateText({
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    });
     expect(seenUrl).not.toContain("secret-key");
     expect(seenKey).toBe("secret-key");
   });
@@ -52,7 +120,7 @@ describe("createGeminiProvider", () => {
         fetchImpl: vi.fn(async () => new Response("nope", { status })),
       });
       const error = await provider
-        .generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" })
+        .generateText({ promptText: "p", images: [{ imageBase64: "AAA", mimeType: "image/png" }] })
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ProviderError);
       expect((error as ProviderError).code).toBe(code);
@@ -67,25 +135,23 @@ describe("createGeminiProvider", () => {
         throw new TypeError("fetch failed");
       }),
     });
-    await expect(
-      offline.generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" })
-    ).rejects.toMatchObject({ code: "unavailable" });
+    const request = {
+      promptText: "p",
+      images: [{ imageBase64: "AAA", mimeType: "image/png" }],
+    };
+    await expect(offline.generateText(request)).rejects.toMatchObject({ code: "unavailable" });
 
     const blocked = createGeminiProvider({
       apiKey: "k",
       fetchImpl: vi.fn(async () => jsonResponse({ promptFeedback: { blockReason: "SAFETY" } })),
     });
-    await expect(
-      blocked.generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" })
-    ).rejects.toMatchObject({ code: "blocked" });
+    await expect(blocked.generateText(request)).rejects.toMatchObject({ code: "blocked" });
 
     const empty = createGeminiProvider({
       apiKey: "k",
       fetchImpl: vi.fn(async () => jsonResponse({ candidates: [] })),
     });
-    await expect(
-      empty.generateText({ promptText: "p", imageBase64: "AAA", mimeType: "image/png" })
-    ).rejects.toMatchObject({ code: "unavailable" });
+    await expect(empty.generateText(request)).rejects.toMatchObject({ code: "unavailable" });
   });
 
   it("refuses to construct without a key", () => {

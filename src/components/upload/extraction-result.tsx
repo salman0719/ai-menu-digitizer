@@ -12,6 +12,7 @@ export interface PreviewItem {
   price: number | null;
   currency: string | null;
   description: string | null;
+  variants: { name: string; price: number | null }[];
   available: boolean | null;
   dietaryLabels: string[];
   reviewNotes: string[];
@@ -34,15 +35,26 @@ interface ExtractionResultProps {
   onStartOver: () => void;
   /** Open the result in the editor. Absent until Step 4 wiring provides it. */
   onEdit?: () => void;
+  /** Label for the primary action; defaults to "Edit menu". */
+  editLabel?: string;
+  /** Shown when the draft already exists in local storage. */
+  savedNotice?: string | null;
 }
 
 function formatPrice(item: PreviewItem, fallbackCurrency: string | null): string {
-  if (item.price === null) return "Price needed";
+  if (item.price === null) return item.variants.length > 0 ? "Per size" : "Price needed";
   const currency = item.currency ?? fallbackCurrency ?? "";
   return `${currency ? `${currency} ` : ""}${item.price.toFixed(2)}`;
 }
 
-export function ExtractionResult({ data, source, onStartOver, onEdit }: ExtractionResultProps) {
+export function ExtractionResult({
+  data,
+  source,
+  onStartOver,
+  onEdit,
+  editLabel = "Edit menu",
+  savedNotice = null,
+}: ExtractionResultProps) {
   const itemCount = data.categories.reduce((sum, c) => sum + c.items.length, 0);
   const reviewCount = data.categories.reduce(
     (sum, c) => sum + c.items.filter((i) => i.price === null || i.reviewNotes.length > 0).length,
@@ -77,6 +89,12 @@ export function ExtractionResult({ data, source, onStartOver, onEdit }: Extracti
               Prices and names are a best-effort draft. Check anything marked before using it.
             </p>
           )}
+          {savedNotice && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-900">
+              <span aria-hidden="true">✓</span>
+              {savedNotice}
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           {onEdit && (
@@ -85,7 +103,7 @@ export function ExtractionResult({ data, source, onStartOver, onEdit }: Extracti
               onClick={onEdit}
               className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
             >
-              Edit menu
+              {editLabel}
             </button>
           )}
           <button
@@ -140,6 +158,20 @@ export function ExtractionResult({ data, source, onStartOver, onEdit }: Extracti
                     </div>
                     {item.description && (
                       <p className="mt-0.5 text-sm text-stone-600">{item.description}</p>
+                    )}
+                    {item.variants.length > 0 && (
+                      <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-600">
+                        {item.variants.map((variant, index) => (
+                          <li key={`${variant.name}-${index}`} className="tabular-nums">
+                            {variant.name}
+                            <span className="ml-1.5 font-medium text-stone-800">
+                              {variant.price === null
+                                ? "—"
+                                : `${item.currency ?? data.currency ?? ""}${item.currency || data.currency ? " " : ""}${variant.price.toFixed(2)}`}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {item.dietaryLabels.map((label) => (

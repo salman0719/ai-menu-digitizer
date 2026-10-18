@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Menu Digitizer",
-  description: "Turn a menu photo into structured, editable menu data. Local-first prototype.",
+  title: "Tablepass",
+  description:
+    "Turn a menu photo into structured, editable menu data, preview themed menus, and take table orders.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
