@@ -67,6 +67,94 @@ production URL verified end-to-end by the user on 2026-10-16 with
 production). Vercel Hobby's 300s default function timeout covers the Gemini
 call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 
+## Phase 2 — going live (scoped, not started)
+
+Scope, sequencing rationale, acceptance criteria, and researched service
+choices live in [`PHASE-2.md`](PHASE-2.md). Same working rules as Phase 1:
+sequential steps, small atomic commits, quality gates green before a step
+counts as done. Each step may expand into its own sub-commits; do not start a
+step before the previous step's acceptance list passes.
+
+### Step 7 — Foundation: server DB, tenancy, accounts ◻️ not started
+
+Neon Postgres + Drizzle (or whatever is decided from PHASE-2.md §3.3),
+migrations run explicitly (never at request time), Better Auth magic-link
+sign-in with an email sender, restaurants + owner/staff memberships, staging
+DB branch. Anonymous local-only mode untouched.
+**Done when:** a signed-in owner has a restaurant, tenancy isolation tests
+pass, and the anonymous prototype still works end to end.
+
+### Step 8 — Server-backed menus + "Move my menus to my account"
+
+Editor reads/writes the server when signed in (IndexedDB stays the local
+store and offline cache), `updatedAt` conflict check that surfaces
+"changed elsewhere" instead of silently overwriting, one-way import of local
+menus/orders through the same validated API.
+**Done when:** the same menu edits from two browsers converge predictably,
+and a local import preserves ids, order, variants, and review notes.
+
+### Step 9 — One-click publish to a real public URL (I3 core)
+
+Publish button with slug rules and `menu_revision` snapshots, public
+`/m/[slug]` page built on the existing preview components and themes, og/Twitter
+meta, QR code for the page (dependency already present), unpublish,
+"unpublished changes" indicator, cookie-free view count.
+**Done when:** the I3 acceptance list in PHASE-2.md passes on a phone that has
+never opened the app.
+
+### Step 10 — Table ordering across two devices (I1)
+
+Orders API (public POST, board query, status PATCH with server timestamps and
+server-computed totals), rate limits + honeypot on the public endpoint,
+polling/SSE staff board with visible reconnect states, table links that point
+at server data instead of a local IndexedDB id.
+**Done when:** the I1 acceptance list passes: a cold phone order appears on
+the owner's device within ~10 s without a refresh, and survives a deploy.
+
+### Step 11 — Pilot packaging (make the pilot sellable)
+
+Pilot price, Stripe Payment Link checkout, onboarding checklist (extract →
+review → theme → print table cards → publish → first order), privacy policy
+
+- terms, per-restaurant Gemini spend visibility, order retention window
+  (default 90 days) plus owner data export/delete.
+  **Done when:** one real café goes image → live URL → first order using only
+  the packaged checklist, and a second café could be onboarded the same way.
+
+### Step 12 — B2B extraction API surface (I2)
+
+`POST /v1/extract` + `GET /v1/usage`, Bearer API keys (hashed, shown once,
+rotate/revoke), idempotency keys, per-key rate limits and spend caps, sandbox
+key returning clearly-labelled sample output, `/developers` docs page with
+curl + error table.
+**Done when:** an external developer gets schema-valid JSON using only the
+docs, with no repo access and no manual step from us.
+
+### Step 13 — Metering + usage billing (I2 commercial)
+
+`usage_event` ledger written idempotently per request, usage dashboard,
+measured real cost per page-image (this feeds the price), Stripe prepaid
+credits via Payment Link first; Stripe Billing Meters only when a customer
+wants recurring usage billing.
+**Done when:** dashboard totals equal the sum of request ids in tests, credits
+draw down exactly once per request, and a Stripe test invoice matches our
+own ledger.
+
+### Step 14 — Harden + observe (verification pass across Phase 2)
+
+Error tracking, structured logs with request ids, security headers/CORS,
+rate-limit and volume alerts, backup/restore check, re-verify that no secret
+reaches a client bundle now that auth and DB code exist, documented two-device
+test script.
+**Done when:** the cross-cutting checklist (PHASE-2.md §7) is verified end to
+end — a production failure is visible to us without waiting for a user
+report.
+
+**Priority note:** the two remaining Phase 1 P1 items (description cleanup,
+translation) sit _below_ this Phase 2 work unless explicitly pulled up — they
+are enhancements to a prototype we already shipped, not steps toward making
+it live.
+
 ## Decisions
 
 - **No shadcn/ui** (user decision). Tailwind primitives + small local
@@ -81,6 +169,19 @@ call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 - [x] Vercel project setup — imported from GitHub, production verified 2026-10-16.
 - [x] Sample menu images — collected in `local/samples/menus/`
       (clean: `cafe-board-clean-01.jpg`; difficult: `vintage-menu-01.png`).
+
+## Things needed from the user — Phase 2 (details in PHASE-2.md §9)
+
+- [ ] **Server DB** — recommendation: Neon Postgres + Drizzle.
+- [ ] **Auth** — recommendation: Better Auth (magic links) + an email sender
+      account (e.g. Resend) for sign-in links.
+- [ ] **Billing account** — Stripe (test mode first) for pilot Payment Links;
+      usage meters only when recurring billing is needed.
+- [ ] **Pilot price + size** — a number, and how many cafés to aim for first.
+- [ ] **Dependency exception sign-off** — DB driver/ORM and auth library are
+      the documented exception to "no new dependencies" in AGENTS.md.
+- [ ] **Public URL shape** — `/m/<slug>` on the current domain; custom
+      domains deferred to phase 3 (change if you disagree).
 
 ## P1 backlog — all remaining work (P0 complete)
 
