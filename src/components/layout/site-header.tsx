@@ -14,9 +14,17 @@ export function SiteHeader() {
             <p className="text-xs text-stone-500">Menu photo in, structured menu out</p>
           </div>
         </div>
-        <span className="hidden rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-500 sm:inline">
-          Local-first prototype
-        </span>
+        <div className="flex items-center gap-3">
+          <a
+            href="/sign-in"
+            className="rounded-lg border border-stone-300 px-2.5 py-1 text-[11px] font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900"
+          >
+            Sign in
+          </a>
+          <span className="hidden rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-500 sm:inline">
+            Local-first prototype
+          </span>
+        </div>
       </div>
     </header>
   );
