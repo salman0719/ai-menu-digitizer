@@ -37,9 +37,7 @@ interface TableOrderProps {
 export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
   // A missing menu/table in the link is known at mount, so no effect is needed
   // to report it; the effect below only loads data.
-  const [state, setState] = useState<LoadState>(
-    menuId && tableLabel ? "loading" : "invalid_link"
-  );
+  const [state, setState] = useState<LoadState>(menuId && tableLabel ? "loading" : "invalid_link");
   const [menu, setMenu] = useState<MenuDocument | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [lines, setLines] = useState<OrderLine[]>([]);
@@ -165,7 +163,9 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
     return (
       <Shell>
         <div className={`${frame} p-8`}>
-          <p className="text-lg font-semibold text-stone-900">This menu isn&apos;t on this device</p>
+          <p className="text-lg font-semibold text-stone-900">
+            This menu isn&apos;t on this device
+          </p>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             Menus are stored in the browser that created them. This link points at a menu saved
             somewhere else — table links work on the device holding the menu, or anywhere the same
@@ -208,8 +208,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
             {formatTotal(placed.currency, orderTotal(placed.lines))}
           </p>
           <p className="mx-auto mt-4 max-w-md text-xs leading-5 text-stone-500">
-            Saved in this browser for staff to pick up. Nothing was sent to a server — this is a
-            local-first prototype.
+            Saved in this browser for staff to pick up. Nothing has been sent to a server.
           </p>
           <button
             type="button"
@@ -365,13 +364,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
   );
 }
 
-function Shell({
-  tableLabel,
-  children,
-}: {
-  tableLabel?: string;
-  children: React.ReactNode;
-}) {
+function Shell({ tableLabel, children }: { tableLabel?: string; children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-4 px-4 py-6">
       <header className="flex items-center justify-between gap-3">
@@ -384,7 +377,7 @@ function Shell({
           </span>
           <div>
             <p className="text-sm font-bold tracking-tight text-stone-900">Table ordering</p>
-            <p className="text-xs text-stone-500">Menu photo in, structured menu out</p>
+            <p className="text-xs text-stone-500">Menus, tables, and orders in one place</p>
           </div>
         </div>
         {tableLabel && (
@@ -422,8 +415,7 @@ function MenuSection({
       <ul className="divide-y divide-stone-100">
         {category.items.map((item) => {
           const soldOut = item.available === false;
-          const variantName =
-            variantChoice[item.id] ?? (item.variants[0]?.name ?? null);
+          const variantName = variantChoice[item.id] ?? item.variants[0]?.name ?? null;
           const variant = variantName
             ? item.variants.find((candidate) => candidate.name === variantName)
             : null;
@@ -473,7 +465,9 @@ function MenuSection({
                       {item.variants.map((option) => (
                         <option key={option.name} value={option.name}>
                           {option.name}
-                          {option.price !== null ? ` — ${formatPreviewPrice(option.price, null, currency)}` : ""}
+                          {option.price !== null
+                            ? ` — ${formatPreviewPrice(option.price, null, currency)}`
+                            : ""}
                         </option>
                       ))}
                     </select>
