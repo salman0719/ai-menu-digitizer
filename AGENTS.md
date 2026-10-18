@@ -112,6 +112,23 @@ errors, or add lint/type suppressions just to make checks pass.
   `tests/publishing-repo.test.ts`, `tests/publishing-api.test.ts`.
   Invariant: the public page renders `menu_revision`, never `menu.doc`, so
   edits stay private until "Publish changes".
+- `src/features/orders/` — Step 10 table orders: `schema.ts` (canonical
+  order schema, the status transitions, totals), `repo.ts` (server-only:
+  snapshot-priced placement, membership-scoped board + cursor, conditional
+  status writes, fixed-window rate limit), `client.ts` (typed browser client),
+  `storage.ts` + `table-links.ts` (Phase 1 local queue + link helpers).
+  Routes: `src/app/api/orders/` (public POST, staff GET) and
+  `src/app/api/orders/[orderId]/` (PATCH). Diner page
+  `src/app/m/[slug]/order/page.tsx` (snapshot only, noindex) with
+  `src/components/order/` (`order-menu.tsx` shared UI, `server-table-order.tsx`,
+  `table-order.tsx` for local mode); staff board
+  `src/components/orders/server-orders-board.tsx` (5 s polling with backoff
+  and a visible reconnect state) behind the session switch in
+  `orders-board.tsx`. Tests: `tests/orders-repo.test.ts`,
+  `tests/orders-api.test.ts` (PGlite + real handlers).
+  Invariants: a diner sends ids/variants/quantities only — names, prices, and
+  totals are resolved server-side from the published snapshot and the total
+  is null when any line is unpriced; statuses only move forward.
 - `PHASE-2.md` — Phase 2 scope, service choices, acceptance criteria
 - `ROADMAP.md` — current build order (Phase 1 steps done, Phase 2 steps planned)
 

@@ -202,7 +202,7 @@ done-when criterion — same-origin tabs exercise the public path, but a real
 cold device needs the deployed URL. The I3 ordering and real-café onboarding
 items belong to Steps 10–11.
 
-### Step 10 — Table ordering across two devices (I1) ◻️ next
+### Step 10 — Table ordering across two devices (I1) ✅ done (browser-verified against Neon)
 
 Orders API (public POST, board query, status PATCH with server timestamps and
 server-computed totals), rate limits + honeypot on the public endpoint,
@@ -211,7 +211,41 @@ at server data instead of a local IndexedDB id.
 **Done when:** the I1 acceptance list passes: a cold phone order appears on
 the owner's device within ~10 s without a refresh, and survives a deploy.
 
-### Step 11 — Free launch packaging + hardening (nothing is charged)
+**Built:** migration 0003 adds `order` + `order_line` (snapshots of name,
+variant, and unit price in integer cents, a server-computed `total_cents`
+that is null when any line is unpriced, and a nullable menu link so history
+outlives a deleted menu) and `order_rate_limit` (fixed-window counters keyed
+by a hash of caller + window minute — no raw IP stored). `POST /api/orders`
+is anonymous and resolves every line against the *published snapshot*;
+`GET /api/orders` serves the membership-scoped board and returns everything
+changed after `since`; `PATCH /api/orders/[orderId]` moves status forward
+(new → preparing → served, cancel while working) and is conditional on the
+`updatedAt` the caller saw. The diner page
+`/m/[slug]/order?table=<n>` is server-rendered from the snapshot; the Orders
+tab picks the server board when signed in and the Phase 1 IndexedDB queue
+when signed out; table QR cards encode the public link once the menu is live.
+
+**Verified 2026-10-18 (live, two browser tabs against Neon):** an order
+placed on the diner page (`/m/bistro-four/order?table=3`, receipt #41F563)
+appeared on the signed-in board **3.8 s after the POST committed**, with no
+manual refresh; a status change made in a second board tab reached the first
+tab **1.8 s after the PATCH** through the incremental cursor. Killing the dev
+server mid-session switched the board to “Reconnecting… last update 07:46 PM”
+with an explanation while keeping all four orders on screen, and a restart
+brought it back to Live with the same data. Unpublished and unknown slugs
+render the not-live page; a table link without a table number says what it
+needs. Incognito (signed-out) still shows the local queue with no server
+call. `menu_revision`-backed ordering, rate limiting, the honeypot, and
+payload caps are covered by 21 new tests (212 total); lint, typecheck, build
+green. Four demo orders remain in the account from this run.
+
+**Not yet verifiable here:** the “cold phone on cellular, different network”
+half of the done-when (same-origin tabs were used), and a real deploy/restart
+— the dev-server restart exercised persistence, not Vercel. Signed-out local
+ordering was not exercised end to end (signing out would cost the magic-link
+session), but that code is unchanged and its tests pass.
+
+### Step 11 — Free launch packaging + hardening (nothing is charged) ◻️ next
 
 "Free while it lasts" promotion for the café track: onboarding checklist
 (extract → review → theme → print table cards → publish → first order) and a
