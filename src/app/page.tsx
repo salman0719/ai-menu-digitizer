@@ -1161,7 +1161,7 @@ export default function Home() {
                   </p>
                 )}
                 <p className="text-center text-sm text-stone-500">
-                  No menu handy, or no API key configured?{" "}
+                  No menu handy?{" "}
                   <button
                     type="button"
                     onClick={handleDemo}
