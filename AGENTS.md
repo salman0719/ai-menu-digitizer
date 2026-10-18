@@ -100,6 +100,18 @@ errors, or add lint/type suppressions just to make checks pass.
   `tests/menus-repo.test.ts`, `tests/menus-api.test.ts`,
   `tests/menus-sync.test.ts`, `tests/move-to-account.test.ts` — Step 8
   (PGlite + stubbed fetch; conflict, tenancy, import fidelity)
+- `src/features/publishing/` — Step 9 publish: `schema.ts` (slug rules +
+  publication status), `slug.ts` (deterministic slug generation and
+  collision candidates), `repo.ts` (snapshot revisions, publish/unpublish,
+  slug changes, public read path, view counter), `client.ts` (typed browser
+  client). Routes: `src/app/api/menus/[menuId]/publication/` and
+  `src/app/api/m/[slug]/view/`. Public page `src/app/m/[slug]/page.tsx`
+  (partial prerender; snapshot only) + `not-found.tsx`; editor UI
+  `src/components/menu-editor/publish-panel.tsx`, view beacon
+  `view-counter.tsx`. Tests: `tests/publishing-slug.test.ts`,
+  `tests/publishing-repo.test.ts`, `tests/publishing-api.test.ts`.
+  Invariant: the public page renders `menu_revision`, never `menu.doc`, so
+  edits stay private until "Publish changes".
 - `PHASE-2.md` — Phase 2 scope, service choices, acceptance criteria
 - `ROADMAP.md` — current build order (Phase 1 steps done, Phase 2 steps planned)
 

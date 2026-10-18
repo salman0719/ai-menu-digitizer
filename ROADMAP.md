@@ -161,7 +161,7 @@ the library after reload and opened; the move panel hid), renaming it in the
 library (server title changed), and deleting it (row gone from Neon, account
 back to its 7 menus). 161 tests green.
 
-### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature) ◻️ next
+### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature) ✅ done (browser-verified against Neon)
 
 This is the flagship feature of the phase (user decision 2026-10-18), built
 right after the foundation and always free — no checkout anywhere.
@@ -172,7 +172,37 @@ meta, QR code for the page (dependency already present), unpublish,
 **Done when:** the I3 acceptance list in PHASE-2.md passes on a phone that has
 never opened the app.
 
-### Step 10 — Table ordering across two devices (I1)
+**Built:** migration 0002 adds `menu_revision` (immutable, Zod-validated
+snapshots that record the theme/layout and the menu `updated_at` they came
+from) and `published_menu` (one reserved slug per menu, a live revision
+pointer, a view count). `/api/menus/[menuId]/publication` reads status for any
+member and publishes, renames the address, or unpublishes for the owner only;
+`/api/m/[slug]/view` counts a visit server-side with no cookie or identifier.
+The editor's preview screen carries the publish panel (link, copy/open/QR,
+views, editable slug, unpublish); the public page is a Cache-Components route
+(shell + streamed menu) with og/Twitter meta, `noindex,nofollow` by default,
+and a plain not-found page for unknown or unpublished slugs.
+
+**Verified 2026-10-18:** migration applied explicitly to Neon; published
+"Bistro Four" through the API and loaded `/m/bistro-four` in a second browser
+tab (bistro theme, 2 categories/2 items, em dashes for unset prices, og title +
+description, `noindex`, view count 0 → 1). Editing the currency then reopening
+the preview showed *Draft changes are not on the public page yet* and the
+`Draft preview · public page is older` eyebrow while the public page still
+served the old revision; **Publish changes** created revision 2 and the page
+showed the new content with the warning cleared. Renaming the address moved
+the page and 404'd the old slug (later restored). **Unpublish** rendered the
+not-live page and stopped counting views; republishing reused the slug and
+kept the view count. QR renders the public URL. 190 tests green (new:
+publishing-slug, publishing-repo, publishing-api); lint, typecheck, build
+green.
+
+**Not yet verifiable here:** the “phone that never opened the app” half of the
+done-when criterion — same-origin tabs exercise the public path, but a real
+cold device needs the deployed URL. The I3 ordering and real-café onboarding
+items belong to Steps 10–11.
+
+### Step 10 — Table ordering across two devices (I1) ◻️ next
 
 Orders API (public POST, board query, status PATCH with server timestamps and
 server-computed totals), rate limits + honeypot on the public endpoint,
