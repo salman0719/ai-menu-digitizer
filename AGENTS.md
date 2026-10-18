@@ -57,6 +57,10 @@ errors, or add lint/type suppressions just to make checks pass.
   `PHASE-2.md` §3.3; Zod-validate every server boundary; never trust
   client-supplied totals or ownership ids; API keys hashed, shown once,
   revocable; usage recorded in our own ledger; secrets server-side only.
+  Migrations are generated offline (`npm run db:generate`) and applied only
+  explicitly (`npm run db:migrate`) — never at request time; `drizzle/` is
+  generated output, never hand-edited. Sign-in is Better Auth magic link
+  only (`PHASE-2.md` §3.6); server files never ship to client bundles.
 
 ## AI extraction honesty
 
@@ -74,6 +78,15 @@ errors, or add lint/type suppressions just to make checks pass.
   `storage.ts`, `import-export.ts` — editor + persistence (Agent D owns)
 - `src/components/upload/`, layout — shell + upload (Agent B owns)
 - `tests/` — schema, utils, import-export, route tests
+- `src/lib/db/`, `drizzle/` — Drizzle schema + lazy Neon client; generated
+  migrations (do not hand-edit `drizzle/`)
+- `src/lib/auth/`, `src/lib/auth-client.ts`, `src/app/api/auth/`,
+  `src/app/sign-in/` — Better Auth magic-link config, email sender, route,
+  session guard, sign-in page
+- `src/features/tenancy/repo.ts`, `src/app/api/restaurants/` —
+  ownership-scoped restaurant repository + API (session id only)
+- `tests/helpers/pg-test-db.ts`, `tests/tenancy.test.ts`,
+  `tests/auth-magic-link.test.ts` — Step 7 isolation/auth tests (PGlite)
 - `PHASE-2.md` — Phase 2 scope, service choices, acceptance criteria
 - `ROADMAP.md` — current build order (Phase 1 steps done, Phase 2 steps planned)
 

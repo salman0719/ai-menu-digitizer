@@ -6,8 +6,10 @@ save or export the result. AI output is a draft — the app flags anything
 uncertain for review and never invents missing prices, descriptions, or
 dietary labels.
 
-Local-first prototype: menus are stored in your browser (IndexedDB). No
-accounts, no server database.
+Local-first prototype: menus are stored in your browser (IndexedDB) — no
+account required, and nothing leaves your device except extraction.
+Accounts/server sync (Phase 2) are scaffolded but inert until database
+credentials are configured.
 
 ## Stack
 
@@ -33,10 +35,15 @@ sample data, so the editor, persistence, and export can all be exercised.
 
 ### Environment variables
 
-| Variable         | Where             | Purpose                                              |
-| ---------------- | ----------------- | ---------------------------------------------------- |
-| `GEMINI_API_KEY` | Server only       | Gemini API key. Required for real extraction.        |
-| `GEMINI_MODEL`   | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`. |
+| Variable             | Where             | Purpose                                                           |
+| -------------------- | ----------------- | ----------------------------------------------------------------- |
+| `GEMINI_API_KEY`     | Server only       | Gemini API key. Required for real extraction.                     |
+| `GEMINI_MODEL`       | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`.              |
+| `DATABASE_URL`       | Server (optional) | Neon Postgres URL. Absent = local-only mode.                      |
+| `BETTER_AUTH_SECRET` | Server only       | Better Auth secret; generate with `openssl rand -base64 32`.      |
+| `BETTER_AUTH_URL`    | Server            | App base URL (local `http://localhost:3200`; prod = site URL).    |
+| `RESEND_API_KEY`     | Server only       | Resend key for sign-in emails (placeholder until account exists). |
+| `EMAIL_FROM`         | Server only       | Verified sending address for sign-in mail.                        |
 
 Rules enforced by the code:
 
@@ -47,6 +54,9 @@ Rules enforced by the code:
 - Provider errors, credentials, and stack traces are never returned to the
   browser; the API responds with `{ error: { code, message } }` only.
 - Uploaded images are processed in memory and never stored server-side.
+- Magic links are never logged in production (dev prints them to the server
+  console only when `RESEND_API_KEY` is absent, clearly labelled).
+- Personalized API responses are sent with `Cache-Control: no-store`.
 
 ## Scripts
 
@@ -59,7 +69,26 @@ npm run typecheck    # tsc --noEmit (strict)
 npm run test         # Vitest unit tests (single run)
 npm run test:watch   # Vitest watch mode
 npm run format       # Prettier write
+npm run db:generate  # generate a SQL migration from the schema (offline)
+npm run db:migrate   # apply migrations to DATABASE_URL (explicit, never at request time)
 ```
+
+## Accounts (Phase 2 scaffolding — not live yet)
+
+Step 7 groundwork is in the repo, gated by credentials:
+
+- **Sign-in** — `/sign-in` sends a one-time magic link (Better Auth, implicit
+  sign-up) for owners and staff only; diners and public menu visitors stay
+  anonymous. Sessions last 30 days, rolling. Requires `BETTER_AUTH_SECRET`.
+- **Schema** — `src/lib/db/schema.ts` holds the Better Auth core tables plus
+  `restaurant` / `restaurant_membership` (owner|staff, unique per pair);
+  migrations live in `drizzle/`, generated with `npm run db:generate`.
+- **API** — `GET|POST /api/restaurants` behind a session guard; ownership is
+  enforced in `src/features/tenancy/repo.ts` using only the session user id.
+- **Until `DATABASE_URL` exists** the app behaves exactly as before:
+  local-only, sign-in reports that sync is unavailable, nothing breaks.
+- Covered by `tests/tenancy.test.ts` and `tests/auth-magic-link.test.ts`,
+  which run the real generated migrations on in-process Postgres (PGlite).
 
 ## How it works
 
@@ -95,7 +124,9 @@ npm run format       # Prettier write
 `npm run test` covers the schema, menu utilities, extraction conversion,
 provider error mapping, API service/validation, image constraints, the
 extraction client, IndexedDB storage (via `fake-indexeddb`), and JSON/CSV
-import/export escaping.
+import/export escaping, plus tenancy isolation and magic-link sign-in run
+end to end against an in-process Postgres (PGlite) using the real generated
+migrations.
 
 Before finishing a change, run the full gate:
 
@@ -114,13 +145,18 @@ npm run lint && npm run typecheck && npm run test && npm run build
    is no separate server or long-running process.
 5. Verify with a real image after deploying: upload → extract → edit → reload.
 
-No other services are required: no external database, auth, or file storage.
+Extraction requires no services beyond `GEMINI_API_KEY`. The scaffolded
+account features (not live yet) additionally need `DATABASE_URL` (Neon),
+`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and Resend credentials before
+sign-in works in production.
 
 ## Scope
 
 What is live today is the local-first prototype (see `PLAN.md`): menus and
-table orders live in this browser's IndexedDB, there are no accounts and no
-server database. Themed customer previews and printable QR table cards are
+table orders live in this browser's IndexedDB — there are still no accounts
+or server database in use. Step 7 of Phase 2 is scaffolded but inert:
+magic-link sign-in, the Postgres schema, and ownership-scoped APIs exist in
+the repo and wait on credentials. Themed customer previews and printable QR table cards are
 included; on a customer's phone the QR page is honest that the menu lives on
 the owner's device.
 

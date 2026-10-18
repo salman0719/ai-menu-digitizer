@@ -75,7 +75,7 @@ sequential steps, small atomic commits, quality gates green before a step
 counts as done. Each step may expand into its own sub-commits; do not start a
 step before the previous step's acceptance list passes.
 
-### Step 7 — Foundation: server DB, tenancy, accounts ◻️ next
+### Step 7 — Foundation: server DB, tenancy, accounts ◻️ in progress
 
 Decided stack (user sign-off 2026-10-18, PHASE-2.md §9): **Neon Postgres +
 Drizzle**, migrations run explicitly (never at request time), **Better Auth
@@ -84,6 +84,22 @@ PHASE-2.md §3.6 — restaurants + owner/staff memberships, staging DB branch.
 Anonymous local-only mode untouched.
 **Done when:** a signed-in owner has a restaurant, tenancy isolation tests
 pass, and the anonymous prototype still works end to end.
+
+**Scaffolded 2026-10-18** (7 commits on `docs/phase-2-scope`): Drizzle
+schema (Better Auth core + `restaurant`/`restaurant_membership`) with an
+offline-generated migration and a lazy Neon client (safe to import without
+`DATABASE_URL`); Better Auth magic-link config + Resend sender
+(dev prints links to the console, prod fails honestly),
+`/api/auth/[...all]`, `/sign-in` page linked from the header, server
+session guard, ownership-scoped tenancy repo, `GET|POST /api/restaurants`
+(401/400/503, `no-store`); six new tests — tenancy isolation incl. staff
+read-only and cascade deletes, plus magic-link E2E (one link → implicit
+sign-up → session → single-use token consumed) — running against the real
+generated DDL on PGlite; all gates green (128 tests). Locally: `/sign-in`
+renders and fails gracefully without a DB; anonymous flow untouched.
+**Remaining for this step:** Neon + Resend credentials, `db:migrate`
+against the real DB, deploy, and verifying "a signed-in owner has a
+restaurant" end to end in two browsers.
 
 ### Step 8 — Server-backed menus + "Move my menus to my account"
 
