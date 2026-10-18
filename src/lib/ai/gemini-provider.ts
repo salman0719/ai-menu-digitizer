@@ -6,6 +6,8 @@
  * Docs: https://ai.google.dev/gemini-api/docs/models
  */
 
+import { logEvent } from "@/lib/observability/log";
+
 import { ExtractionProvider, ExtractionRequest, ProviderError } from "./provider";
 
 /**
@@ -23,6 +25,8 @@ export interface GeminiProviderOptions {
   model?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Correlates provider failures with the request log line. */
+  requestId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,7 +54,7 @@ function blockReason(body: unknown): string | null {
 }
 
 export function createGeminiProvider(options: GeminiProviderOptions): ExtractionProvider {
-  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
+  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch, requestId } = options;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!apiKey) throw new ProviderError("auth", "Gemini API key is missing.");
 
@@ -87,9 +91,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
         });
       } catch (fetchError) {
         // Server log only: transport detail contains no keys or bodies.
-        console.error(
-          `gemini fetch failed: ${fetchError instanceof Error ? `${fetchError.name}: ${fetchError.message}` : String(fetchError)}`
-        );
+        logEvent("error", "gemini.fetch_failed", { requestId, model, error: fetchError });
         throw new ProviderError(
           "unavailable",
           "Could not reach the AI provider. Check your connection and try again."
@@ -99,7 +101,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): Extraction
       if (!response.ok) {
         // Server log only: status + model aid debugging without exposing
         // keys, request bodies, or provider internals to the browser.
-        console.error(`gemini generateContent failed: model=${model} status=${response.status}`);
+        logEvent("error", "gemini.request_failed", { requestId, model, status: response.status });
         if (response.status === 401 || response.status === 403) {
           throw new ProviderError("auth", "The server's AI credentials were rejected.");
         }

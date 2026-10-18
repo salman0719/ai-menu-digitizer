@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { createGeminiProvider } from "@/lib/ai/gemini-provider";
 import { extractMenuFromImages, ServiceError } from "@/lib/ai/service";
+import { requestIdFrom } from "@/lib/observability/log";
+import { reportError } from "@/lib/observability/alerts";
 
 /**
  * POST /api/extract-menu — multipart form with one or more `image` file
@@ -11,6 +13,7 @@ import { extractMenuFromImages, ServiceError } from "@/lib/ai/service";
  * credentials, or stack traces. Uploaded bytes are not stored server-side.
  */
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = requestIdFrom(request);
   try {
     let form: FormData;
     try {
@@ -25,7 +28,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const apiKey = process.env.GEMINI_API_KEY;
     const provider = apiKey
-      ? createGeminiProvider({ apiKey, model: process.env.GEMINI_MODEL || undefined })
+      ? createGeminiProvider({ apiKey, model: process.env.GEMINI_MODEL || undefined, requestId })
       : null;
 
     const images = await Promise.all(
@@ -44,7 +47,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: error.status }
       );
     }
-    console.error("extract-menu unexpected error", error);
+    // Server log + operator alert carry the request id; the browser only
+    // ever sees the plain message below.
+    await reportError("extract_menu.failed", error, { requestId });
     return NextResponse.json(
       { error: { code: "internal_error", message: "Something went wrong. Try again." } },
       { status: 500 }

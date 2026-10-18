@@ -10,6 +10,8 @@ import {
 } from "@/features/orders/repo";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
+import { alertOps, reportError } from "@/lib/observability/alerts";
+import { logEvent, requestIdFrom } from "@/lib/observability/log";
 
 /**
  * POST /api/orders — place an order from a public table link. Anonymous by
@@ -91,6 +93,7 @@ function callerBucket(request: Request, now: Date): string {
 }
 
 export async function POST(request: Request) {
+  const requestId = requestIdFrom(request);
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
     return errorResponse("payload_too_large", "That order is too large to submit.", 413);
@@ -115,6 +118,14 @@ export async function POST(request: Request) {
   try {
     const limit = await consumeOrderRateLimit(getDb(), callerBucket(request, now), now);
     if (!limit.allowed) {
+      logEvent("warn", "orders.rate_limited", { requestId, count: limit.count });
+      // Volume signal: a single table can trip the minute limit by mistake,
+      // so this is throttled to one email per hour by the alert key.
+      await alertOps({
+        subject: "Order rate limit reached",
+        details: `A caller hit the order rate limit (${limit.count} attempts in one minute). If this is not a busy service, someone is abusing the public endpoint.`,
+        dedupeKey: "orders.rate_limited",
+      });
       const response = errorResponse(
         "rate_limited",
         "Too many orders from this connection. Wait a minute and try again.",
@@ -137,7 +148,7 @@ export async function POST(request: Request) {
     if (error instanceof OrderRepoError) return mapRepoError(error);
     // Server-side only: the browser gets a plain 503, the operator gets the
     // cause in the logs (never the other way around).
-    console.error("[orders] placing an order failed", error);
+    await reportError("orders.place_failed", error, { requestId });
     return errorResponse("server_db_unavailable", "Could not place the order. Try again.", 503);
   }
 }
@@ -176,6 +187,9 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof OrderRepoError) return mapRepoError(error);
+    await reportError("orders.board_failed", error, {
+      requestId: requestIdFrom(request),
+    });
     return errorResponse("server_db_unavailable", "Could not load orders. Try again.", 503);
   }
 }
