@@ -85,7 +85,9 @@ Anonymous local-only mode untouched.
 **Done when:** a signed-in owner has a restaurant, tenancy isolation tests
 pass, and the anonymous prototype still works end to end.
 
-**Scaffolded 2026-10-18** (7 commits on `docs/phase-2-scope`): Drizzle
+**Scaffolded 2026-10-18** (9 commits on `phase-2`, renamed from
+`docs/phase-2-scope` since it carries all Phase 2 work, not just docs):
+Drizzle
 schema (Better Auth core + `restaurant`/`restaurant_membership`) with an
 offline-generated migration and a lazy Neon client (safe to import without
 `DATABASE_URL`); Better Auth magic-link config + Resend sender
@@ -97,9 +99,13 @@ read-only and cascade deletes, plus magic-link E2E (one link → implicit
 sign-up → session → single-use token consumed) — running against the real
 generated DDL on PGlite; all gates green (128 tests). Locally: `/sign-in`
 renders and fails gracefully without a DB; anonymous flow untouched.
-**Remaining for this step:** Neon + Resend credentials, `db:migrate`
-against the real DB, deploy, and verifying "a signed-in owner has a
-restaurant" end to end in two browsers.
+**Status 2026-10-18:** Neon + Resend credentials are in (migration
+applied to the real DB, endpoints verified live). Email testing uses the
+**Resend sandbox sender `onboarding@resend.dev`** — clearly marked in
+`.env.local`; it delivers only to the Resend account's own address — and
+swaps to a verified domain later (`.env.example` documents both).
+**Remaining for this step:** deploy, and verifying "a signed-in owner has
+a restaurant" end to end in two browsers.
 
 ### Step 8 — Server-backed menus + "Move my menus to my account"
 
