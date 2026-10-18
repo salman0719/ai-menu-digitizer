@@ -8,8 +8,9 @@
  * output is a draft, and the human review surface is not the preview).
  *
  * Appearance comes from `preview-themes.ts`; this component only applies the
- * tokens. A "Preview · not published" label stays visible so this never reads
- * as a published page (publishing a public site is out of scope). Unset prices
+ * tokens. The `eyebrow` prop lets the surfaces tell the truth about what is
+ * being shown: the editor previews a draft ("Preview · not published"), while
+ * the public page says "Menu" because it *is* what visitors get. Unset prices
  * render as an em dash; nothing is ever invented.
  */
 
@@ -28,16 +29,23 @@ interface MenuPreviewProps {
   themeId?: PreviewThemeId | null;
   /** Section arrangement; defaults to a single list. */
   layout?: PreviewLayoutId | null;
+  /** Small label above the title; must not claim more than the surface is. */
+  eyebrow?: string;
 }
 
-export function MenuPreview({ doc, themeId, layout }: MenuPreviewProps) {
+export function MenuPreview({
+  doc,
+  themeId,
+  layout,
+  eyebrow = "Preview · not published",
+}: MenuPreviewProps) {
   const theme = previewTheme(themeId);
   const itemCount = doc.categories.reduce((sum, category) => sum + category.items.length, 0);
 
   return (
     <div data-menu-preview className={`flex flex-col gap-4 ${theme.font}`}>
       <div className={`rounded-2xl px-6 py-10 ${theme.page} ${theme.headerAlign}`}>
-        <p className={theme.eyebrow}>Preview · not published</p>
+        <p className={theme.eyebrow}>{eyebrow}</p>
         <h2 className={`mt-2 ${theme.title}`}>{doc.title.trim() || "Untitled menu"}</h2>
         {doc.categories.length > 0 && (
           <p className={`mt-3 text-sm ${theme.description}`}>
