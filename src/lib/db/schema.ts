@@ -247,6 +247,78 @@ export const publishedMenu = pgTable(
   })
 );
 
+/**
+ * A table order (Step 10 — ordering across devices).
+ *
+ * `restaurant_id` scopes the order to a tenant; `menu_id` is nullable and
+ * clears if the menu is deleted, while `menu_title`/`currency` and every line
+ * keep a snapshot so order history survives menu edits and deletions. The
+ * total is computed on the server only and stored in integer cents; it is
+ * null as soon as any line has no price (Phase 1 honesty: never a partial
+ * sum). Status is one of the Phase 1 set and only ever moves forward.
+ */
+export const order = pgTable(
+  "order",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    menuId: text("menu_id").references(() => menu.id, { onDelete: "set null" }),
+    menuTitle: text("menu_title").notNull(),
+    /** Free-form table label copied from the link: "3", "Patio 2", "Bar". */
+    tableLabel: text("table_label").notNull(),
+    currency: text("currency"),
+    note: text("note"),
+    status: text("status", { enum: ["new", "preparing", "served", "cancelled"] })
+      .notNull()
+      .$defaultFn(() => "new" as const),
+    /** Server-computed cents; null when any line is unpriced. */
+    totalCents: integer("total_cents"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt().$onUpdateFn(() => new Date()),
+  },
+  (t) => ({
+    restaurantCreatedIdx: index("order_restaurant_created_idx").on(t.restaurantId, t.createdAt),
+    restaurantStatusIdx: index("order_restaurant_status_idx").on(t.restaurantId, t.status),
+  })
+);
+
+/** One line of an order: a snapshot of the menu item at ordering time. */
+export const orderLine = pgTable(
+  "order_line",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => order.id, { onDelete: "cascade" }),
+    menuItemId: text("menu_item_id").notNull(),
+    name: text("name").notNull(),
+    variantName: text("variant_name"),
+    /** Integer cents, or null when the menu showed no price. */
+    unitPriceCents: integer("unit_price_cents"),
+    quantity: integer("quantity").notNull(),
+  },
+  (t) => ({
+    orderIdx: index("order_line_order_idx").on(t.orderId),
+  })
+);
+
+/**
+ * Fixed-window counters for the anonymous order endpoint (Step 10).
+ * `key` is a one-way hash of the caller's address plus the window minute, so
+ * no raw IP is stored; rows are tiny and can be swept by age in Step 11.
+ */
+export const orderRateLimit = pgTable("order_rate_limit", {
+  key: text("key").primaryKey(),
+  windowStart: timestamp("window_start").notNull(),
+  count: integer("count").notNull().default(0),
+});
+
 /** Everything the Drizzle adapter and app code share. */
 export const schema = {
   user,
@@ -258,6 +330,9 @@ export const schema = {
   menu,
   menuRevision,
   publishedMenu,
+  order,
+  orderLine,
+  orderRateLimit,
 };
 
 /** A restaurant as seen by a member: restaurant fields + that member's role. */
