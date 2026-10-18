@@ -1,4 +1,13 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 /**
  * Canonical server DB schema (Drizzle, Postgres/Neon).
@@ -166,6 +175,78 @@ export const menu = pgTable(
   })
 );
 
+/**
+ * An immutable published snapshot of a menu (Step 9). Publishing copies the
+ * canonical document here, so a later edit never silently changes what the
+ * public page shows — "publish changes" creates the next revision and moves
+ * the live pointer. `sourceUpdatedAt` records the `menu.updated_at` the
+ * snapshot was taken from: when the live revision's value no longer matches
+ * the menu row, the owner has draft changes that are not published.
+ *
+ * `doc` is re-validated with the canonical Zod schema on read, exactly like
+ * `menu.doc`; history rows are never rewritten.
+ */
+export const menuRevision = pgTable(
+  "menu_revision",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    menuId: text("menu_id")
+      .notNull()
+      .references(() => menu.id, { onDelete: "cascade" }),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    doc: jsonb("doc").$type<unknown>().notNull(),
+    theme: text("theme").notNull(),
+    layout: text("layout").notNull(),
+    /** The menu revision this snapshot was published from (conflict-free compare). */
+    sourceUpdatedAt: timestamp("source_updated_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    menuIdx: index("menu_revision_menu_idx").on(t.menuId, t.createdAt),
+  })
+);
+
+/**
+ * The public pointer for a menu (Step 9): its `/m/<slug>` address, the live
+ * revision, and a cookie-free view count.
+ *
+ * Unpublishing keeps this row and its slug (`publishedAt` and
+ * `liveRevisionId` become null), so the address stays reserved for the same
+ * café instead of being recycled by whoever grabs it next. Publishing again
+ * reuses it. 
+ */
+export const publishedMenu = pgTable(
+  "published_menu",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    menuId: text("menu_id")
+      .notNull()
+      .references(() => menu.id, { onDelete: "cascade" }),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    liveRevisionId: text("live_revision_id").references(() => menuRevision.id, {
+      onDelete: "set null",
+    }),
+    /** Null = reserved but not serving (the page 404s). */
+    publishedAt: timestamp("published_at"),
+    viewCount: integer("view_count").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt().$onUpdateFn(() => new Date()),
+  },
+  (t) => ({
+    menuUnique: uniqueIndex("published_menu_menu_unique").on(t.menuId),
+    slugUnique: uniqueIndex("published_menu_slug_unique").on(t.slug),
+  })
+);
+
 /** Everything the Drizzle adapter and app code share. */
 export const schema = {
   user,
@@ -175,6 +256,8 @@ export const schema = {
   restaurant,
   restaurantMembership,
   menu,
+  menuRevision,
+  publishedMenu,
 };
 
 /** A restaurant as seen by a member: restaurant fields + that member's role. */

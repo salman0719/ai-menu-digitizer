@@ -15,6 +15,13 @@
       "when": 1792302167711,
       "tag": "0001_nosy_puma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792308811535,
+      "tag": "0002_faulty_clint_barton",
+      "breakpoints": true
     }
   ]
 }
