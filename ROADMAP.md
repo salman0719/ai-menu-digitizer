@@ -117,7 +117,10 @@ domain.
 Editor reads/writes the server when signed in (IndexedDB stays the local
 store and offline cache), `updatedAt` conflict check that surfaces
 "changed elsewhere" instead of silently overwriting, one-way import of local
-menus/orders through the same validated API.
+menus/orders through the same validated API. Storage strategy (user
+decision 2026-10-18): **the session is the switch** — signed in = server
+authoritative, signed out = local — with no env-var backend swap (see
+Decisions).
 **Done when:** the same menu edits from two browsers converge predictably,
 and a local import preserves ids, order, variants, and review notes.
 
@@ -192,6 +195,12 @@ it live.
 - **No shadcn/ui** (user decision). Tailwind primitives + small local
   components only.
 - **No P1 features** until P0 acceptance passes.
+- **Storage strategy** (user decision 2026-10-18): no env-var storage
+  switch — the session decides (signed in = server, signed out = local),
+  and Step 8 demotes IndexedDB to cache/offline layer. **Follow-up decision
+  point after Step 10:** once menus, orders, and publishing all have server
+  paths, reassess whether anonymous IndexedDB persistence still earns its
+  keep — removing it then is a clean deletion, not a hole.
 
 ## Things needed from the user (later, not now)
 
