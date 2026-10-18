@@ -8,9 +8,12 @@ import {
   deleteCategory,
   deleteItem,
   moveCategory,
+  moveItem,
+  moveItemToCategory,
   moveItemsToCategory,
   renameCategory,
 } from "@/features/menu/menu-utils";
+import { formatPreviewPrice } from "@/features/menu/preview-utils";
 import {
   findDuplicateGroups,
   duplicateItemIds,
@@ -84,6 +87,11 @@ const smallButton =
 const primaryButton =
   "rounded-full bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors " +
   "hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
+
+const tinyButton =
+  "rounded-full border border-stone-300 px-2 py-1 text-xs font-medium text-stone-600 transition-colors " +
+  "hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 " +
+  "focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:opacity-40";
 
 /**
  * The preview's eyebrow must never claim the draft is what visitors see:
@@ -256,10 +264,11 @@ export function MenuEditor({
     onChange(next);
   }
 
-  // View mode swaps the editing surface for the customer preview or the
-  // printable table QR cards, while the header (back, save state) stays put.
-  // "edit" is the workspace; the other two are read-only presentations.
-  type EditorMode = "edit" | "preview" | "qr";
+  // View mode swaps the editing surface for the customer preview, the
+  // printable table QR cards, or the compact reorder list, while the header
+  // (back, save state) stays put. "edit" is the workspace; "preview" is a
+  // read-only presentation; "reorder" arranges without the editing boxes.
+  type EditorMode = "edit" | "preview" | "qr" | "reorder";
   const [mode, setMode] = useState<EditorMode>("edit");
 
   function changeMode(next: EditorMode) {
@@ -424,6 +433,9 @@ export function MenuEditor({
       <span className="flex-1" />
       {mode === "edit" ? (
         <>
+          <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
+            ↕ Reorder
+          </button>
           <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
             Table QR
           </button>
@@ -520,6 +532,157 @@ export function MenuEditor({
           layout={previewLayout}
           eyebrow={previewEyebrow(publishing?.status ?? null, previewThemeId, previewLayout)}
         />
+      </div>
+    );
+  }
+
+  if (mode === "reorder") {
+    return (
+      <div className="flex flex-col gap-4">
+        {headerRow}
+        <div className="rounded-2xl border border-stone-200 bg-white p-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="text-base font-semibold text-stone-900">Reorder items</h2>
+            <p className="text-xs text-stone-500">
+              A compact list for arranging — the full editing boxes stay on the edit screen.
+              {isFiltering && " Search is paused here; every item is shown."}
+            </p>
+          </div>
+          {doc.categories.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-500">
+              No categories yet — add one on the edit screen.
+            </p>
+          ) : (
+            <ol className="mt-3 space-y-4">
+              {doc.categories.map((category, categoryIndex) => (
+                <li key={category.id} className="overflow-hidden rounded-xl border border-stone-200">
+                  <div className="flex items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
+                      {category.name || "Untitled category"}
+                      <span className="ml-2 font-normal text-stone-500">
+                        {category.items.length} {category.items.length === 1 ? "item" : "items"}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={categoryIndex <= 0}
+                      onClick={() => onChange(moveCategory(doc, category.id, categoryIndex - 1))}
+                      aria-label={`Move ${category.name || "category"} up`}
+                      className={tinyButton}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={categoryIndex >= doc.categories.length - 1}
+                      onClick={() => onChange(moveCategory(doc, category.id, categoryIndex + 1))}
+                      aria-label={`Move ${category.name || "category"} down`}
+                      className={tinyButton}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                  {category.items.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-stone-500">No items.</p>
+                  ) : (
+                    <ol>
+                      {category.items.map((item, index) => {
+                        const label = item.name.trim() ? item.name : "Untitled item";
+                        return (
+                          <li
+                            key={item.id}
+                            className="flex items-center gap-1.5 border-b border-stone-100 px-3 py-1.5 last:border-0"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="w-6 shrink-0 text-right text-xs text-stone-400"
+                            >
+                              {index + 1}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                              {label}
+                            </span>
+                            {duplicateIds.has(item.id) && (
+                              <span
+                                title="This name appears more than once — see the duplicate review on the edit screen."
+                                className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900"
+                              >
+                                duplicate
+                              </span>
+                            )}
+                            {item.reviewNotes.length > 0 && (
+                              <span
+                                title={item.reviewNotes.join("\n")}
+                                className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600"
+                              >
+                                needs review
+                              </span>
+                            )}
+                            <span className="shrink-0 text-xs text-stone-500">
+                              {formatPreviewPrice(item.price, item.currency, doc.currency)}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={index <= 0}
+                              onClick={() =>
+                                onChange(moveItem(doc, category.id, item.id, index - 1))
+                              }
+                              aria-label={`Move ${label} up`}
+                              className={tinyButton}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index >= category.items.length - 1}
+                              onClick={() =>
+                                onChange(moveItem(doc, category.id, item.id, index + 1))
+                              }
+                              aria-label={`Move ${label} down`}
+                              className={tinyButton}
+                            >
+                              ↓
+                            </button>
+                            {doc.categories.length > 1 && (
+                              <select
+                                aria-label={`Move ${label} to another category`}
+                                defaultValue=""
+                                onChange={(event) => {
+                                  if (event.target.value) {
+                                    onChange(
+                                      moveItemToCategory(
+                                        doc,
+                                        category.id,
+                                        event.target.value,
+                                        item.id,
+                                        index
+                                      )
+                                    );
+                                    event.target.value = "";
+                                  }
+                                }}
+                                className="shrink-0 rounded-full border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 focus:border-amber-700 focus:outline-none"
+                              >
+                                <option value="">Move to…</option>
+                                {doc.categories
+                                  .filter((c) => c.id !== category.id)
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name || "Untitled category"}
+                                    </option>
+                                  ))}
+                              </select>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
     );
   }
