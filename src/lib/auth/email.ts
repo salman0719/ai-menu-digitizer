@@ -40,7 +40,7 @@ export async function sendMagicLinkEmail({ email, url }: MagicLinkEmail): Promis
       to: [email],
       subject: "Your sign-in link",
       html: [
-        "<p>Sign in to AI Menu Digitizer:</p>",
+        "<p>Sign in to Tablepass:</p>",
         `<p><a href="${url}">Sign in</a></p>`,
         "<p>This link can be used once and expires in 5 minutes.</p>",
         "<p>If you didn't request this, you can ignore this email.</p>",

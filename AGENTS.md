@@ -9,6 +9,10 @@ AI Menu Digitizer — see `PLAN.md` for mission, stack, and the Phase 1
 acceptance criteria, and `PHASE-2.md` (scope) + `ROADMAP.md` (build order)
 for the current phase.
 
+Product name: **Tablepass** (temporary, decided 2026-10-18). "AI Menu
+Digitizer" was the Phase 1 name — keep it only where historical context
+demands it; all user-facing copy uses Tablepass.
+
 Phase 1 (the local-first P0/P1 prototype) is complete and deployed.
 Phase 2 — accounts, a server DB, cross-device table ordering, one-click
 public menu publishing, and a usage-billed B2B extraction API — is scoped

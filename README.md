@@ -1,15 +1,19 @@
-# AI Menu Digitizer
+# Tablepass
+
+> Working name (decided 2026-10-18) — Phase 1 shipped as "AI Menu Digitizer",
+> and the product now covers more than digitizing alone.
 
 Upload a photo or scan of a menu, extract it into structured categories and
-items with Gemini, review and correct the draft in an editable workspace, and
-save or export the result. AI output is a draft — the app flags anything
+items with Gemini, review and correct the draft in an editable workspace,
+preview it in themed menus, take table orders, and export JSON/CSV any time.
+AI output is a draft — the app flags anything
 uncertain for review and never invents missing prices, descriptions, or
 dietary labels.
 
-Local-first prototype: menus are stored in your browser (IndexedDB) — no
-account required, and nothing leaves your device except extraction.
-Accounts/server sync (Phase 2) are scaffolded but inert until database
-credentials are configured.
+Menus are stored in your browser (IndexedDB) — no account required, and
+nothing leaves your device except extraction. Accounts/server sync (Phase 2)
+are built and locally verified (magic-link sign-in against Neon); deployment
+is pending.
 
 ## Stack
 

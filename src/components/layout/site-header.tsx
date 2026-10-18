@@ -7,11 +7,11 @@ export function SiteHeader() {
             aria-hidden="true"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-700 text-base font-bold text-white"
           >
-            M
+            T
           </span>
           <div>
-            <p className="text-sm font-bold tracking-tight text-stone-900">AI Menu Digitizer</p>
-            <p className="text-xs text-stone-500">Menu photo in, structured menu out</p>
+            <p className="text-sm font-bold tracking-tight text-stone-900">Tablepass</p>
+            <p className="text-xs text-stone-500">Menus, tables, and orders in one place</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -21,9 +21,6 @@ export function SiteHeader() {
           >
             Sign in
           </a>
-          <span className="hidden rounded-full border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-500 sm:inline">
-            Local-first prototype
-          </span>
         </div>
       </div>
     </header>
