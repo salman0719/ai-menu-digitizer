@@ -380,7 +380,12 @@ export function MenuEditor({
     return (
       <div className="flex flex-col gap-4">
         {headerRow}
-        <TableQrPanel doc={doc} />
+        <TableQrPanel
+          doc={doc}
+          // Only a live publication can serve a stranger's phone; an
+          // unpublished menu keeps the browser-scoped Phase 1 codes.
+          publicSlug={publishing?.status?.isLive ? publishing.status.slug : null}
+        />
       </div>
     );
   }

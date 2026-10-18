@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * Staff view of the local order queue. Orders arrive from the table ordering
- * page (QR links) and live in IndexedDB, so this board works offline and
- * refreshes on an interval instead of a socket — no server, no accounts.
- *
- * Statuses advance in one direction (new → preparing → served); cancelling is
- * explicit and confirmed. Nothing is ever auto-deleted.
+ * The Orders tab picks its source from the session: signed in, the server
+ * board (Step 10) so orders from other devices arrive live; signed out, the
+ * Phase 1 local queue in IndexedDB. Both advance statuses in the same
+ * direction (new → preparing → served), cancelling is explicit, and nothing
+ * is ever auto-deleted.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -26,8 +25,27 @@ import {
   updateOrderStatus,
 } from "@/features/orders/storage";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
+import { authClient } from "@/lib/auth-client";
+
+import { ServerOrdersBoard } from "./server-orders-board";
 
 const REFRESH_MS = 5000;
+
+/**
+ * Signed in: the server board, where a phone's order shows up in seconds.
+ * Signed out: the local queue, unchanged from Phase 1.
+ */
+export function OrdersBoard() {
+  const { data: session, isPending } = authClient.useSession();
+  if (isPending) {
+    return (
+      <p role="status" className="text-sm text-stone-500">
+        Loading orders…
+      </p>
+    );
+  }
+  return session?.user ? <ServerOrdersBoard /> : <LocalOrdersBoard />;
+}
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
   new: "bg-amber-100 text-amber-900",
@@ -42,7 +60,7 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function OrdersBoard() {
+function LocalOrdersBoard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [corruptCount, setCorruptCount] = useState(0);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");

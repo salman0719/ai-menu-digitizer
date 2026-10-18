@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * Printable table cards. Each QR encodes
- * `{origin}/order?menu=<menuId>&table=<label>`, which opens the ordering
- * screen with this menu and table preset.
+ * Printable table cards.
  *
- * Codes are generated in the browser (no third-party image API), so the menu
- * id and table labels never leave the device. The cards say plainly that the
- * link needs this browser's storage, because a QR scanned on an unrelated
- * phone cannot see a local menu.
+ * When the menu is published, each QR encodes the public table link
+ * `{origin}/m/<slug>/order?table=<label>` — that page reads the server
+ * snapshot, so a scanned code works on any phone (Step 10). For a menu that
+ * exists only in this browser, the Phase 1 link
+ * `{origin}/order?menu=<menuId>&table=<label>` is kept, and the cards say
+ * plainly that it needs this browser's storage.
+ *
+ * Codes are generated in the browser (no third-party image API); a public
+ * slug and table labels are not sensitive either way.
  */
 
 import { useEffect, useState } from "react";
@@ -18,6 +21,7 @@ import type { MenuDocument } from "@/features/menu/schema";
 import {
   defaultTableLabels,
   MAX_TABLE_LABEL_LENGTH,
+  publicTableOrderUrl,
   tableOrderUrl,
 } from "@/features/orders/table-links";
 
@@ -27,6 +31,8 @@ const MAX_TABLES = 40;
 
 interface TableQrPanelProps {
   doc: MenuDocument;
+  /** Published menu slug; when present the codes target the public server page. */
+  publicSlug?: string | null;
 }
 
 interface TableCode {
@@ -52,7 +58,7 @@ function writeStored(key: string, value: string) {
   }
 }
 
-export function TableQrPanel({ doc }: TableQrPanelProps) {
+export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
   // Origin is only available in the browser; codes are generated after mount,
   // so the server-rendered shell never depends on it.
   const [origin] = useState(() =>
@@ -72,7 +78,9 @@ export function TableQrPanel({ doc }: TableQrPanelProps) {
     const labels = defaultTableLabels(count, prefix.trim());
     Promise.all(
       labels.map(async (label) => {
-        const url = tableOrderUrl(origin, doc.id, label);
+        const url = publicSlug
+          ? publicTableOrderUrl(origin, publicSlug, label)
+          : tableOrderUrl(origin, doc.id, label);
         const dataUrl = await QRCode.toDataURL(url, {
           width: 320,
           margin: 1,
@@ -91,7 +99,7 @@ export function TableQrPanel({ doc }: TableQrPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [origin, count, prefix, doc.id]);
+  }, [origin, count, prefix, doc.id, publicSlug]);
 
   function changeCount(next: number) {
     const clamped = Math.min(Math.max(Math.trunc(next) || 1, 1), MAX_TABLES);
@@ -142,9 +150,19 @@ export function TableQrPanel({ doc }: TableQrPanelProps) {
       </div>
 
       <p data-print-hide className="text-xs leading-5 text-stone-500">
-        Each code opens the ordering screen for one table. Menus live in this browser, so the codes
-        work on this device (or wherever this browser storage is available). Scanning one on an
-        unrelated phone shows a clear “not on this device” message with a demo instead.
+        {publicSlug ? (
+          <>
+            Each code opens this menu&apos;s live ordering page for one table. The menu comes from
+            the server, so the cards work on any phone — nothing needs to be installed, and every
+            order lands on your Orders board within seconds.
+          </>
+        ) : (
+          <>
+            Each code opens the ordering screen for one table. This menu lives only in this browser,
+            so the codes work on this device (or wherever this browser storage is available).
+            Publish the menu to get cards that work on any phone.
+          </>
+        )}
       </p>
 
       {error && (
