@@ -148,6 +148,19 @@ now — documents (ids, order, variants, prices, review notes) are what
 sync. Signed-out local mode unchanged; 159 tests green (new: menus-repo,
 menus-api, menus-sync, move-to-account); lint, typecheck, build green.
 
+**Library/account coherence (follow-up, verified 2026-10-18):** the library
+now merges in account menus it has not cached yet — discovered on load,
+cached with the server's own `updatedAt` (not restamped), marked with an
+"On your account" chip, and openable like any other menu, so a device that
+has never seen them still lists and opens them. Library rename and delete
+also act on the account copy: rename fetches the current revision first and
+pushes with it (reporting a conflict instead of overwriting), delete removes
+the server row before the local one and reports when the account copy could
+not be removed. Verified live by staging an account-only row (appeared in
+the library after reload and opened; the move panel hid), renaming it in the
+library (server title changed), and deleting it (row gone from Neon, account
+back to its 7 menus). 161 tests green.
+
 ### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature) ◻️ next
 
 This is the flagship feature of the phase (user decision 2026-10-18), built
