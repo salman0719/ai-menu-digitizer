@@ -293,7 +293,12 @@ browser (checklist read real account state — 7 menus, 4 orders, live slug —
 with the manual tick undone again); the alert path and the cron route were
 exercised locally, migration 0004 was applied explicitly to the dev Neon
 database, and the payment-free claim was checked by searching the UI for any
-payment surface (only the sentences saying there is none).
+payment surface (only the sentences saying there is none). The cost brake was
+proved live, not just in tests: with the account filled to its cap, a real
+`POST /api/extract-menu` from the browser returned 429
+`extraction_cap_reached` naming the reset date, the log line carried the same
+request id as the response, the alert path fired (email unconfigured locally),
+and the probe rows were removed afterwards — the panel went back to 0 of 150.
 
 **Still needed from the user before this is fully done:** deploy, set
 `CRON_SECRET` / `OPS_ALERT_EMAIL` / `CONTACT_EMAIL` / token rates in Vercel,
