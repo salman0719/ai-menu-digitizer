@@ -23,6 +23,7 @@ import { createMenuDocument } from "@/features/menu/menu-utils";
 import type { MenuDocument } from "@/features/menu/schema";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import {
+  cacheMenu,
   createMenu,
   deleteMenu,
   getImage,
@@ -34,7 +35,12 @@ import {
   StorageError,
   type MenuSummary,
 } from "@/features/menu/storage";
-import { fetchServerMenu, SyncError, updateServerMenu } from "@/features/menus/sync";
+import {
+  fetchServerMenu,
+  fetchServerMenus,
+  SyncError,
+  updateServerMenu,
+} from "@/features/menus/sync";
 import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
 import { authClient } from "@/lib/auth-client";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
@@ -102,6 +108,11 @@ export default function Home() {
   const [conflict, setConflict] = useState<{ serverUpdatedAt: string | null } | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const conflictRef = useRef<{ serverUpdatedAt: string | null } | null>(null);
+  /** Ids of the caller's menus that exist on the server (chips + operations). */
+  const serverIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const [serverIds, setServerIds] = useState<ReadonlySet<string>>(new Set());
+  /** Deduplicates concurrent account merges. */
+  const mergeRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     signedInRef.current = signedIn;
@@ -122,16 +133,40 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!signedIn) return;
-    // Sign-in happened with a menu already open: reconcile it now. A menu
-    // that was never moved to the account stays local-only (serverBaseRef
-    // stays null), so this cannot loop.
+    if (!signedIn) {
+      replaceServerIds(new Set());
+      return;
+    }
+    // Sign-in: merge account menus into the library, and reconcile a menu
+    // that was already open. A menu that was never moved to the account
+    // stays local-only (serverBaseRef stays null), so this cannot loop.
+    void refreshLibrary();
+    void mergeAccountMenus();
     const doc = docRef.current;
     if (doc && serverBaseRef.current === null && !conflictRef.current) {
       void syncWithAccount(doc);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
+
+  function replaceServerIds(next: ReadonlySet<string>) {
+    serverIdsRef.current = next;
+    setServerIds(next);
+  }
+
+  function addServerId(id: string) {
+    if (serverIdsRef.current.has(id)) return;
+    const next = new Set(serverIdsRef.current);
+    next.add(id);
+    replaceServerIds(next);
+  }
+
+  function removeServerId(id: string) {
+    if (!serverIdsRef.current.has(id)) return;
+    const next = new Set(serverIdsRef.current);
+    next.delete(id);
+    replaceServerIds(next);
+  }
 
   async function refreshLibrary() {
     try {
@@ -142,6 +177,47 @@ export default function Home() {
       setStorageDown(true);
       storageDownRef.current = true;
       if (error instanceof StorageError) setLibraryError(error.message);
+    }
+  }
+
+  /**
+   * Merge the account's menus into the local library (signed in only). A
+   * menu that exists only on the server — moved from another device — is
+   * downloaded and cached locally once, so the library lists and opens it
+   * anywhere; afterwards it behaves like any local menu, reconciled with
+   * the server revision on open. Best-effort: offline or a server DB that
+   * is unavailable leaves the local library standing alone.
+   */
+  async function mergeAccountMenus() {
+    if (!signedInRef.current || mergeRef.current) return;
+    const run = (async () => {
+      try {
+        const serverMenus = await fetchServerMenus();
+        replaceServerIds(new Set(serverMenus.map((menu) => menu.id)));
+        const localIds = new Set((await listMenus()).map((menu) => menu.id));
+        let cachedAny = false;
+        for (const summary of serverMenus) {
+          if (localIds.has(summary.id)) continue;
+          try {
+            const full = await fetchServerMenu(summary.id);
+            await cacheMenu(full.doc);
+            cachedAny = true;
+          } catch {
+            // One failed download never blocks the rest; the menu stays in
+            // the account and the next refresh retries it.
+          }
+        }
+        if (cachedAny) setMenus(await listMenus());
+      } catch {
+        // Signed out mid-flight, offline, or the server DB is unavailable:
+        // the local library stands alone.
+      }
+    })();
+    mergeRef.current = run;
+    try {
+      await run;
+    } finally {
+      mergeRef.current = null;
     }
   }
 
@@ -226,6 +302,7 @@ export default function Home() {
       }
       if (error instanceof SyncError && error.code === "not_found") {
         serverBaseRef.current = null;
+        removeServerId(saved.id);
         setSaveState({ kind: "saved", message: "Saved locally · the account copy was removed" });
         return true;
       }
@@ -298,6 +375,7 @@ export default function Home() {
       const serverMenu = await fetchServerMenu(localDoc.id);
       if (docRef.current?.id !== localDoc.id) return;
       serverBaseRef.current = serverMenu.updatedAt;
+      addServerId(localDoc.id);
       const stripStamp = (value: MenuDocument) => JSON.stringify({ ...value, updatedAt: "" });
       if (stripStamp(serverMenu.doc) !== stripStamp(localDoc)) {
         let next: MenuDocument = serverMenu.doc;
@@ -316,6 +394,7 @@ export default function Home() {
     } catch (error) {
       if (docRef.current?.id !== localDoc.id) return;
       if (error instanceof SyncError && error.code === "not_found") {
+        removeServerId(localDoc.id);
         setSaveState({ kind: "saved", message: "Saved locally · not in your account yet" });
         return;
       }
@@ -461,6 +540,7 @@ export default function Home() {
     await flushSave();
     setEditorImage(null);
     await refreshLibrary();
+    void mergeAccountMenus();
     setScreen("library");
   }
 
@@ -708,6 +788,11 @@ export default function Home() {
 
   const activeStep = stepIndex(phase, result !== null);
 
+  // Library rows carry their account state: menus on the server show as
+  // synced; the rest are browser-only until moved (or downloaded).
+  const libraryMenus = menus.map((menu) => ({ ...menu, onServer: serverIds.has(menu.id) }));
+  const localOnlyCount = libraryMenus.filter((menu) => !menu.onServer).length;
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <SiteHeader />
@@ -754,9 +839,15 @@ export default function Home() {
                 {libraryError}
               </p>
             )}
-            {signedIn && menus.length > 0 && <MoveToAccountPanel menuCount={menus.length} />}
+            {signedIn && localOnlyCount > 0 && (
+              <MoveToAccountPanel
+                menuCount={localOnlyCount}
+                onMoved={() => void mergeAccountMenus()}
+              />
+            )}
             <LibraryPanel
-              menus={menus}
+              menus={libraryMenus}
+              accountMode={signedIn}
               activeId={activeDoc?.id ?? null}
               unavailable={storageDown}
               onOpen={(id) => void handleOpenMenu(id)}

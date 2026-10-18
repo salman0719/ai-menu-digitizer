@@ -4,8 +4,15 @@ import type { MenuSummary } from "@/features/menu/storage";
 
 import { CommitInput } from "./fields";
 
+/** A library row: the local summary plus whether the account holds a copy. */
+export interface LibraryMenu extends MenuSummary {
+  onServer: boolean;
+}
+
 interface LibraryPanelProps {
-  menus: MenuSummary[];
+  menus: LibraryMenu[];
+  /** Signed in: every row carries an account-status chip. */
+  accountMode: boolean;
   activeId: string | null;
   unavailable: boolean;
   onOpen: (id: string) => void;
@@ -22,6 +29,7 @@ function formatDate(iso: string): string {
 
 export function LibraryPanel({
   menus,
+  accountMode,
   activeId,
   unavailable,
   onOpen,
@@ -96,7 +104,18 @@ export function LibraryPanel({
                     <p className="mt-1 text-xs text-stone-500">
                       {menu.categoryCount} {menu.categoryCount === 1 ? "category" : "categories"} ·{" "}
                       {menu.itemCount} {menu.itemCount === 1 ? "item" : "items"} · updated{" "}
-                      {formatDate(menu.updatedAt)}
+                      {formatDate(menu.updatedAt)}{" "}
+                      {accountMode && (
+                        <span
+                          className={
+                            menu.onServer
+                              ? "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900"
+                              : "rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
+                          }
+                        >
+                          {menu.onServer ? "On your account" : "This browser only"}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div className="flex gap-2">

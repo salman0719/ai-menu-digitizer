@@ -17,11 +17,13 @@ import {
  */
 
 interface MoveToAccountPanelProps {
-  /** How many local menus the move would consider (for the button label). */
+  /** How many local-only menus the move would consider (for the button label). */
   menuCount: number;
+  /** Called after a run that imported at least one menu (refresh the library). */
+  onMoved?: () => void;
 }
 
-export function MoveToAccountPanel({ menuCount }: MoveToAccountPanelProps) {
+export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelProps) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -77,7 +79,9 @@ export function MoveToAccountPanel({ menuCount }: MoveToAccountPanelProps) {
     setError(null);
     setReport(null);
     try {
-      setReport(await moveLocalMenusToAccount(selectedId));
+      const result = await moveLocalMenusToAccount(selectedId);
+      setReport(result);
+      if (result.imported.length > 0) onMoved?.();
     } catch (moveError) {
       // moveLocalMenusToAccount reports per-menu failures itself; a throw
       // here means even reading the local library failed.

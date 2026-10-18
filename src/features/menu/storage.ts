@@ -138,6 +138,25 @@ export async function saveMenu(doc: MenuDocument): Promise<MenuDocument> {
   }
 }
 
+/**
+ * Store a server-owned document as a local cache, preserving its `updatedAt`:
+ * for synced menus the server clock is authoritative, so the library must
+ * show the revision time, not the download time. Local saves (`saveMenu`)
+ * keep stamping fresh timestamps for the editor's own edits.
+ */
+export async function cacheMenu(doc: MenuDocument): Promise<MenuDocument> {
+  const parsed = menuDocumentSchema.safeParse(doc);
+  if (!parsed.success) {
+    throw new StorageError("corrupt", "Refusing to cache: the menu data is invalid.");
+  }
+  try {
+    await tx(MENUS_STORE, "readwrite", ([store]) => idbPut(store, parsed.data));
+    return parsed.data;
+  } catch (error) {
+    throw storageError("cache the menu", error);
+  }
+}
+
 export async function createMenu(title?: string): Promise<MenuDocument> {
   return saveMenu(createMenuDocument(title?.trim() ? { title: title.trim() } : undefined));
 }

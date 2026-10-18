@@ -3,7 +3,9 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { closeDatabase, DB_NAME, idbPut, MENUS_STORE, tx } from "../src/features/menu/indexeddb";
+import { createMenuDocument } from "../src/features/menu/menu-utils";
 import {
+  cacheMenu,
   createMenu,
   deleteMenu,
   getImage,
@@ -109,5 +111,29 @@ describe("menu storage", () => {
   it("refuses to save invalid documents", async () => {
     const created = await createMenu("Valid");
     await expect(saveMenu({ ...created, title: "" })).rejects.toBeInstanceOf(StorageError);
+  });
+});
+
+describe("cacheMenu", () => {
+  it("caches a server document without restamping updatedAt", async () => {
+    const serverDoc = {
+      ...createMenuDocument({ title: "Server menu" }),
+      id: "server-1",
+      updatedAt: "2026-10-18T05:00:00.000Z",
+    };
+
+    const cached = await cacheMenu(serverDoc);
+    expect(cached.updatedAt).toBe("2026-10-18T05:00:00.000Z");
+
+    // The stored revision time survives a read (the library shows it).
+    const fetched = await getMenu("server-1");
+    expect(fetched.updatedAt).toBe("2026-10-18T05:00:00.000Z");
+    expect(fetched.title).toBe("Server menu");
+  });
+
+  it("refuses invalid documents", async () => {
+    await expect(cacheMenu({ id: "x", title: "Bad" } as never)).rejects.toMatchObject({
+      code: "corrupt",
+    });
   });
 });
