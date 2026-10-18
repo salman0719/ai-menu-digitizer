@@ -381,6 +381,8 @@ export function MenuEditor({
     | { status: "added"; items: number; categories: number }
     | { status: "error"; message: string };
   const [addPages, setAddPages] = useState<AddPagesState>({ status: "idle" });
+  /** The hidden "Add pages" input in the menu toolbar; the header button reuses it. */
+  const addPagesInputRef = useRef<HTMLInputElement>(null);
 
   async function handleAddPages(files: File[]) {
     const check = validateImageBatch(files);
@@ -457,6 +459,14 @@ export function MenuEditor({
       <span className="flex-1" />
       {mode === "edit" ? (
         <>
+          <button
+            type="button"
+            onClick={() => addPagesInputRef.current?.click()}
+            disabled={addPages.status === "working"}
+            className={smallButton}
+          >
+            {addPages.status === "working" ? "Reading pages…" : "+ Add pages"}
+          </button>
           <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
             ↕ Reorder
           </button>
@@ -1064,6 +1074,7 @@ export function MenuEditor({
         <label className={`${smallButton} cursor-pointer`}>
           {addPages.status === "working" ? "Reading pages…" : "Add pages"}
           <input
+            ref={addPagesInputRef}
             type="file"
             multiple
             accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
