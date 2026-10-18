@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { DataControls } from "@/components/launch/data-controls";
 import { LaunchChecklist } from "@/components/launch/launch-checklist";
 
 export const metadata: Metadata = {
@@ -59,6 +60,10 @@ export default function LaunchPage() {
 
         <div className="mt-6">
           <LaunchChecklist />
+        </div>
+
+        <div className="mt-4">
+          <DataControls />
         </div>
 
         <section className="mt-10">
