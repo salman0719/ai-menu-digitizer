@@ -859,9 +859,11 @@ export default function Home() {
     requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
   }
 
-  function confirmDiscard(): boolean {
+  function confirmDiscard(
+    message = "This will discard the current extracted menu. Continue?"
+  ): boolean {
     if (!extracted && !demoDoc) return true;
-    return window.confirm("This will discard the current extracted menu. Continue?");
+    return window.confirm(message);
   }
 
   /**
@@ -897,17 +899,36 @@ export default function Home() {
     applySelection(incoming);
   }
 
-  /** Append pages to the current selection; the whole set is validated as one batch. */
+  /**
+   * Append pages to the current selection; the whole set is validated as one
+   * batch. Adding a page never discards the images — only a previous
+   * extraction of them is stale — so the confirm says exactly that, and the
+   * new extraction runs right away over the old pages plus the new ones
+   * instead of making the user press Extract a second time.
+   */
   function addPages(incoming: File[]) {
     if (incoming.length === 0) return;
-    if (!confirmDiscard()) return;
+    if (phase === "extracting") {
+      setFileError("An extraction is running — add pages once it finishes.");
+      return;
+    }
     const combined = [...pages.map((page) => page.file), ...incoming];
     const check = validateImageBatch(combined);
     if (!check.valid) {
       setFileError(check.message);
       return;
     }
+    // The add control only exists while pages are selected, so there is
+    // always a previous selection to combine; the guard in confirmDiscard
+    // decides whether there is an extraction result worth confirming.
+    const confirmMessage =
+      `This discards the current extraction result — the images themselves are kept. ` +
+      `A new extraction will run on all ${combined.length} images together: the ` +
+      `${pages.length} already selected plus ${incoming.length} new ` +
+      `${incoming.length === 1 ? "page" : "pages"}. Continue?`;
+    if (!confirmDiscard(confirmMessage)) return;
     applySelection(combined);
+    void extractFiles(combined);
   }
 
   /** Replace one page, keeping the rest of the selection in place. */
@@ -931,22 +952,23 @@ export default function Home() {
     applySelection([]);
   }
 
-  async function handleExtract() {
-    if (pages.length === 0 || phase === "extracting") return;
+  /** Run one extraction over an explicit file list (normally the selection). */
+  async function extractFiles(files: File[]) {
+    if (files.length === 0 || phase === "extracting") return;
     setPhase("extracting");
     setFileError(null);
     setExtractError(null);
     try {
       // Normalize first: AVIF is transcoded to JPEG here because the provider
       // cannot read it, and mislabeled files get their real MIME type.
-      const prepared = await Promise.all(pages.map((page) => prepareImageForUpload(page.file)));
+      const prepared = await Promise.all(files.map(prepareImageForUpload));
       const menu = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
       setExtracted(menu);
       setSource("ai");
       setPhase("done");
-      void autoSaveDraft(menu);
+      void autoSaveDraft(menu, files[0] ?? null);
     } catch (error) {
       setExtractError(
         error instanceof ExtractClientError
@@ -958,6 +980,10 @@ export default function Home() {
       setPhase("ready");
     }
     scrollToResult();
+  }
+
+  function handleExtract() {
+    void extractFiles(pages.map((page) => page.file));
   }
 
   function handleDemo() {
@@ -974,7 +1000,7 @@ export default function Home() {
    * is optional rather than the act of saving. Skips empty results (nothing
    * worth storing) and keeps the newest draft when extractions overlap.
    */
-  async function autoSaveDraft(menu: ExtractedMenu) {
+  async function autoSaveDraft(menu: ExtractedMenu, primaryPage: File | null) {
     const token = (draftTokenRef.current += 1);
     if (menu.categories.length === 0) {
       draftDocRef.current = null;
@@ -983,11 +1009,11 @@ export default function Home() {
     }
     const doc = extractedMenuToDocument(menu, {
       provider: "gemini",
-      originalFileName: pages[0]?.file.name,
+      originalFileName: primaryPage?.name,
     });
     draftDocRef.current = doc;
     // One blob per menu: the first page stands in as the source image.
-    const primaryPageBlob = pages[0]?.file ?? null;
+    const primaryPageBlob = primaryPage;
     if (storageDownRef.current) {
       setDraftSave("unavailable");
       return;
