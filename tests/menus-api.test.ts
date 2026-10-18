@@ -61,10 +61,13 @@ function menuParams(menuId: string): { params: Promise<{ menuId: string }> } {
   return { params: Promise.resolve({ menuId }) };
 }
 
+// PGlite boot + migrating the real DDL takes seconds; under a fully parallel
+// suite the 10s default hook timeout is too tight (the other PGlite files
+// already allow 30s). A timeout here is harness budget, not a relaxed check.
 beforeEach(async () => {
   holder.db = await initTestDb();
   holder.userId = null;
-});
+}, 30_000);
 
 describe("GET /api/menus", () => {
   it("returns 401 with the shared error shape when signed out", async () => {
