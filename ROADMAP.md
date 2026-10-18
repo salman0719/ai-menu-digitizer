@@ -75,12 +75,13 @@ sequential steps, small atomic commits, quality gates green before a step
 counts as done. Each step may expand into its own sub-commits; do not start a
 step before the previous step's acceptance list passes.
 
-### Step 7 — Foundation: server DB, tenancy, accounts ◻️ not started
+### Step 7 — Foundation: server DB, tenancy, accounts ◻️ next
 
-Neon Postgres + Drizzle (or whatever is decided from PHASE-2.md §3.3),
-migrations run explicitly (never at request time), Better Auth magic-link
-sign-in with an email sender, restaurants + owner/staff memberships, staging
-DB branch. Anonymous local-only mode untouched.
+Decided stack (user sign-off 2026-10-18, PHASE-2.md §9): **Neon Postgres +
+Drizzle**, migrations run explicitly (never at request time), **Better Auth
+magic link via Resend** — the only human sign-in, extent documented in
+PHASE-2.md §3.6 — restaurants + owner/staff memberships, staging DB branch.
+Anonymous local-only mode untouched.
 **Done when:** a signed-in owner has a restaurant, tenancy isolation tests
 pass, and the anonymous prototype still works end to end.
 
@@ -93,8 +94,10 @@ menus/orders through the same validated API.
 **Done when:** the same menu edits from two browsers converge predictably,
 and a local import preserves ids, order, variants, and review notes.
 
-### Step 9 — One-click publish to a real public URL (I3 core)
+### Step 9 — One-click publish to a real public URL (I3 core — first user-facing feature)
 
+This is the flagship feature of the phase (user decision 2026-10-18), built
+right after the foundation and always free — no checkout anywhere.
 Publish button with slug rules and `menu_revision` snapshots, public
 `/m/[slug]` page built on the existing preview components and themes, og/Twitter
 meta, QR code for the page (dependency already present), unpublish,
@@ -111,18 +114,27 @@ at server data instead of a local IndexedDB id.
 **Done when:** the I1 acceptance list passes: a cold phone order appears on
 the owner's device within ~10 s without a refresh, and survives a deploy.
 
-### Step 11 — Pilot packaging (make the pilot sellable)
+### Step 11 — Free launch packaging + hardening (nothing is charged)
 
-Pilot price, Stripe Payment Link checkout, onboarding checklist (extract →
-review → theme → print table cards → publish → first order), privacy policy
+"Free while it lasts" promotion for the café track: onboarding checklist
+(extract → review → theme → print table cards → publish → first order) and a
+one-page "what you get"; privacy policy + terms; error tracking + structured
+logs with request ids; security headers/CORS; rate-limit and volume alerts;
+backup/restore check; re-verify no secret reaches a client bundle now that
+auth and DB code exist; per-restaurant Gemini spend visibility plus
+**per-account extraction caps** (the cost brake while everything is free);
+order retention window (default 90 days) + owner data export/delete;
+documented two-device test script. No checkout, no payment link, nothing to
+buy — Stripe stays the eventual provider but is parked with Steps 12–13.
+**Done when:** one real café goes image → live URL → first order using only
+the packaged checklist with no payment step anywhere, a second café could be
+onboarded the same way, and the PHASE-2.md §7 hardening checklist is verified
+end to end (a production failure is visible to us without a user report).
 
-- terms, per-restaurant Gemini spend visibility, order retention window
-  (default 90 days) plus owner data export/delete.
-  **Done when:** one real café goes image → live URL → first order using only
-  the packaged checklist, and a second café could be onboarded the same way.
+### Step 12 — 🔒 parked: B2B extraction API surface (I2)
 
-### Step 12 — B2B extraction API surface (I2)
-
+Parked by user decision 2026-10-18: the scope stays (PHASE-2.md §5) but this
+step does not start until the Step 11 free launch is running.
 `POST /v1/extract` + `GET /v1/usage`, Bearer API keys (hashed, shown once,
 rotate/revoke), idempotency keys, per-key rate limits and spend caps, sandbox
 key returning clearly-labelled sample output, `/developers` docs page with
@@ -130,25 +142,18 @@ curl + error table.
 **Done when:** an external developer gets schema-valid JSON using only the
 docs, with no repo access and no manual step from us.
 
-### Step 13 — Metering + usage billing (I2 commercial)
+### Step 13 — 🔒 parked (built last): metering + usage billing
 
-`usage_event` ledger written idempotently per request, usage dashboard,
-measured real cost per page-image (this feeds the price), Stripe prepaid
-credits via Payment Link first; Stripe Billing Meters only when a customer
-wants recurring usage billing.
+Deliberately the final thing in the phase (user decision): **nothing in Steps
+7–11 charges anyone**, and billing rides with the B2B API only. Ledger
+`usage_event` written idempotently per request, usage dashboard, measured
+real cost per page-image (this feeds the price), Stripe prepaid credits via
+Payment Link first; Stripe Billing Meters only when a customer wants
+recurring usage billing. Early free-promotion users are grandfathered when
+pricing eventually lands.
 **Done when:** dashboard totals equal the sum of request ids in tests, credits
 draw down exactly once per request, and a Stripe test invoice matches our
 own ledger.
-
-### Step 14 — Harden + observe (verification pass across Phase 2)
-
-Error tracking, structured logs with request ids, security headers/CORS,
-rate-limit and volume alerts, backup/restore check, re-verify that no secret
-reaches a client bundle now that auth and DB code exist, documented two-device
-test script.
-**Done when:** the cross-cutting checklist (PHASE-2.md §7) is verified end to
-end — a production failure is visible to us without waiting for a user
-report.
 
 **Priority note:** the two remaining Phase 1 P1 items (description cleanup,
 translation) sit _below_ this Phase 2 work unless explicitly pulled up — they
@@ -170,18 +175,28 @@ it live.
 - [x] Sample menu images — collected in `local/samples/menus/`
       (clean: `cafe-board-clean-01.jpg`; difficult: `vintage-menu-01.png`).
 
-## Things needed from the user — Phase 2 (details in PHASE-2.md §9)
+## Things needed from the user — Phase 2 (decided 2026-10-18; details in PHASE-2.md §9)
 
-- [ ] **Server DB** — recommendation: Neon Postgres + Drizzle.
-- [ ] **Auth** — recommendation: Better Auth (magic links) + an email sender
-      account (e.g. Resend) for sign-in links.
-- [ ] **Billing account** — Stripe (test mode first) for pilot Payment Links;
-      usage meters only when recurring billing is needed.
-- [ ] **Pilot price + size** — a number, and how many cafés to aim for first.
-- [ ] **Dependency exception sign-off** — DB driver/ORM and auth library are
-      the documented exception to "no new dependencies" in AGENTS.md.
-- [ ] **Public URL shape** — `/m/<slug>` on the current domain; custom
-      domains deferred to phase 3 (change if you disagree).
+- [x] **Server DB** — Neon Postgres + Drizzle (decided).
+- [x] **Auth** — Better Auth with Resend; magic link is the only human
+      sign-in, and its extent is documented in PHASE-2.md §3.6.
+- [x] **Dependency exception sign-off** — granted for the DB driver/ORM and
+      the auth library.
+- [x] **Public URL shape** — `/m/<slug>` on the current domain; custom
+      domains deferred.
+- [x] **Local vs server mode** — keep both (signed-out = local,
+      signed-in = server).
+- [x] **Error tracking** — Sentry (free tier) + cookie-free view counts.
+- [x] **Charging** — nothing charges during this phase: advertise it free
+      while it lasts; Stripe remains the eventual provider but is **parked**,
+      and billing is built last.
+- [x] **Pilot price** — deferred until after real measurement; the free
+      promotion runs first, and early users are kept in mind when pricing
+      arrives.
+- [ ] **Accounts to create before the free launch:** Resend + verified
+      sending domain, Neon project (env vars in Vercel), Sentry project.
+- [ ] **Promotion start date + endgame** — when "free while it lasts" opens
+      and what happens when it ends (decide before advertising widely).
 
 ## P1 backlog — all remaining work (P0 complete)
 
