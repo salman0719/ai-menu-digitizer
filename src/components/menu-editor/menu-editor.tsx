@@ -51,6 +51,11 @@ interface MenuEditorProps {
   doc: MenuDocument;
   onChange: (next: MenuDocument) => void;
   saveState: SaveState;
+  /**
+   * Where saves go: "local" = this browser only, "account" = synced to the
+   * signed-in account with the local copy as an offline cache (Step 8).
+   */
+  syncMode: "local" | "account";
   imageUrl: string | null;
   onExportJson: () => void;
   onExportCsv: () => void;
@@ -88,6 +93,7 @@ export function MenuEditor({
   doc,
   onChange,
   saveState,
+  syncMode,
   imageUrl,
   onExportJson,
   onExportCsv,
@@ -781,11 +787,11 @@ export function MenuEditor({
         >
           {importError}
         </p>
-      )}
-      <p className="text-xs leading-5 text-stone-500">
-        Menus are stored locally in this browser on this device — they don&apos;t follow you to
-        other devices. Export JSON backups of anything important.
-      </p>
+      )}    <p className="text-xs leading-5 text-stone-500">
+      {syncMode === "account"
+        ? "This menu syncs to your account — signing in on another device shows the same data. A local copy stays in this browser as an offline cache."
+        : "Menus are stored locally in this browser on this device — they don't follow you to other devices. Sign in to sync them to your account, or export JSON backups."}
+    </p>
     </div>
   );
 }

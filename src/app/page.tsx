@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "@/components/layout/site-header";
+import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
+import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
 import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
@@ -32,7 +34,9 @@ import {
   StorageError,
   type MenuSummary,
 } from "@/features/menu/storage";
+import { fetchServerMenu, SyncError, updateServerMenu } from "@/features/menus/sync";
 import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
+import { authClient } from "@/lib/auth-client";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
@@ -87,6 +91,22 @@ export default function Home() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageDownRef = useRef(false);
 
+  // Server sync (Step 8): signed in = the account is authoritative, and the
+  // IndexedDB copy stays as the offline cache. Signed out, nothing changes —
+  // the whole local-first flow above keeps working untouched.
+  const { data: session } = authClient.useSession();
+  const signedIn = session?.user != null;
+  const signedInRef = useRef(false);
+  /** The server updatedAt the open menu was last synced at; null = don't push. */
+  const serverBaseRef = useRef<string | null>(null);
+  const [conflict, setConflict] = useState<{ serverUpdatedAt: string | null } | null>(null);
+  const [conflictError, setConflictError] = useState<string | null>(null);
+  const conflictRef = useRef<{ serverUpdatedAt: string | null } | null>(null);
+
+  useEffect(() => {
+    signedInRef.current = signedIn;
+  }, [signedIn]);
+
   const result: PreviewMenu | null = extracted ?? demoDoc;
 
   useEffect(() => {
@@ -100,6 +120,18 @@ export default function Home() {
   useEffect(() => {
     void refreshLibrary();
   }, []);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    // Sign-in happened with a menu already open: reconcile it now. A menu
+    // that was never moved to the account stays local-only (serverBaseRef
+    // stays null), so this cannot loop.
+    const doc = docRef.current;
+    if (doc && serverBaseRef.current === null && !conflictRef.current) {
+      void syncWithAccount(doc);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn]);
 
   async function refreshLibrary() {
     try {
@@ -120,23 +152,86 @@ export default function Home() {
     if (!doc || storageDownRef.current) return;
     const json = JSON.stringify(doc);
     if (json === lastSavedRef.current) {
-      setSaveState({ kind: "saved", message: "Saved locally" });
+      setSaveState({
+        kind: "saved",
+        message: serverBaseRef.current ? "Synced with your account" : "Saved locally",
+      });
       return;
     }
     try {
       const saved = await saveMenu(doc);
       lastSavedRef.current = JSON.stringify(saved);
-      setSaveState({
-        kind: "saved",
-        message: `Saved locally · ${new Date(saved.updatedAt).toLocaleTimeString()}`,
-      });
       setMenus(await listMenus());
+      if (!(await pushToAccount(saved))) {
+        setSaveState({
+          kind: "saved",
+          message: conflictRef.current
+            ? "Saved locally · resolve “changed elsewhere” above"
+            : `Saved locally · ${new Date(saved.updatedAt).toLocaleTimeString()}`,
+        });
+      }
     } catch (error) {
       setSaveState({
         kind: "error",
         message:
           error instanceof StorageError ? error.message : "Save failed — edits are kept in memory.",
       });
+    }
+  }
+
+  /**
+   * Push a just-saved document to the account (Step 8). Returns false when
+   * the save stays local-only — signed out, menu not moved to the account
+   * yet, or a conflict awaiting an explicit decision — in which case the
+   * caller sets the local status message. Otherwise the save state is set
+   * here and true is returned.
+   */
+  async function pushToAccount(saved: MenuDocument): Promise<boolean> {
+    if (!signedInRef.current || serverBaseRef.current === null) return false;
+    if (conflictRef.current) return false;
+    setSaveState({ kind: "saving", message: "Saving to your account…" });
+    try {
+      const pushed = await updateServerMenu(saved.id, saved, serverBaseRef.current);
+      serverBaseRef.current = pushed.updatedAt;
+      setSaveState({
+        kind: "saved",
+        message: `Saved to your account · ${new Date(pushed.updatedAt).toLocaleTimeString()}`,
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof SyncError && error.code === "conflict") {
+        // Someone else wrote first. Keep the local edits, stop pushing, and
+        // let the banner ask which version wins — never overwrite silently.
+        conflictRef.current = { serverUpdatedAt: error.currentUpdatedAt };
+        setConflict(conflictRef.current);
+        setConflictError(null);
+        setSaveState({
+          kind: "error",
+          message: "Changed elsewhere — choose which version wins above.",
+        });
+        return true;
+      }
+      if (error instanceof SyncError && error.code === "unauthorized") {
+        serverBaseRef.current = null;
+        setSaveState({ kind: "saved", message: "Saved locally · sign in again to sync" });
+        return true;
+      }
+      if (error instanceof SyncError && error.code === "forbidden") {
+        serverBaseRef.current = null;
+        setSaveState({
+          kind: "saved",
+          message: "Saved locally · you don't have write access to this account's menus",
+        });
+        return true;
+      }
+      if (error instanceof SyncError && error.code === "not_found") {
+        serverBaseRef.current = null;
+        setSaveState({ kind: "saved", message: "Saved locally · the account copy was removed" });
+        return true;
+      }
+      // Offline / server down: the local copy is safe and retried next save.
+      setSaveState({ kind: "saved", message: "Saved locally · account sync unavailable" });
+      return true;
     }
   }
 
@@ -183,6 +278,116 @@ export default function Home() {
     setImportError(null);
     setEditorImage(imageBlob ? URL.createObjectURL(imageBlob) : null);
     setScreen("editor");
+    void syncWithAccount(doc);
+  }
+
+  /**
+   * Reconcile a just-opened menu with the account (signed in only). The
+   * account is authoritative: when it holds a different revision, adopt it
+   * and keep IndexedDB in step as the cache. Menus that were never moved to
+   * the account stay local-only — "Move my menus to my account" is the
+   * explicit path for those.
+   */
+  async function syncWithAccount(localDoc: MenuDocument) {
+    serverBaseRef.current = null;
+    conflictRef.current = null;
+    setConflict(null);
+    setConflictError(null);
+    if (!signedInRef.current) return;
+    try {
+      const serverMenu = await fetchServerMenu(localDoc.id);
+      if (docRef.current?.id !== localDoc.id) return;
+      serverBaseRef.current = serverMenu.updatedAt;
+      const stripStamp = (value: MenuDocument) => JSON.stringify({ ...value, updatedAt: "" });
+      if (stripStamp(serverMenu.doc) !== stripStamp(localDoc)) {
+        let next: MenuDocument = serverMenu.doc;
+        if (!storageDownRef.current) {
+          next = await saveMenu(serverMenu.doc).catch(() => serverMenu.doc);
+        }
+        if (docRef.current?.id !== localDoc.id) return;
+        docRef.current = next;
+        lastSavedRef.current = JSON.stringify(next);
+        setActiveDoc(next);
+        setSaveState({ kind: "saved", message: "Loaded the account version" });
+        await refreshLibrary();
+        return;
+      }
+      setSaveState({ kind: "saved", message: "Synced with your account" });
+    } catch (error) {
+      if (docRef.current?.id !== localDoc.id) return;
+      if (error instanceof SyncError && error.code === "not_found") {
+        setSaveState({ kind: "saved", message: "Saved locally · not in your account yet" });
+        return;
+      }
+      if (error instanceof SyncError && error.code === "unauthorized") {
+        setSaveState({ kind: "saved", message: "Saved locally · sign in again to sync" });
+        return;
+      }
+      setSaveState({ kind: "saved", message: "Saved locally · account sync unavailable" });
+    }
+  }
+
+  /** Conflict action: adopt the account's revision, discarding local edits. */
+  async function handleLoadServerVersion() {
+    const doc = docRef.current;
+    if (!doc) return;
+    setConflictError(null);
+    try {
+      const serverMenu = await fetchServerMenu(doc.id);
+      let next: MenuDocument = serverMenu.doc;
+      if (!storageDownRef.current) {
+        next = await saveMenu(serverMenu.doc).catch(() => serverMenu.doc);
+      }
+      if (docRef.current?.id !== doc.id) return;
+      docRef.current = next;
+      lastSavedRef.current = JSON.stringify(next);
+      setActiveDoc(next);
+      serverBaseRef.current = serverMenu.updatedAt;
+      conflictRef.current = null;
+      setConflict(null);
+      setSaveState({ kind: "saved", message: "Loaded the account version" });
+      await refreshLibrary();
+    } catch (error) {
+      if (error instanceof SyncError && error.code === "not_found") {
+        conflictRef.current = { serverUpdatedAt: null };
+        setConflict({ serverUpdatedAt: null });
+        setConflictError("The account copy no longer exists — keeping your version is safe.");
+        return;
+      }
+      setConflictError("Could not load the account version. Check your connection and try again.");
+    }
+  }
+
+  /** Conflict action: push the local revision over the account's, explicitly. */
+  async function handleKeepMyVersion() {
+    const doc = docRef.current;
+    const expected = conflict?.serverUpdatedAt ?? null;
+    if (!doc || expected === null) return;
+    setConflictError(null);
+    try {
+      const pushed = await updateServerMenu(doc.id, doc, expected);
+      serverBaseRef.current = pushed.updatedAt;
+      conflictRef.current = null;
+      setConflict(null);
+      setSaveState({
+        kind: "saved",
+        message: `Saved to your account · ${new Date(pushed.updatedAt).toLocaleTimeString()}`,
+      });
+    } catch (error) {
+      if (error instanceof SyncError && error.code === "conflict") {
+        conflictRef.current = { serverUpdatedAt: error.currentUpdatedAt };
+        setConflict(conflictRef.current);
+        setConflictError("It changed again while you were deciding — review and choose once more.");
+        return;
+      }
+      if (error instanceof SyncError && error.code === "not_found") {
+        conflictRef.current = { serverUpdatedAt: null };
+        setConflict({ serverUpdatedAt: null });
+        setConflictError("The account copy was removed — your version stays saved in this browser.");
+        return;
+      }
+      setConflictError("Could not save to your account. Your edits are safe in this browser.");
+    }
   }
 
   // --- Library actions ----------------------------------------------------
@@ -549,6 +754,7 @@ export default function Home() {
                 {libraryError}
               </p>
             )}
+            {signedIn && menus.length > 0 && <MoveToAccountPanel menuCount={menus.length} />}
             <LibraryPanel
               menus={menus}
               activeId={activeDoc?.id ?? null}
@@ -564,18 +770,29 @@ export default function Home() {
         {screen === "orders" && <OrdersBoard />}
 
         {screen === "editor" && activeDoc && (
-          <MenuEditor
-            doc={activeDoc}
-            onChange={handleDocChange}
-            saveState={saveState}
-            imageUrl={editorImageUrl}
-            onExportJson={handleExportJson}
-            onExportCsv={handleExportCsv}
-            onImportFile={(f) => void handleImportFile(f)}
-            importError={importError}
-            onDeleteMenu={() => void handleDeleteMenu(activeDoc.id)}
-            onBack={() => void handleBackToLibrary()}
-          />
+          <>
+            {conflict && (
+              <ConflictBanner
+                serverUpdatedAt={conflict.serverUpdatedAt}
+                error={conflictError}
+                onReloadServer={() => void handleLoadServerVersion()}
+                onKeepMine={() => void handleKeepMyVersion()}
+              />
+            )}
+            <MenuEditor
+              doc={activeDoc}
+              onChange={handleDocChange}
+              saveState={saveState}
+              syncMode={signedIn ? "account" : "local"}
+              imageUrl={editorImageUrl}
+              onExportJson={handleExportJson}
+              onExportCsv={handleExportCsv}
+              onImportFile={(f) => void handleImportFile(f)}
+              importError={importError}
+              onDeleteMenu={() => void handleDeleteMenu(activeDoc.id)}
+              onBack={() => void handleBackToLibrary()}
+            />
+          </>
         )}
 
         {screen === "capture" && (
