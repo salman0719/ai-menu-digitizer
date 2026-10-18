@@ -312,10 +312,10 @@ export function ItemEditor({
             type="checkbox"
             checked={selected}
             onChange={onToggle}
-            aria-label={`Select ${item.name} for bulk actions`}
+            aria-label={`Select ${item.name} for bulk move`}
             className="h-4 w-4 rounded border-stone-300 accent-amber-700"
           />
-          Select
+          Select for bulk move
         </label>
         <button
           type="button"
