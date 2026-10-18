@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Canonical server DB schema (Drizzle, Postgres/Neon).
@@ -136,6 +136,36 @@ export const restaurantMembership = pgTable(
   })
 );
 
+/**
+ * A menu document owned by a restaurant (Step 8 — server-backed menus).
+ * `doc` is the full canonical `MenuDocument` as jsonb, re-validated with
+ * the same Zod schema on every read and write so a malformed row fails
+ * loudly instead of rendering garbage (AGENTS.md, one canonical schema).
+ * `title`/`currency` are denormalized for cheap library listings, and
+ * `updated_at` mirrors `doc.updatedAt`: it is the single column the
+ * "changed elsewhere" conflict check compares against, and it is stamped
+ * from the server clock on every write — the server owns the timeline.
+ */
+export const menu = pgTable(
+  "menu",
+  {
+    /** Client-generated (app) id — preserved by "Move my menus to my account". */
+    id: text("id").primaryKey(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    currency: text("currency"),
+    doc: jsonb("doc").$type<unknown>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // Library listings are scoped to one restaurant.
+    restaurantIdx: index("menu_restaurant_idx").on(t.restaurantId),
+  })
+);
+
 /** Everything the Drizzle adapter and app code share. */
 export const schema = {
   user,
@@ -144,6 +174,7 @@ export const schema = {
   verification,
   restaurant,
   restaurantMembership,
+  menu,
 };
 
 /** A restaurant as seen by a member: restaurant fields + that member's role. */
