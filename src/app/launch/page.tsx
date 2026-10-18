@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { LaunchChecklist } from "@/components/launch/launch-checklist";
 
@@ -105,6 +106,7 @@ export default function LaunchPage() {
           </Link>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }
