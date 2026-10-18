@@ -118,5 +118,14 @@ No other services are required: no external database, auth, or file storage.
 
 ## Scope
 
-P0 prototype only (see `PLAN.md` and `ROADMAP.md`). No accounts, cloud sync,
-payments, public site publishing, QR menus, or POS integrations.
+What is live today is the local-first prototype (see `PLAN.md`): menus and
+table orders live in this browser's IndexedDB, there are no accounts and no
+server database. Themed customer previews and printable QR table cards are
+included; on a customer's phone the QR page is honest that the menu lives on
+the owner's device.
+
+Phase 2 makes it live and usable by anyone — accounts with a server database
+so ordering works across devices, one-click publish to a public menu URL,
+and a usage-billed B2B extraction API. Scope is in `PHASE-2.md`, build order
+in `ROADMAP.md`. Still out of scope: POS integrations, delivery/booking, and
+inventory management.
