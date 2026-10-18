@@ -276,8 +276,9 @@ refuses a foreign `Origin` before touching the DB. Extraction usage is
 recorded per attempt (pages, tokens, cost only from configured rates), the
 per-account monthly cap is the cost brake, and anonymous extraction is capped
 per caller per hour by a hashed address; `/launch` shows the allowance.
-Orders older than `ORDER_RETENTION_DAYS` (90) are purged daily by a cron route
-gated on `CRON_SECRET`, which also sweeps stale rate-limit windows; owners can
+A purge exists for orders past `ORDER_RETENTION_DAYS` (90) and stale
+rate-limit windows, behind a `CRON_SECRET`-gated route; **scheduling it is
+parked** (see below), so today nothing deletes orders on its own. Owners can
 export everything as JSON and delete their account (typed confirmation).
 `npm run secrets:check` scans the built client bundle for configured secret
 values and fails on a hit. `docs/` carries the launch runbook, the two-device
@@ -285,15 +286,16 @@ script, and the backup/restore drill.
 
 **Verified 2026-10-18 (local, PGlite + browser):** 52 new tests (264 total) cover log
 redaction and alert throttling, the same-origin guard, pricing/caps/usage
-summaries, checklist derivation and the launch endpoint, retention purge,
-export scoping, deletion cascades, and cron authorization. Lint, typecheck,
+summaries, checklist derivation and the launch endpoint, the maintenance
+purge, export scoping, deletion cascades, and its secret gate. Lint, typecheck,
 build green; the secret scan reports no leak and was proved to fail on a
 planted value. The checklist, legal pages, and usage panel were checked in the
 browser (checklist read real account state — 7 menus, 4 orders, live slug —
 with the manual tick undone again); the alert path and the cron route were
 exercised locally, migration 0004 was applied explicitly to the dev Neon
 database, and the payment-free claim was checked by searching the UI for any
-payment surface (only the sentences saying there is none). The cost brake was
+payment surface (only the sentences saying there is none), and the privacy
+page was corrected once automatic purging was parked. The cost brake was
 proved live, not just in tests: with the account filled to its cap, a real
 `POST /api/extract-menu` from the browser returned 429
 `extraction_cap_reached` naming the reset date, the log line carried the same
@@ -305,6 +307,15 @@ and the probe rows were removed afterwards — the panel went back to 0 of 150.
 onboard one real café with the checklist, run the alert drill against the
 deployed app, and create the Sentry project (logs + email alerts work without
 it; a third-party error dashboard does not exist yet).
+
+**Parked inside Step 11 (2026-10-18):** automatic order retention. Vercel cron
+requires a paid plan, so `vercel.json`'s schedule was removed and nothing
+calls the purge daily. The endpoint, its secret gate, its window config, and
+its tests all stay in place so a free scheduler (an external cron, a GitHub
+Action, or a Vercel plan upgrade) can switch it on without code changes, and
+the privacy page no longer claims orders are deleted automatically. Until
+that happens, the DB grows by whatever ordering activity a café has — worth
+re-checking before the retention is needed for real.
 
 ### Step 12 — 🔒 parked: B2B extraction API surface (I2)
 
@@ -382,8 +393,11 @@ it live.
 - [ ] **Sentry project** — Step 11 ships structured logs + email alerts;
       the Sentry DSN is still needed for a third-party error dashboard.
 - [ ] **Contact address** — `CONTACT_EMAIL` for `/privacy` and `/terms`.
-- [ ] **Launch secrets** — `CRON_SECRET` and `OPS_ALERT_EMAIL` in Vercel
-      before the retention cron and the alert path can run in production.
+- [x] **`OPS_ALERT_EMAIL`** — `codemen.salman@gmail.com` in `.env.local`
+      (2026-10-18); add the same variable in Vercel before relying on alerts in
+      production.
+- [ ] **`CRON_SECRET`** — only needed to run the maintenance purge by hand
+      (scheduling is parked).
 - [ ] **Promotion start date + endgame** — when "free while it lasts" opens
       and what happens when it ends (decide before advertising widely).
 

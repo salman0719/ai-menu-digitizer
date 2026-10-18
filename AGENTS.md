@@ -146,8 +146,10 @@ errors, or add lint/type suppressions just to make checks pass.
   UI in `src/components/launch/` (checklist, usage panel, data controls)
 - `src/features/retention/` — Step 11 retention: `schema.ts` (window config),
   `repo.ts` (`purgeOldOrders`, `buildAccountExport`, `deleteAccountForUser`,
-  `isCronAuthorized`), `client.ts`; routes `/api/cron/retention`,
-  `/api/account` (DELETE), `/api/account/export`; schedule in `vercel.json`
+  `isCronAuthorized`), `client.ts`; routes `/api/account` (DELETE),
+  `/api/account/export`, and `/api/cron/retention` (secret-gated maintenance
+  purge — **automatic scheduling is parked**: no `vercel.json` cron, nothing
+  calls it daily, and no copy promises automatic deletion)
 - `src/app/privacy/`, `src/app/terms/`, `src/lib/site.ts` — legal pages and
   shared site constants (`CONTACT_EMAIL` lookup)
 - `scripts/check-client-secrets.mjs` — client-bundle secret scan

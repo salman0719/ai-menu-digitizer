@@ -1,7 +1,11 @@
 /**
  * Retention rules (Step 11). Orders are the only table that grows without a
- * natural end, so they are purged on a schedule; the window is configuration
- * because a café may want a longer history than the 90-day default.
+ * natural end, so there is a purge with a configurable window (90 days by
+ * default).
+ *
+ * PARKED: automatic scheduling is off (Vercel cron needs a paid plan), so
+ * this window applies whenever the maintenance purge is run — by hand, or by
+ * whatever scheduler we add later. Nothing deletes orders on its own today.
  */
 
 export const DEFAULT_ORDER_RETENTION_DAYS = 90;

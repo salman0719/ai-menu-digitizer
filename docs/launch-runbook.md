@@ -21,15 +21,22 @@ where useful). Secrets stay server-side; none of them may be `NEXT_PUBLIC_`.
 | `RESEND_API_KEY`, `EMAIL_FROM` | yes | Sign-in email and ops alerts. |
 | `OPS_ALERT_EMAIL` | yes | Where failure/volume alerts land. Without it, alerts only reach the logs. |
 | `CONTACT_EMAIL` | yes | Shown on the privacy and terms pages. |
-| `CRON_SECRET` | yes | The retention route refuses everything else; Vercel sends it automatically. |
 | `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | recommended | Enables cost in the spend panel. Leave unset and the panel says cost is unavailable. |
 | `EXTRACTION_MONTHLY_CAP` | optional | The per-account cost brake (default 150/month). |
 | `ORDER_RETENTION_DAYS` | optional | Order history window (default 90). |
 
-`vercel.json` schedules `/api/cron/retention` daily at 03:00 UTC. A Vercel
-project can only run crons on a plan that includes them; if the schedule is
-rejected, run the same request from any scheduler with
-`Authorization: Bearer $CRON_SECRET`.
+### PARKED: automatic order retention
+
+Nothing purges orders on a schedule. Vercel cron needs a paid plan, so the
+schedule was removed and no copy promises automatic deletion. The plumbing is
+intact for the day a scheduler exists — run it by hand with
+`Authorization: Bearer $CRON_SECRET`, or point a free scheduler (external
+cron service, GitHub Action, uptime pinger) at
+`GET /api/cron/retention` with that header. It deletes orders older than
+`ORDER_RETENTION_DAYS` (90 by default) and stale rate-limit windows, and logs
+`retention.purged`. Consequences of leaving it parked: the order table grows
+with real usage, and a single tenant's restore/export gets larger. Revisit
+before that matters.
 
 ## 2. Prove a production failure is visible
 
@@ -84,7 +91,9 @@ launch must not be advertised until it is fixed.
 - 429s in the logs (`orders.rate_limited`, `extract.rate_limited`,
   `extract.cap_reached`) — each one should be explainable.
 - `ops_alert` log lines: every one should have a follow-up.
-- Retention cron result: `retention.purged` once a day with a plausible count.
+- Nothing in the logs named `retention.*` — expected while retention is
+  parked; if an external scheduler is added later, watch for
+  `retention.purged` with a plausible count.
 
 ## 5. Known gaps at the time of writing
 

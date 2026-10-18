@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+// Imported statically: a dynamic import inside the test body counted its module
+// graph against the 5s test timeout and went flaky under full-suite load.
+import { POST as placeOrderRoute } from "../src/app/api/orders/route";
 import { isSameOriginRequest, rejectCrossOrigin } from "../src/lib/http/origin";
 
 function request(headers: Record<string, string>): Request {
@@ -88,8 +91,7 @@ describe("rejectCrossOrigin", () => {
   });
 
   it("guards the anonymous order endpoint before it touches the database", async () => {
-    const { POST } = await import("../src/app/api/orders/route");
-    const response = await POST(
+    const response = await placeOrderRoute(
       new Request("https://tablepass.example/api/orders", {
         method: "POST",
         headers: { host: "tablepass.example", origin: "https://evil.example" },

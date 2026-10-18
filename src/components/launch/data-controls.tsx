@@ -73,8 +73,7 @@ export function DataControls() {
     <section id="data" className="rounded-2xl border border-stone-200 bg-white p-5">
       <h2 className="text-base font-semibold text-stone-900">Your data</h2>
       <p className="mt-1 text-sm text-stone-600">
-        Download everything as JSON, or delete the account. Orders older than the retention window
-        (90 days by default) are already removed automatically.
+        Download everything as JSON, or delete the account and the restaurants it created.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -437,6 +437,9 @@ DB create them. Not optional polish.
   in production is invisible to us.
 - **Privacy, retention, deletion:** orders are purged after a configurable
   window (default suggestion: 90 days) so the DB does not grow forever;
+  **parked 2026-10-18:** the purge endpoint shipped, but scheduling it needs a
+  paid Vercel cron plan, so nothing deletes orders on a schedule yet and no
+  user-facing copy promises it — see ROADMAP.md, Step 11;
   owners can export and delete their data; a privacy policy + terms page
   exist before the free public launch (no payments yet, but diner-facing
   pages still warrant them). We deliberately collect no diner PII — table

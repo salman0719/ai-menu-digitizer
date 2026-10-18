@@ -1,9 +1,10 @@
 /**
  * Retention, export, and account deletion (Step 11).
  *
- * - `purgeOldOrders` is the scheduled job: orders older than the window are
+ * - `purgeOldOrders` is the maintenance job: orders older than the window are
  *   deleted (lines cascade), and stale rate-limit windows are swept. It never
- *   touches menus, publications, or usage rows.
+ *   touches menus, publications, or usage rows. It runs when something calls
+ *   it — scheduling is parked (see the route), so nothing calls it daily yet.
  * - `buildAccountExport` is the owner's copy of everything: account, menus,
  *   live publications (with the snapshot the public sees), and orders.
  * - `deleteAccountForUser` deletes the user row and lets Postgres cascades
@@ -256,7 +257,7 @@ export async function deleteAccountForUser(
   return { deleted: true, restaurants: owned.length };
 }
 
-/** Guard for the scheduled route: only the caller holding the secret runs it. */
+/** Guard for the maintenance route: only the caller holding the secret runs it. */
 export function isCronAuthorized(
   authorization: string | null,
   secret: string | undefined = process.env.CRON_SECRET

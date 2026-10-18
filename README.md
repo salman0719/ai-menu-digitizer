@@ -50,10 +50,10 @@ sample data, so the editor, persistence, and export can all be exercised.
 | `EMAIL_FROM`         | Server only       | Verified sending address for sign-in mail.                        |
 | `OPS_ALERT_EMAIL`    | Server only       | Inbox for failure and volume alerts (Step 11).                    |
 | `CONTACT_EMAIL`      | Server            | Address shown on `/privacy` and `/terms`; unset renders an explicit notice. |
-| `CRON_SECRET`        | Server only       | Bearer secret for `/api/cron/retention`; Vercel sends it automatically. |
+| `CRON_SECRET`        | Server only       | Bearer secret for the on-demand purge at `/api/cron/retention`. |
 | `EXTRACTION_MONTHLY_CAP` | Server (optional) | Per-account monthly extraction cap (default 150).             |
 | `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | Server (optional) | Enables cost in the spend panel; unset means cost is reported as unavailable. |
-| `ORDER_RETENTION_DAYS` | Server (optional) | Order history window before the daily purge (default 90).       |
+| `ORDER_RETENTION_DAYS` | Server (optional) | Order history window used by the purge when it is run (default 90). |
 
 Rules enforced by the code:
 
@@ -162,6 +162,11 @@ npm run secrets:check   # needs the build output above
 
 The launch promotion is free, with no payment step anywhere; the app enforces
 per-account extraction caps instead, and shows them on `/launch`.
+
+**Parked:** automatic order purging. Scheduling needs a paid Vercel cron plan,
+so `/api/cron/retention` is a secret-gated maintenance endpoint that nothing
+calls on a schedule; order history simply grows until a scheduler exists. The
+privacy page makes no automatic-deletion promise.
 
 ## Deployment (Vercel)
 

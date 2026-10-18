@@ -120,11 +120,13 @@ export default function PrivacyPage() {
 
         <Section title="How long we keep it">
           <p>
-            Table orders are deleted automatically after 90 days. Menu content and your account stay
-            until you delete them — you can export everything as JSON first. Extraction usage rows
-            contain no diner data and are kept longer so cost accounting stays correct. Server
-            request logs are kept by the hosting provider under its retention window and contain no
-            request bodies.
+            Menu content and table orders stay with your account until you delete them, so you can
+            look back at past service. You can export everything as JSON at any time, and deleting
+            the account removes it all. Nothing in this app deletes your orders automatically today;
+            if that changes, the window will be stated on this page first. Extraction usage rows
+            contain no diner data and are kept so cost accounting stays correct. Server request
+            logs are kept by the hosting provider under its retention window and contain no request
+            bodies.
           </p>
         </Section>
 

@@ -11,12 +11,17 @@ import { reportError } from "@/lib/observability/alerts";
 import { logInfo } from "@/lib/observability/log";
 
 /**
- * GET /api/cron/retention — the scheduled purge (Vercel cron, see vercel.json).
+ * GET /api/cron/retention — the maintenance purge, run on demand.
  *
  * Orders older than the retention window are deleted; menus and publications
- * are never touched. Vercel sends `Authorization: Bearer $CRON_SECRET` when
- * the variable is set, and the route refuses everything else — without the
- * secret it is not a public "delete data" button.
+ * are never touched. Callers must present `Authorization: Bearer
+ * $CRON_SECRET`, so this is never a public "delete data" button.
+ *
+ * PARKED (2026-10-18): nothing calls this on a schedule. Vercel cron needs a
+ * paid plan, so automatic purging is parked until that changes; the route is
+ * kept working and tested so a scheduler (or a manual call) can run it the
+ * day one is available. Until then, order history simply keeps growing — the
+ * privacy page makes no automatic-deletion promise.
  */
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isCronAuthorized(request.headers.get("authorization"))) {

@@ -19,10 +19,13 @@ correctly afterwards.
 | Uploaded menu images | not stored | n/a |
 | Signed-out menus | the owner's browser (IndexedDB) | JSON export, from the app |
 
-Order history has a second, deliberate limit: the retention job deletes orders
-older than `ORDER_RETENTION_DAYS` (90 by default). A restore brings back what
-the database held at that moment; it does not resurrect orders the schedule
-already purged. Export before a restore if those orders matter.
+Order history has a second, deliberate limit — currently inactive: a purge
+exists for orders older than `ORDER_RETENTION_DAYS` (90 by default), but
+**nothing runs it on a schedule** (Vercel cron needs a paid plan, so retention
+is parked). Until a scheduler is added, orders accumulate and a restore simply
+brings back everything the database held at that moment. If the purge is ever
+scheduled, export before a restore would matter, because a restore does not
+resurrect purged orders.
 
 ## Quarterly restore drill (about 15 minutes)
 
