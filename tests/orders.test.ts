@@ -15,6 +15,8 @@ import {
   parseTableLink,
   tableOrderPath,
   tableOrderUrl,
+  publicTableOrderPath,
+  publicTableOrderUrl,
 } from "../src/features/orders/table-links";
 
 const espresso: OrderLine = {
@@ -111,5 +113,14 @@ describe("table links", () => {
     expect(parseTableLink(new URLSearchParams("menu=abc"))).toBeNull();
     expect(parseTableLink({ table: "4" })).toBeNull();
     expect(parseTableLink({ menu: "abc", table: "   " })).toBeNull();
+  });
+
+  it("builds public table links from a published slug", () => {
+    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe(
+      "/m/my-cafe/order?table=Patio+2"
+    );
+    expect(publicTableOrderUrl("https://example.test/", "my-cafe", "3")).toBe(
+      "https://example.test/m/my-cafe/order?table=3"
+    );
   });
 });

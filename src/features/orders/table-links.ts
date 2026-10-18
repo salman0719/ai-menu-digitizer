@@ -43,6 +43,19 @@ export function tableOrderUrl(origin: string, menuId: string, tableLabel: string
   return `${base}${tableOrderPath(menuId, tableLabel)}`;
 }
 
+/**
+ * Server-backed table link (Step 10): the published menu's own address, so a
+ * QR code works on any phone instead of only the browser holding the menu.
+ */
+export function publicTableOrderPath(slug: string, tableLabel: string): string {
+  const params = new URLSearchParams({ table: tableLabel });
+  return `/m/${encodeURIComponent(slug)}/order?${params.toString()}`;
+}
+
+export function publicTableOrderUrl(origin: string, slug: string, tableLabel: string): string {
+  return `${origin.replace(/\/+$/, "")}${publicTableOrderPath(slug, tableLabel)}`;
+}
+
 /** Read `menu`/`table` from a query object or URLSearchParams. */
 export function parseTableLink(
   params: URLSearchParams | Record<string, string | string[] | undefined>
