@@ -236,7 +236,7 @@ brought it back to Live with the same data. Unpublished and unknown slugs
 render the not-live page; a table link without a table number says what it
 needs. Incognito (signed-out) still shows the local queue with no server
 call. `menu_revision`-backed ordering, rate limiting, the honeypot, and
-payload caps are covered by 21 new tests (212 total); lint, typecheck, build
+payload caps are covered by 22 new tests (212 total); lint, typecheck, build
 green. Four demo orders remain in the account from this run.
 
 **Not yet verifiable here:** the “cold phone on cellular, different network”
