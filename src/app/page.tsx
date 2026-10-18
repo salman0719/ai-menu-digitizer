@@ -56,11 +56,21 @@ import { authClient } from "@/lib/auth-client";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
+import {
+  appRouteHref,
+  parseAppRoute,
+  type AppRoute,
+  type AppScreen,
+  type EditorMode,
+} from "@/features/navigation/routes";
 
-type Screen = "capture" | "library" | "orders" | "editor";
 type Phase = "upload" | "ready" | "extracting" | "done";
 
 const STEPS = ["Upload image", "Extract menu", "Review draft"] as const;
+
+function routeMenuId(route: AppRoute): string | null {
+  return route.screen === "editor" || route.screen === "item" ? route.menuId : null;
+}
 
 function stepIndex(phase: Phase, hasResult: boolean): number {
   if (hasResult || phase === "done") return 2;
@@ -69,8 +79,62 @@ function stepIndex(phase: Phase, hasResult: boolean): number {
 }
 
 export default function Home() {
-  // Capture flow state.
-  const [screen, setScreen] = useState<Screen>("capture");
+  // The URL is the source of truth for the main screen and selected menu.
+  // Start on capture for SSR, then hydrate the route from location in an effect.
+  const [route, setRoute] = useState<AppRoute>({ screen: "capture" });
+  const screen: AppScreen = route.screen === "item" ? "editor" : route.screen;
+  const selectedItemId = route.screen === "item" ? route.itemId : null;
+  // Which editor surface the URL asks for (edit, reorder, table QR,
+  // preview); an item deep link is always the edit workspace.
+  const editorMode: EditorMode = route.screen === "editor" ? route.mode : "edit";
+  const routeRef = useRef<AppRoute>(route);
+  const navigationReadyRef = useRef(false);
+  const openedRouteMenuRef = useRef<string | null>(null);
+  const flushSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const navigateToRef = useRef<
+    ((next: AppRoute, replace?: boolean, flushCurrent?: boolean) => void) | null
+  >(null);
+  const openDocRef = useRef<
+    ((doc: MenuDocument, image: Blob | null, updateRoute?: boolean) => Promise<void>) | null
+  >(null);
+  const activeDocIdRef = useRef<string | null>(null);
+
+  function navigateTo(next: AppRoute, replace = false, flushCurrent = true) {
+    const previousMenuId = routeMenuId(routeRef.current);
+    if (flushCurrent && previousMenuId && previousMenuId !== routeMenuId(next)) {
+      void flushSaveRef.current?.();
+    }
+    const href = appRouteHref(next);
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname + window.location.search !== href
+    ) {
+      if (replace) window.history.replaceState(null, "", href);
+      else window.history.pushState(null, "", href);
+    }
+    routeRef.current = next;
+    setRoute(next);
+    if (typeof window !== "undefined") navigationReadyRef.current = true;
+  }
+
+  // Native History API is integrated with Next's App Router; subscribe to
+  // browser back/forward so the visible screen follows the URL without reload.
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const next = parseAppRoute(window.location.href);
+      const previousMenuId = routeMenuId(routeRef.current);
+      if (previousMenuId && previousMenuId !== routeMenuId(next)) {
+        void flushSaveRef.current?.();
+      }
+      routeRef.current = next;
+      setRoute(next);
+      navigationReadyRef.current = true;
+    };
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, []);
+
   const [pages, setPages] = useState<PageImage[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("upload");
@@ -110,7 +174,7 @@ export default function Home() {
   // Server sync (Step 8): signed in = the account is authoritative, and the
   // IndexedDB copy stays as the offline cache. Signed out, nothing changes —
   // the whole local-first flow above keeps working untouched.
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const signedIn = session?.user != null;
   const signedInRef = useRef(false);
   /** The server updatedAt the open menu was last synced at; null = don't push. */
@@ -151,6 +215,56 @@ export default function Home() {
   useEffect(() => {
     void refreshLibrary();
   }, []);
+
+  flushSaveRef.current = flushSave;
+  navigateToRef.current = navigateTo;
+  openDocRef.current = openDoc;
+  activeDocIdRef.current = activeDoc?.id ?? null;
+
+  useEffect(() => {
+    if (!navigationReadyRef.current || !routeMenuId(route) || sessionPending) return;
+    const menuId = routeMenuId(route);
+    if (!menuId) return;
+    if (activeDocIdRef.current === menuId) {
+      openedRouteMenuRef.current = menuId;
+      return;
+    }
+    if (openedRouteMenuRef.current === menuId) return;
+    openedRouteMenuRef.current = menuId;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        let doc: MenuDocument;
+        let imageBlob: Blob | null = null;
+        try {
+          doc = await getMenu(menuId);
+          try {
+            imageBlob = (await getImage(menuId))?.blob ?? null;
+          } catch {
+            imageBlob = null;
+          }
+        } catch (localError) {
+          if (!signedIn) throw localError;
+          const serverMenu = await fetchServerMenu(menuId);
+          doc = serverMenu.doc;
+          await cacheMenu(doc).catch(() => undefined);
+          await refreshLibrary();
+        }
+        if (!cancelled) await openDocRef.current?.(doc, imageBlob, false);
+      } catch {
+        if (cancelled) return;
+        setLibraryError("That menu could not be opened. It may have been deleted or moved.");
+        openedRouteMenuRef.current = null;
+        navigateToRef.current?.({ screen: "library" }, true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (openedRouteMenuRef.current === menuId) openedRouteMenuRef.current = null;
+    };
+  }, [route, sessionPending, signedIn]);
 
   useEffect(() => {
     if (!signedIn) {
@@ -364,7 +478,7 @@ export default function Home() {
     });
   }
 
-  async function openDoc(doc: MenuDocument, imageBlob: Blob | null) {
+  async function openDoc(doc: MenuDocument, imageBlob: Blob | null, updateRoute = true) {
     setPublication(null);
     setPublicationMenuId(null);
     setPublicationLoaded(false);
@@ -380,7 +494,7 @@ export default function Home() {
     );
     setImportError(null);
     setEditorImage(imageBlob ? URL.createObjectURL(imageBlob) : null);
-    setScreen("editor");
+    if (updateRoute) navigateTo({ screen: "editor", menuId: doc.id, mode: "edit" });
     void syncWithAccount(doc);
   }
 
@@ -488,7 +602,9 @@ export default function Home() {
       if (error instanceof SyncError && error.code === "not_found") {
         conflictRef.current = { serverUpdatedAt: null };
         setConflict({ serverUpdatedAt: null });
-        setConflictError("The account copy was removed — your version stays saved in this browser.");
+        setConflictError(
+          "The account copy was removed — your version stays saved in this browser."
+        );
         return;
       }
       setConflictError("Could not save to your account. Your edits are safe in this browser.");
@@ -497,20 +613,9 @@ export default function Home() {
 
   // --- Library actions ----------------------------------------------------
 
-  async function handleOpenMenu(id: string) {
+  function handleOpenMenu(id: string) {
     setLibraryError(null);
-    try {
-      const doc = await getMenu(id);
-      let blob: Blob | null = null;
-      try {
-        blob = (await getImage(id))?.blob ?? null;
-      } catch {
-        blob = null; // Image is optional; the menu matters.
-      }
-      await openDoc(doc, blob);
-    } catch (error) {
-      setLibraryError(error instanceof StorageError ? error.message : "Could not open that menu.");
-    }
+    navigateTo({ screen: "editor", menuId: id, mode: "edit" });
   }
 
   async function handleNewMenu() {
@@ -708,8 +813,7 @@ export default function Home() {
             accountNote =
               "Deleted from this browser — only the restaurant owner can remove the account copy.";
           } else if (error instanceof SyncError && error.code === "unauthorized") {
-            accountNote =
-              "Deleted from this browser — sign in again to remove the account copy.";
+            accountNote = "Deleted from this browser — sign in again to remove the account copy.";
           } else {
             accountNote =
               "Deleted from this browser — the account copy could not be removed. Try again when online.";
@@ -733,7 +837,7 @@ export default function Home() {
       setPublishError(null);
       await refreshLibrary();
       if (accountNote) setLibraryError(accountNote);
-      setScreen("library");
+      navigateTo({ screen: "library" }, false, false);
     } catch (error) {
       setLibraryError(
         error instanceof StorageError ? error.message : "Could not delete that menu."
@@ -746,7 +850,7 @@ export default function Home() {
     setEditorImage(null);
     await refreshLibrary();
     void mergeAccountMenus();
-    setScreen("library");
+    navigateTo({ screen: "library" }, false, false);
   }
 
   // --- Capture flow -------------------------------------------------------
@@ -985,7 +1089,6 @@ export default function Home() {
       const saved = storageDownRef.current ? doc : await saveMenu(doc);
       if (!storageDownRef.current) await refreshLibrary();
       await openDoc(saved, null);
-      setScreen("editor");
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "Could not import that file.");
     }
@@ -1027,7 +1130,7 @@ export default function Home() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setScreen(tab.id)}
+                onClick={() => navigateTo({ screen: tab.id })}
                 aria-current={screen === tab.id ? "page" : undefined}
                 className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
                   screen === tab.id
@@ -1084,6 +1187,10 @@ export default function Home() {
             )}
             <MenuEditor
               doc={activeDoc}
+              selectedItemId={selectedItemId}
+              onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
+              mode={editorMode}
+              onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
               onChange={handleDocChange}
               saveState={saveState}
               syncMode={signedIn ? "account" : "local"}
@@ -1297,6 +1404,11 @@ export default function Home() {
               </div>
             )}
           </>
+        )}
+        {screen === "editor" && !activeDoc && (
+          <p role="status" className="text-sm text-stone-500">
+            Opening menu…
+          </p>
         )}
       </main>
       <SiteFooter />
