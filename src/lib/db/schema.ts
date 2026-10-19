@@ -147,6 +147,45 @@ export const restaurantMembership = pgTable(
 );
 
 /**
+ * A pending invitation to join a restaurant by email.
+ *
+ * Only the SHA-256 hash of the token is stored; the raw token travels once,
+ * in the invitation email, and is the only credential needed to view the
+ * invite. Accepting requires a signed-in account whose email matches — the
+ * token alone can never grant access to a different address. Rows are kept
+ * after acceptance for audit and cascade away with the restaurant.
+ */
+export const restaurantInvitation = pgTable(
+  "restaurant_invitation",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    /** Normalized (lowercase, trimmed) invitee address. */
+    email: text("email").notNull(),
+    role: text("role", { enum: ["owner", "staff"] }).notNull(),
+    /** SHA-256 hex of the one-time token; the raw token is only emailed. */
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex("restaurant_invitation_token_unique").on(t.tokenHash),
+    restaurantEmailIdx: index("restaurant_invitation_restaurant_email_idx").on(
+      t.restaurantId,
+      t.email
+    ),
+  })
+);
+
+/**
  * A menu document owned by a restaurant (Step 8 — server-backed menus).
  * `doc` is the full canonical `MenuDocument` as jsonb, re-validated with
  * the same Zod schema on every read and write so a malformed row fails
@@ -367,6 +406,7 @@ export const schema = {
   verification,
   restaurant,
   restaurantMembership,
+  restaurantInvitation,
   menu,
   menuRevision,
   publishedMenu,

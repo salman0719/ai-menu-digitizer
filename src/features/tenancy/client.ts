@@ -32,6 +32,35 @@ const listEnvelope = z.object({ restaurants: z.array(restaurantOptionSchema) });
 const restaurantEnvelope = z.object({ restaurant: restaurantOptionSchema });
 const membersEnvelope = z.object({ members: z.array(memberOptionSchema) });
 const memberEnvelope = z.object({ member: memberOptionSchema });
+
+/** What the owner sees after inviting an address with no account yet. */
+const invitationSummarySchema = z.object({
+  email: z.string(),
+  role: z.enum(["owner", "staff"]),
+  expiresAt: z.string(),
+});
+
+export type InvitationSummary = z.infer<typeof invitationSummarySchema>;
+
+/** What the invitee's page shows before they accept. */
+const invitationDetailsSchema = z.object({
+  restaurantName: z.string(),
+  email: z.string(),
+  role: z.enum(["owner", "staff"]),
+  expiresAt: z.string(),
+  status: z.enum(["pending", "expired", "accepted"]),
+});
+
+export type InvitationDetails = z.infer<typeof invitationDetailsSchema>;
+
+const invitationDetailsEnvelope = z.object({ invitation: invitationDetailsSchema });
+const acceptEnvelope = z.object({
+  restaurant: z.object({ id: z.string(), name: z.string(), role: z.enum(["owner", "staff"]) }),
+});
+const addMemberEnvelope = z.union([
+  z.object({ member: memberOptionSchema }),
+  z.object({ invitation: invitationSummarySchema }),
+]);
 const errorEnvelope = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
 });
@@ -49,8 +78,13 @@ function mapErrorCode(code: string, status: number): SyncErrorCode {
       return "invalid";
     case "already_member":
     case "last_owner":
+    case "invitation_expired":
+    case "invitation_used":
       return "conflict";
+    case "wrong_account":
+      return "forbidden";
     case "server_db_unavailable":
+    case "email_failed":
       return "unavailable";
     default:
       break;
@@ -59,6 +93,7 @@ function mapErrorCode(code: string, status: number): SyncErrorCode {
   if (status === 403) return "forbidden";
   if (status === 404) return "not_found";
   if (status === 409) return "conflict";
+  if (status === 410) return "conflict";
   if (status === 400) return "invalid";
   return "unavailable";
 }
@@ -153,20 +188,48 @@ export async function fetchMembers(restaurantId: string): Promise<MemberOption[]
   );
 }
 
-/** Owner-only: add an existing account by email. They must have signed in once. */
+/**
+ * Owner-only: add a teammate by email. An existing account joins at once;
+ * otherwise an invitation email is sent and acceptance happens later.
+ */
 export async function addMember(
   restaurantId: string,
   email: string,
   role: "owner" | "staff"
-): Promise<MemberOption> {
-  return requestJson(
+): Promise<AddMemberResult> {
+  const envelope = await requestJson(
     memberPath(restaurantId),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, role }),
     },
-    (payload) => memberEnvelope.parse(payload).member
+    (payload) => addMemberEnvelope.parse(payload)
+  );
+  return "member" in envelope
+    ? { kind: "member", member: envelope.member }
+    : { kind: "invitation", invitation: envelope.invitation };
+}
+
+export type AddMemberResult =
+  | { kind: "member"; member: MemberOption }
+  | { kind: "invitation"; invitation: InvitationSummary };
+
+/** Public invitation details for the accept page (token holder only). */
+export async function fetchInvitation(token: string): Promise<InvitationDetails> {
+  return requestJson(`/api/invitations/${encodeURIComponent(token)}`, undefined, (payload) =>
+    invitationDetailsEnvelope.parse(payload).invitation
+  );
+}
+
+/** Accept an invitation for the signed-in account (email must match). */
+export async function acceptInvitation(
+  token: string
+): Promise<{ id: string; name: string; role: "owner" | "staff" }> {
+  return requestJson(
+    `/api/invitations/${encodeURIComponent(token)}`,
+    { method: "POST" },
+    (payload) => acceptEnvelope.parse(payload).restaurant
   );
 }
 

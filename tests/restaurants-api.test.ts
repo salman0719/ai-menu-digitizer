@@ -44,6 +44,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// No email leaves the test process: invitation delivery is stubbed.
+vi.mock("@/lib/auth/email", () => ({
+  sendInvitationEmail: vi.fn(async () => undefined),
+  sendMagicLinkEmail: vi.fn(async () => undefined),
+}));
+
 async function initTestDb(): Promise<TestDb> {
   const { createTestDb } = await import("./helpers/pg-test-db");
   const { db } = await createTestDb();
@@ -288,7 +294,7 @@ describe("POST /api/restaurants/[restaurantId]/members", () => {
     });
   });
 
-  it("rejects invalid bodies, unknown emails and duplicates", async () => {
+  it("rejects invalid bodies and duplicates, and invites unknown addresses", async () => {
     const { seedUser } = await import("./helpers/pg-test-db");
     const owner = await seedUser(holder.db!, "owner@cafe.test", "Owner");
     await seedUser(holder.db!, "staff@cafe.test", "Staff");
@@ -305,6 +311,7 @@ describe("POST /api/restaurants/[restaurantId]/members", () => {
     expect(invalid.status).toBe(400);
     expect((await invalid.json()).error.code).toBe("invalid_body");
 
+    // No account yet: the address gets an emailed invitation, not an error.
     const unknown = await addMember(
       jsonRequest(`/api/restaurants/${created.id}/members`, "POST", {
         email: "nobody@cafe.test",
@@ -312,8 +319,11 @@ describe("POST /api/restaurants/[restaurantId]/members", () => {
       }),
       restaurantParams(created.id)
     );
-    expect(unknown.status).toBe(404);
-    expect((await unknown.json()).error.code).toBe("user_not_found");
+    expect(unknown.status).toBe(201);
+    expect((await unknown.json()).invitation).toMatchObject({
+      email: "nobody@cafe.test",
+      role: "staff",
+    });
 
     await addMember(
       jsonRequest(`/api/restaurants/${created.id}/members`, "POST", {
