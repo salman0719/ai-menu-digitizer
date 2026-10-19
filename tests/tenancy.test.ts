@@ -2,11 +2,15 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  addMemberForOwner,
   createRestaurant,
   deleteRestaurantForOwner,
   getRestaurantForUser,
+  listMembersForUser,
   listRestaurantsForUser,
+  removeMemberForOwner,
   renameRestaurantForOwner,
+  updateMemberRoleForOwner,
 } from "@/features/tenancy/repo";
 import { restaurantMembership } from "@/lib/db/schema";
 import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
@@ -94,5 +98,124 @@ describe("tenancy isolation", () => {
       .from(restaurantMembership)
       .where(eq(restaurantMembership.restaurantId, restaurantA.id));
     expect(orphanMemberships).toHaveLength(0);
+  });
+});
+
+/**
+ * Member management (owner-only writes, PHASE-2.md §3.1): adding existing
+ * accounts by email, changing roles, removing members — and the invariant
+ * that a restaurant never loses its last owner.
+ */
+describe("member management", () => {
+  let db: TestDb;
+  let owner: string;
+  let staff: string;
+  let outsider: string;
+
+  beforeAll(async () => {
+    ({ db } = await createTestDb());
+    owner = await seedUser(db, "owner@cafe.test", "Owner");
+    staff = await seedUser(db, "staff@cafe.test", "Staff Person");
+    outsider = await seedUser(db, "outsider@cafe.test", "Outsider");
+  }, 30_000);
+
+  /** A fresh restaurant per test keeps the mutations independent. */
+  async function freshRestaurant(name: string) {
+    return createRestaurant(db, owner, name);
+  }
+
+  it("lists members with account info for any member, and not for outsiders", async () => {
+    const place = await freshRestaurant("Team Place");
+    await addMemberForOwner(db, owner, place.id, "staff@cafe.test", "staff");
+
+    // Staff can see their team.
+    const members = await listMembersForUser(db, staff, place.id);
+    expect(members.map((m) => m.email).sort()).toEqual(["owner@cafe.test", "staff@cafe.test"]);
+    expect(members.find((m) => m.userId === staff)).toMatchObject({
+      name: "Staff Person",
+      role: "staff",
+    });
+
+    // Outsiders see nothing — the id does not resolve for them.
+    await expect(listMembersForUser(db, outsider, place.id)).rejects.toMatchObject({
+      code: "not_found",
+    });
+  });
+
+  it("adds an existing account by email, refusing unknown emails and duplicates", async () => {
+    const place = await freshRestaurant("Add Place");
+    const added = await addMemberForOwner(db, owner, place.id, "  STAFF@CAFE.TEST ", "staff");
+    expect(added).toMatchObject({ userId: staff, email: "staff@cafe.test", role: "staff" });
+
+    await expect(
+      addMemberForOwner(db, owner, place.id, "nobody@cafe.test", "staff")
+    ).rejects.toMatchObject({ code: "user_not_found" });
+    await expect(
+      addMemberForOwner(db, owner, place.id, "staff@cafe.test", "owner")
+    ).rejects.toMatchObject({ code: "already_member" });
+  });
+
+  it("lets only owners manage members (staff forbidden, outsiders unprobeable)", async () => {
+    const place = await freshRestaurant("Guarded Place");
+    await addMemberForOwner(db, owner, place.id, "staff@cafe.test", "staff");
+
+    await expect(
+      addMemberForOwner(db, staff, place.id, "outsider@cafe.test", "staff")
+    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(
+      updateMemberRoleForOwner(db, staff, place.id, owner, "staff")
+    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(removeMemberForOwner(db, staff, place.id, owner)).rejects.toMatchObject({
+      code: "forbidden",
+    });
+
+    await expect(
+      updateMemberRoleForOwner(db, outsider, place.id, owner, "staff")
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("changes roles but never demotes the last owner", async () => {
+    const place = await freshRestaurant("Roles Place");
+    await addMemberForOwner(db, owner, place.id, "staff@cafe.test", "staff");
+
+    // Promote, then demote while the other owner remains.
+    expect(await updateMemberRoleForOwner(db, owner, place.id, staff, "owner")).toMatchObject({
+      role: "owner",
+    });
+    expect(await updateMemberRoleForOwner(db, owner, place.id, staff, "staff")).toMatchObject({
+      role: "staff",
+    });
+
+    // Sole owner cannot demote themselves.
+    await expect(
+      updateMemberRoleForOwner(db, owner, place.id, owner, "staff")
+    ).rejects.toMatchObject({ code: "last_owner" });
+
+    // With a second owner, the demotion goes through.
+    await updateMemberRoleForOwner(db, owner, place.id, staff, "owner");
+    expect(await updateMemberRoleForOwner(db, owner, place.id, owner, "staff")).toMatchObject({
+      userId: owner,
+      role: "staff",
+    });
+  });
+
+  it("removes members but never the last owner", async () => {
+    const place = await freshRestaurant("Remove Place");
+    await addMemberForOwner(db, owner, place.id, "staff@cafe.test", "staff");
+
+    await removeMemberForOwner(db, owner, place.id, staff);
+    const remaining = await listMembersForUser(db, owner, place.id);
+    expect(remaining.map((m) => m.userId)).toEqual([owner]);
+
+    // The sole owner cannot remove themselves.
+    await expect(removeMemberForOwner(db, owner, place.id, owner)).rejects.toMatchObject({
+      code: "last_owner",
+    });
+
+    // With a second owner, either owner may leave.
+    await addMemberForOwner(db, owner, place.id, "staff@cafe.test", "owner");
+    await removeMemberForOwner(db, owner, place.id, owner);
+    const afterLeave = await listMembersForUser(db, staff, place.id);
+    expect(afterLeave.map((m) => m.userId)).toEqual([staff]);
   });
 });

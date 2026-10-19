@@ -18,8 +18,20 @@ const restaurantOptionSchema = z.object({
 
 export type RestaurantOption = z.infer<typeof restaurantOptionSchema>;
 
+/** A team member: account info plus their role in one restaurant. */
+const memberOptionSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string(),
+  email: z.string(),
+  role: z.enum(["owner", "staff"]),
+});
+
+export type MemberOption = z.infer<typeof memberOptionSchema>;
+
 const listEnvelope = z.object({ restaurants: z.array(restaurantOptionSchema) });
 const restaurantEnvelope = z.object({ restaurant: restaurantOptionSchema });
+const membersEnvelope = z.object({ members: z.array(memberOptionSchema) });
+const memberEnvelope = z.object({ member: memberOptionSchema });
 const errorEnvelope = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
 });
@@ -31,9 +43,13 @@ function mapErrorCode(code: string, status: number): SyncErrorCode {
     case "forbidden":
       return "forbidden";
     case "not_found":
+    case "user_not_found":
       return "not_found";
     case "invalid_body":
       return "invalid";
+    case "already_member":
+    case "last_owner":
+      return "conflict";
     case "server_db_unavailable":
       return "unavailable";
     default:
@@ -42,6 +58,7 @@ function mapErrorCode(code: string, status: number): SyncErrorCode {
   if (status === 401) return "unauthorized";
   if (status === 403) return "forbidden";
   if (status === 404) return "not_found";
+  if (status === 409) return "conflict";
   if (status === 400) return "invalid";
   return "unavailable";
 }
@@ -122,4 +139,55 @@ export async function renameRestaurant(id: string, name: string): Promise<Restau
  */
 export async function deleteRestaurant(id: string): Promise<void> {
   await requestJson(`/api/restaurants/${encodeURIComponent(id)}`, { method: "DELETE" }, () => undefined);
+}
+
+const memberPath = (id: string, memberUserId?: string) =>
+  `/api/restaurants/${encodeURIComponent(id)}/members${
+    memberUserId ? `/${encodeURIComponent(memberUserId)}` : ""
+  }`;
+
+/** The team list (any member of the restaurant). */
+export async function fetchMembers(restaurantId: string): Promise<MemberOption[]> {
+  return requestJson(memberPath(restaurantId), undefined, (payload) =>
+    membersEnvelope.parse(payload).members
+  );
+}
+
+/** Owner-only: add an existing account by email. They must have signed in once. */
+export async function addMember(
+  restaurantId: string,
+  email: string,
+  role: "owner" | "staff"
+): Promise<MemberOption> {
+  return requestJson(
+    memberPath(restaurantId),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    },
+    (payload) => memberEnvelope.parse(payload).member
+  );
+}
+
+/** Owner-only role change; refuses to leave the restaurant without an owner. */
+export async function updateMemberRole(
+  restaurantId: string,
+  memberUserId: string,
+  role: "owner" | "staff"
+): Promise<MemberOption> {
+  return requestJson(
+    memberPath(restaurantId, memberUserId),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role }),
+    },
+    (payload) => memberEnvelope.parse(payload).member
+  );
+}
+
+/** Owner-only removal; refuses to remove the last owner. */
+export async function removeMember(restaurantId: string, memberUserId: string): Promise<void> {
+  await requestJson(memberPath(restaurantId, memberUserId), { method: "DELETE" }, () => undefined);
 }
