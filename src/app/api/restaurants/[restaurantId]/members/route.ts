@@ -10,7 +10,7 @@ import {
   createInvitationForOwner,
   InvitationError,
 } from "@/features/tenancy/invitations";
-import { sendInvitationEmail } from "@/lib/auth/email";
+import { emailInvitation, publicBaseUrl } from "@/features/tenancy/invite-mailer";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { rejectCrossOrigin } from "@/lib/http/origin";
@@ -152,15 +152,8 @@ async function inviteTeammate(
 ): Promise<NextResponse> {
   try {
     const created = await createInvitationForOwner(getDb(), userId, restaurantId, email, role);
-    const baseUrl = process.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
     try {
-      await sendInvitationEmail({
-        email: created.invitation.email,
-        restaurantName: created.restaurantName,
-        inviterName: created.inviterName,
-        role: created.invitation.role,
-        url: `${baseUrl}/invitations/${encodeURIComponent(created.token)}`,
-      });
+      await emailInvitation(created, publicBaseUrl(request));
     } catch {
       return errorResponse(
         "email_failed",

@@ -7,11 +7,15 @@ import {
   addMember,
   deleteRestaurant,
   fetchMembers,
+  fetchPendingInvitations,
   fetchRestaurants,
   removeMember,
   renameRestaurant,
+  resendInvitation,
+  revokeInvitation,
   updateMemberRole,
   type MemberOption,
+  type PendingInvitation,
   type RestaurantOption,
 } from "@/features/tenancy/client";
 
@@ -222,12 +226,14 @@ interface TeamCardProps {
 /** The team list plus add/role/remove controls, scoped to one restaurant. */
 function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps) {
   const [members, setMembers] = useState<MemberOption[] | null>(null);
+  const [pending, setPending] = useState<PendingInvitation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState<"owner" | "staff">("staff");
   const [adding, setAdding] = useState(false);
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
+  const [pendingBusy, setPendingBusy] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,10 +245,66 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
         if (!cancelled) setError("Could not load the team. Check your connection and try again.");
       }
     })();
+    // Pending invitations are optional chrome: if this fails, the member
+    // list still renders (and the server still enforces the roles).
+    void (async () => {
+      try {
+        const list = await fetchPendingInvitations(restaurantId);
+        if (!cancelled) setPending(list);
+      } catch {
+        if (!cancelled) setPending([]);
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, [restaurantId]);
+
+  async function refreshPending() {
+    try {
+      setPending(await fetchPendingInvitations(restaurantId));
+    } catch {
+      // Keep whatever list we had; the next load will retry.
+    }
+  }
+
+  async function handleResend(invitation: PendingInvitation) {
+    if (pendingBusy) return;
+    setPendingBusy(invitation.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await resendInvitation(restaurantId, invitation.id);
+      setNotice(
+        `Invitation re-sent to ${invitation.email}. The previous link no longer works.`
+      );
+      await refreshPending();
+    } catch (resendError) {
+      setError(
+        resendError instanceof Error ? resendError.message : "Could not resend the invitation."
+      );
+    } finally {
+      setPendingBusy(null);
+    }
+  }
+
+  async function handleRevoke(invitation: PendingInvitation) {
+    if (pendingBusy) return;
+    setPendingBusy(invitation.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await revokeInvitation(restaurantId, invitation.id);
+      setPending((prev) => prev?.filter((row) => row.id !== invitation.id) ?? prev);
+      setNotice(`Invitation to ${invitation.email} revoked. The emailed link no longer works.`);
+    } catch (revokeError) {
+      setError(
+        revokeError instanceof Error ? revokeError.message : "Could not revoke the invitation."
+      );
+    } finally {
+      setPendingBusy(null);
+    }
+  }
 
   async function handleAddMember() {
     const email = addEmail.trim();
@@ -259,6 +321,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
         setNotice(
           `Invitation emailed to ${result.invitation.email}. They'll join as ${result.invitation.role} once they accept it.`
         );
+        await refreshPending();
       }
       setAddEmail("");
     } catch (addError) {
@@ -406,6 +469,46 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
             </li>
           ))}
         </ul>
+      )}
+
+      {pending !== null && pending.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold tracking-wide text-amber-900 uppercase">
+            Pending invitations
+          </p>
+          <ul className="mt-2 space-y-2">
+            {pending.map((invitation) => (
+              <li key={invitation.id} className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-stone-900">
+                    {invitation.email}
+                  </p>
+                  <p className="text-[11px] leading-4 text-stone-500">
+                    {invitation.role === "owner" ? "Owner" : "Staff"} · invited by{" "}
+                    {invitation.invitedByName.trim() || "a teammate"} · expires{" "}
+                    {new Date(invitation.expiresAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleResend(invitation)}
+                  disabled={pendingBusy === invitation.id}
+                  className="rounded-full border border-stone-300 bg-white px-3 py-1 text-xs font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                >
+                  Resend
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRevoke(invitation)}
+                  disabled={pendingBusy === invitation.id}
+                  className="rounded-full border border-stone-300 bg-white px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

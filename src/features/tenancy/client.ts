@@ -54,6 +54,21 @@ const invitationDetailsSchema = z.object({
 export type InvitationDetails = z.infer<typeof invitationDetailsSchema>;
 
 const invitationDetailsEnvelope = z.object({ invitation: invitationDetailsSchema });
+
+/** A still-open invitation as the team panel lists it. */
+const pendingInvitationSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  role: z.enum(["owner", "staff"]),
+  expiresAt: z.string(),
+  createdAt: z.string(),
+  invitedByName: z.string(),
+});
+
+export type PendingInvitation = z.infer<typeof pendingInvitationSchema>;
+
+const pendingInvitationsEnvelope = z.object({ invitations: z.array(pendingInvitationSchema) });
+const invitationSummaryEnvelope = z.object({ invitation: invitationSummarySchema });
 const acceptEnvelope = z.object({
   restaurant: z.object({ id: z.string(), name: z.string(), role: z.enum(["owner", "staff"]) }),
 });
@@ -181,6 +196,11 @@ const memberPath = (id: string, memberUserId?: string) =>
     memberUserId ? `/${encodeURIComponent(memberUserId)}` : ""
   }`;
 
+const invitationPath = (id: string, invitationId?: string) =>
+  `/api/restaurants/${encodeURIComponent(id)}/invitations${
+    invitationId ? `/${encodeURIComponent(invitationId)}` : ""
+  }`;
+
 /** The team list (any member of the restaurant). */
 export async function fetchMembers(restaurantId: string): Promise<MemberOption[]> {
   return requestJson(memberPath(restaurantId), undefined, (payload) =>
@@ -214,6 +234,35 @@ export async function addMember(
 export type AddMemberResult =
   | { kind: "member"; member: MemberOption }
   | { kind: "invitation"; invitation: InvitationSummary };
+
+/** Pending invitations for the owner's team panel. */
+export async function fetchPendingInvitations(
+  restaurantId: string
+): Promise<PendingInvitation[]> {
+  return requestJson(invitationPath(restaurantId), undefined, (payload) =>
+    pendingInvitationsEnvelope.parse(payload).invitations
+  );
+}
+
+/** Owner-only: replace an invitation's link and email it again. */
+export async function resendInvitation(
+  restaurantId: string,
+  invitationId: string
+): Promise<InvitationSummary> {
+  return requestJson(
+    invitationPath(restaurantId, invitationId),
+    { method: "POST" },
+    (payload) => invitationSummaryEnvelope.parse(payload).invitation
+  );
+}
+
+/** Owner-only: revoke a pending invitation. */
+export async function revokeInvitation(
+  restaurantId: string,
+  invitationId: string
+): Promise<void> {
+  await requestJson(invitationPath(restaurantId, invitationId), { method: "DELETE" }, () => undefined);
+}
 
 /** Public invitation details for the accept page (token holder only). */
 export async function fetchInvitation(token: string): Promise<InvitationDetails> {

@@ -5,6 +5,11 @@ import {
   POST as acceptInvitationRoute,
 } from "@/app/api/invitations/[token]/route";
 import { POST as addMember } from "@/app/api/restaurants/[restaurantId]/members/route";
+import { GET as listInvitations } from "@/app/api/restaurants/[restaurantId]/invitations/route";
+import {
+  DELETE as revokeInvitation,
+  POST as resendInvitation,
+} from "@/app/api/restaurants/[restaurantId]/invitations/[invitationId]/route";
 import { createRestaurant } from "@/features/tenancy/repo";
 import { restaurantInvitation } from "@/lib/db/schema";
 import type { TestDb } from "./helpers/pg-test-db";
@@ -70,6 +75,13 @@ function restaurantParams(restaurantId: string): { params: Promise<{ restaurantI
 
 function invitationParams(token: string): { params: Promise<{ token: string }> } {
   return { params: Promise.resolve({ token }) };
+}
+
+function pendingParams(
+  restaurantId: string,
+  invitationId: string
+): { params: Promise<{ restaurantId: string; invitationId: string }> } {
+  return { params: Promise.resolve({ restaurantId, invitationId }) };
 }
 
 /** Pull the one-time token out of the emailed accept URL. */
@@ -190,6 +202,117 @@ describe("POST /api/restaurants/[restaurantId]/members — invitation fallback",
     );
     expect(res.status).toBe(403);
     expect(emailHolder.calls).toHaveLength(0);
+  });
+});
+
+describe("pending invitations API", () => {
+  it("lists open invitations for the owner and nobody else", async () => {
+    const { seedUser } = await import("./helpers/pg-test-db");
+    const { restaurantId, owner } = await seedOwnerAndRestaurant();
+    await addMember(
+      jsonRequest(`/api/restaurants/${restaurantId}/members`, "POST", {
+        email: "pending@cafe.test",
+        role: "staff",
+      }),
+      restaurantParams(restaurantId)
+    );
+
+    const res = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const payload = await res.json();
+    expect(payload.invitations).toHaveLength(1);
+    expect(payload.invitations[0]).toMatchObject({ email: "pending@cafe.test", role: "staff" });
+
+    const staff = await seedUser(holder.db!, "staff-pending@cafe.test", "Staff");
+    const { restaurantMembership } = await import("@/lib/db/schema");
+    await holder
+      .db!.insert(restaurantMembership)
+      .values({ restaurantId, userId: staff, role: "staff" });
+    holder.userId = staff;
+    const denied = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    expect(denied.status).toBe(403);
+
+    const outsider = await seedUser(holder.db!, "outsider-pending@cafe.test", "Outsider");
+    holder.userId = outsider;
+    const hidden = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    expect(hidden.status).toBe(404);
+
+    holder.userId = owner;
+  });
+
+  it("resends with a fresh link and revokes it", async () => {
+    const { restaurantId } = await seedOwnerAndRestaurant();
+    await addMember(
+      jsonRequest(`/api/restaurants/${restaurantId}/members`, "POST", {
+        email: "rotate@cafe.test",
+        role: "staff",
+      }),
+      restaurantParams(restaurantId)
+    );
+    const oldToken = tokenFromUrl(emailHolder.calls[0]!.url);
+
+    const listed = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    const invitationId = (await listed.json()).invitations[0].id as string;
+
+    const resent = await resendInvitation(
+      asRequest(`/api/restaurants/${restaurantId}/invitations/${invitationId}`, {
+        method: "POST",
+      }),
+      pendingParams(restaurantId, invitationId)
+    );
+    expect(resent.status).toBe(200);
+    expect(emailHolder.calls).toHaveLength(2);
+    const newToken = tokenFromUrl(emailHolder.calls[1]!.url);
+    expect(newToken).not.toBe(oldToken);
+
+    // The previous link is dead; the new one resolves.
+    const stale = await getInvitation(asRequest(`/api/invitations/${oldToken}`),
+      invitationParams(oldToken));
+    expect(stale.status).toBe(404);
+    const fresh = await getInvitation(asRequest(`/api/invitations/${newToken}`),
+      invitationParams(newToken));
+    expect(fresh.status).toBe(200);
+
+    // Re-sending replaces the row, so the panel re-reads the list (and its
+    // new id) before acting on it again — mirror that here.
+    const relisted = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    const rotatedId = (await relisted.json()).invitations[0].id as string;
+
+    const revoked = await revokeInvitation(
+      asRequest(`/api/restaurants/${restaurantId}/invitations/${rotatedId}`, {
+        method: "DELETE",
+      }),
+      pendingParams(restaurantId, rotatedId)
+    );
+    expect(revoked.status).toBe(204);
+
+    const afterRevoke = await getInvitation(
+      asRequest(`/api/invitations/${newToken}`),
+      invitationParams(newToken)
+    );
+    expect(afterRevoke.status).toBe(404);
+
+    const empty = await listInvitations(
+      asRequest(`/api/restaurants/${restaurantId}/invitations`),
+      restaurantParams(restaurantId)
+    );
+    expect((await empty.json()).invitations).toHaveLength(0);
   });
 });
 

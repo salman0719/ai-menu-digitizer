@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { restaurant, restaurantInvitation, restaurantMembership, user } from "@/lib/db/schema";
 import type { RestaurantRole } from "@/lib/db/schema";
@@ -66,6 +66,16 @@ export interface CreatedInvitation {
   inviterName: string;
 }
 
+/** A still-open invitation as the owner's team panel lists it. */
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: RestaurantRole;
+  expiresAt: Date;
+  createdAt: Date;
+  invitedByName: string;
+}
+
 export function normalizeInvitationEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -100,25 +110,19 @@ function invitationQuery(db: TenancyDb) {
     .innerJoin(restaurant, eq(restaurant.id, restaurantInvitation.restaurantId));
 }
 
-/**
- * Owner-only: create (or replace) a pending invitation and return the raw
- * token so the caller can email it. Refuses when the address already has an
- * account in this restaurant — that is a membership, not an invitation.
- */
-export async function createInvitationForOwner(
+/** Owner gate shared by every invitation mutation (404 non-member, 403 staff). */
+async function requireOwnerForInvitations(
   db: TenancyDb,
-  inviterUserId: string,
-  restaurantId: string,
-  email: string,
-  role: RestaurantRole
-): Promise<CreatedInvitation> {
+  userId: string,
+  restaurantId: string
+): Promise<void> {
   const membership = await db
     .select({ role: restaurantMembership.role })
     .from(restaurantMembership)
     .where(
       and(
         eq(restaurantMembership.restaurantId, restaurantId),
-        eq(restaurantMembership.userId, inviterUserId)
+        eq(restaurantMembership.userId, userId)
       )
     );
   const callerRole = membership[0]?.role;
@@ -128,7 +132,20 @@ export async function createInvitationForOwner(
   if (callerRole !== "owner") {
     throw new InvitationError("forbidden", "Only the restaurant owner can invite teammates.");
   }
+}
 
+/**
+ * Create (or replace) a pending invitation and return the raw token so the
+ * caller can email it. Refuses when the address already has an account in
+ * this restaurant — that is a membership, not an invitation.
+ */
+async function issueInvitation(
+  db: TenancyDb,
+  inviterUserId: string,
+  restaurantId: string,
+  email: string,
+  role: RestaurantRole
+): Promise<CreatedInvitation> {
   const restaurants = await db
     .select({ name: restaurant.name })
     .from(restaurant)
@@ -198,6 +215,101 @@ export async function createInvitationForOwner(
     restaurantName: restaurantRow.name,
     inviterName: inviters[0]?.name ?? "A teammate",
   };
+}
+
+/** Owner-only: invite an address (replacing any earlier link for it). */
+export async function createInvitationForOwner(
+  db: TenancyDb,
+  inviterUserId: string,
+  restaurantId: string,
+  email: string,
+  role: RestaurantRole
+): Promise<CreatedInvitation> {
+  await requireOwnerForInvitations(db, inviterUserId, restaurantId);
+  return issueInvitation(db, inviterUserId, restaurantId, email, role);
+}
+
+/** Still-open invitations for the owner's team panel (newest first). */
+export async function listPendingInvitationsForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string
+): Promise<PendingInvitation[]> {
+  await requireOwnerForInvitations(db, userId, restaurantId);
+  return db
+    .select({
+      id: restaurantInvitation.id,
+      email: restaurantInvitation.email,
+      role: restaurantInvitation.role,
+      expiresAt: restaurantInvitation.expiresAt,
+      createdAt: restaurantInvitation.createdAt,
+      invitedByName: user.name,
+    })
+    .from(restaurantInvitation)
+    .innerJoin(user, eq(user.id, restaurantInvitation.invitedBy))
+    .where(
+      and(
+        eq(restaurantInvitation.restaurantId, restaurantId),
+        isNull(restaurantInvitation.acceptedAt),
+        gt(restaurantInvitation.expiresAt, new Date())
+      )
+    )
+    .orderBy(desc(restaurantInvitation.createdAt));
+}
+
+/**
+ * Owner-only: replace an invitation's link and return the new raw token.
+ * The previous link stops working immediately (re-issue deletes it).
+ */
+export async function resendInvitationForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string,
+  invitationId: string
+): Promise<CreatedInvitation> {
+  await requireOwnerForInvitations(db, userId, restaurantId);
+  const rows = await db
+    .select({
+      email: restaurantInvitation.email,
+      role: restaurantInvitation.role,
+      acceptedAt: restaurantInvitation.acceptedAt,
+    })
+    .from(restaurantInvitation)
+    .where(
+      and(
+        eq(restaurantInvitation.id, invitationId),
+        eq(restaurantInvitation.restaurantId, restaurantId)
+      )
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row || row.acceptedAt) {
+    throw new InvitationError("not_found", "That invitation does not exist.");
+  }
+  return issueInvitation(db, userId, restaurantId, row.email, row.role);
+}
+
+/** Owner-only: revoke a pending invitation (its link stops working). */
+export async function revokeInvitationForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string,
+  invitationId: string
+): Promise<void> {
+  await requireOwnerForInvitations(db, userId, restaurantId);
+  const deleted = await db
+    .delete(restaurantInvitation)
+    .where(
+      and(
+        eq(restaurantInvitation.id, invitationId),
+        eq(restaurantInvitation.restaurantId, restaurantId),
+        isNull(restaurantInvitation.acceptedAt)
+      )
+    )
+    .returning({ id: restaurantInvitation.id });
+  if (deleted.length === 0) {
+    throw new InvitationError("not_found", "That invitation does not exist.");
+  }
 }
 
 /** Look an invitation up by its raw token (null for unknown tokens). */
