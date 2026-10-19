@@ -145,9 +145,19 @@ export function InvitationClient({ token }: { token: string }) {
 
       {invitation && invitation.status !== "pending" && !accepted && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {invitation.status === "expired"
-            ? "This invitation has expired — ask the restaurant owner to send a new one."
-            : "This invitation has already been accepted."}
+          {invitation.status === "expired" ? (
+            "This invitation has expired — ask the restaurant owner to send a new one."
+          ) : (
+            <>
+              This invitation has already been accepted.{" "}
+              <Link
+                href={invitation.role === "staff" ? "/orders" : "/menus"}
+                className="font-medium underline underline-offset-2 hover:text-amber-950"
+              >
+                {invitation.role === "staff" ? "Open the order board" : "Go to My menus"}
+              </Link>
+            </>
+          )}
         </p>
       )}
 
@@ -157,12 +167,20 @@ export function InvitationClient({ token }: { token: string }) {
           <p className="mt-1">
             You joined {accepted.name} as {accepted.role === "owner" ? "an owner" : "staff"}.
           </p>
-          <Link
-            href="/menus"
-            className="mt-3 inline-block rounded-full bg-emerald-800 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-900"
-          >
-            Go to My menus
-          </Link>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Link
+              href={accepted.role === "staff" ? "/orders" : "/menus"}
+              className="inline-block rounded-full bg-emerald-800 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-900"
+            >
+              {accepted.role === "staff" ? "Open the order board" : "Go to My menus"}
+            </Link>
+            <Link
+              href={accepted.role === "staff" ? "/menus" : "/orders"}
+              className="text-xs font-medium underline underline-offset-2 hover:text-emerald-950"
+            >
+              {accepted.role === "staff" ? "Go to My menus" : "Open the order board"}
+            </Link>
+          </div>
         </div>
       )}
 
