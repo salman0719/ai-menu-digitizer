@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { moveLocalMenusToAccount, type MoveReport } from "@/features/menus/move-to-account";
 import {
   createRestaurant,
+  deleteRestaurant,
   fetchRestaurants,
+  renameRestaurant,
   type RestaurantOption,
 } from "@/features/tenancy/client";
 
@@ -14,6 +16,8 @@ import {
  * signed-in users: pick a restaurant you own, then copy every local menu into
  * it through the validated API. One-way — local copies are never deleted —
  * and idempotent, so re-running only reports what was already there.
+ * Owners can also rename or delete the selected restaurant (delete cascades
+ * its menus, published pages and orders server-side, so it warns first).
  */
 
 interface MoveToAccountPanelProps {
@@ -30,6 +34,9 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [mutating, setMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<MoveReport | null>(null);
 
@@ -55,6 +62,7 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
 
   const owned = restaurants?.filter((r) => r.role === "owner") ?? [];
   const staffOnly = restaurants !== null && owned.length === 0 && restaurants.length > 0;
+  const selected = owned.find((r) => r.id === selectedId) ?? null;
 
   async function handleCreate() {
     const name = newName.trim();
@@ -70,6 +78,51 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
       setError("Could not create the restaurant. Check your connection and try again.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  function startRename() {
+    if (!selected) return;
+    setRenameDraft(selected.name);
+    setRenaming(true);
+  }
+
+  async function handleRename() {
+    const name = renameDraft.trim();
+    if (!selected || !name || mutating) return;
+    setMutating(true);
+    setError(null);
+    try {
+      const updated = await renameRestaurant(selected.id, name);
+      setRestaurants((prev) => (prev ?? []).map((r) => (r.id === updated.id ? updated : r)));
+      setRenaming(false);
+    } catch {
+      setError("Could not rename the restaurant. Check your connection and try again.");
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selected || mutating) return;
+    if (
+      !window.confirm(
+        `Delete “${selected.name}” permanently? Its menus, published pages and orders are deleted too. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setMutating(true);
+    setError(null);
+    try {
+      await deleteRestaurant(selected.id);
+      setRestaurants((prev) => (prev ?? []).filter((r) => r.id !== selected.id));
+      setSelectedId("");
+      setRenaming(false);
+    } catch {
+      setError("Could not delete the restaurant. Check your connection and try again.");
+    } finally {
+      setMutating(false);
     }
   }
 
@@ -171,6 +224,63 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
           >
             {busy ? "Moving…" : `Move ${menuCount === 1 ? "1 menu" : `${menuCount} menus`}`}
           </button>
+        </div>
+      )}
+
+      {owned.length > 0 && !report && selected && !renaming && (
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={startRename}
+            disabled={mutating}
+            className="text-xs font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Rename “{selected.name}”
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete()}
+            disabled={mutating}
+            className="text-xs font-medium text-red-700 underline underline-offset-2 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          >
+            Delete…
+          </button>
+        </div>
+      )}
+
+      {owned.length > 0 && !report && selected && renaming && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-stone-600">
+            Rename “{selected.name}”
+            <input
+              type="text"
+              value={renameDraft}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void handleRename();
+                if (event.key === "Escape") setRenaming(false);
+              }}
+              className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            />
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void handleRename()}
+              disabled={mutating || renameDraft.trim().length === 0}
+              className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              {mutating ? "Saving…" : "Save name"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRenaming(false)}
+              disabled={mutating}
+              className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

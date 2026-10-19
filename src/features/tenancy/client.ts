@@ -19,7 +19,7 @@ const restaurantOptionSchema = z.object({
 export type RestaurantOption = z.infer<typeof restaurantOptionSchema>;
 
 const listEnvelope = z.object({ restaurants: z.array(restaurantOptionSchema) });
-const createEnvelope = z.object({ restaurant: restaurantOptionSchema });
+const restaurantEnvelope = z.object({ restaurant: restaurantOptionSchema });
 const errorEnvelope = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
 });
@@ -99,6 +99,27 @@ export async function createRestaurant(name: string): Promise<RestaurantOption> 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     },
-    (payload) => createEnvelope.parse(payload).restaurant
+    (payload) => restaurantEnvelope.parse(payload).restaurant
   );
+}
+
+/** Owner-only rename. */
+export async function renameRestaurant(id: string, name: string): Promise<RestaurantOption> {
+  return requestJson(
+    `/api/restaurants/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+    (payload) => restaurantEnvelope.parse(payload).restaurant
+  );
+}
+
+/**
+ * Owner-only delete. Memberships, menus, published pages and orders are
+ * deleted too — the UI must warn about that before calling.
+ */
+export async function deleteRestaurant(id: string): Promise<void> {
+  await requestJson(`/api/restaurants/${encodeURIComponent(id)}`, { method: "DELETE" }, () => undefined);
 }
