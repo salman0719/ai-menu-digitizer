@@ -216,7 +216,7 @@ export const restaurantAuditEvent = pgTable(
       .notNull()
       .references(() => restaurant.id, { onDelete: "cascade" }),
     actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
-    /** Snapshot of the actor's display name at the time of the action. */
+    /** Snapshot of the actor's display name (or address when blank). */
     actorName: text("actor_name").notNull(),
     action: text("action", { enum: AUDIT_ACTIONS }).notNull(),
     /** Snapshot of the affected account/address. */

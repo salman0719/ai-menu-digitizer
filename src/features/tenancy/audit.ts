@@ -39,11 +39,13 @@ export interface AuditEvent {
 export async function recordAuditEvent(db: TenancyDb, input: AuditEventInput): Promise<void> {
   try {
     const actors = await db
-      .select({ name: user.name })
+      .select({ name: user.name, email: user.email })
       .from(user)
       .where(eq(user.id, input.actorUserId))
       .limit(1);
-    const actorName = actors[0]?.name?.trim() || "Someone";
+    // Accounts created by magic link often have no display name yet; the
+    // address still identifies the actor, and the team list shows it too.
+    const actorName = actors[0]?.name?.trim() || actors[0]?.email || "Someone";
     await db.insert(restaurantAuditEvent).values({
       restaurantId: input.restaurantId,
       actorUserId: input.actorUserId,

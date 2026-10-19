@@ -104,6 +104,26 @@ describe("team audit trail", () => {
     expect(again.role).toBe("staff");
   });
 
+  it("identifies an actor with no display name by their address", async () => {
+    const place = await createRestaurant(db, owner, "Nameless Cafe");
+    await createInvitationForOwner(db, owner, place.id, "nameless@audit.test", "staff");
+    const [pending] = await listPendingInvitationsForOwner(db, owner, place.id);
+    const created = await resendInvitationForOwner(db, owner, place.id, pending!.id);
+    const nameless = await seedUser(db, "nameless@audit.test", "");
+    await acceptInvitation(db, {
+      token: created.token,
+      userId: nameless,
+      email: "nameless@audit.test",
+    });
+
+    const [accepted] = (await listAuditEventsForUser(db, owner, place.id))!;
+    expect(accepted).toMatchObject({
+      action: "invitation_accepted",
+      actorName: "nameless@audit.test",
+      targetEmail: "nameless@audit.test",
+    });
+  });
+
   it("shows events to any member of that restaurant only", async () => {
     const place = await createRestaurant(db, owner, "Scoped Cafe");
     const other = await createRestaurant(db, owner, "Other Cafe");
