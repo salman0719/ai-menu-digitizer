@@ -92,6 +92,14 @@ errors, or add lint/type suppressions just to make checks pass.
 - `src/features/tenancy/repo.ts`, `src/app/api/restaurants/` —
   ownership-scoped restaurant repository + API (session id only);
   `src/features/tenancy/client.ts` — typed browser client for it
+- `src/features/tenancy/invitations.ts`, `invite-mailer.ts`,
+  `src/app/api/invitations/`, `src/app/invitations/[token]/` — one-time
+  email invitations: hash-only tokens, email-match accept, 7-day expiry,
+  and the owner's pending list with resend/revoke
+- `src/features/tenancy/audit.ts`, `audit-format.ts`,
+  `src/app/api/restaurants/[restaurantId]/audit/` — team audit trail:
+  snapshot actor/target names, member-scoped reads (404 across tenants),
+  best-effort writes; UI in `src/components/settings/team-activity.tsx`
 - `src/features/menus/` — Step 8 server menus: `repo.ts` (tenancy-scoped,
   conditional-UPDATE `updatedAt` conflict detection), `sync.ts` (typed
   browser client with `SyncError` codes), `move-to-account.ts` (one-way
@@ -131,6 +139,9 @@ errors, or add lint/type suppressions just to make checks pass.
   Invariants: a diner sends ids/variants/quantities only — names, prices, and
   totals are resolved server-side from the published snapshot and the total
   is null when any line is unpriced; statuses only move forward.
+- `tests/invitations.test.ts`, `tests/invitations-api.test.ts`,
+  `tests/audit.test.ts`, `tests/audit-api.test.ts` — invitation and team
+  audit coverage (PGlite; the emailed token is captured and reused).
 - `src/lib/observability/` — Step 11 structured logs (`log.ts`: JSON lines,
   request ids, credential redaction, no stacks) and operator alerts
   (`alerts.ts`: Resend email to `OPS_ALERT_EMAIL`, deduped per process)
