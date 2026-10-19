@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
 import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
+import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
@@ -1155,6 +1156,8 @@ export default function Home() {
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
                 { id: "orders", label: "Orders" },
+                // Settings only applies to accounts (restaurants live there).
+                ...(signedIn ? [{ id: "settings" as const, label: "Settings" }] : []),
               ] as const
             ).map((tab) => (
               <button
@@ -1205,6 +1208,10 @@ export default function Home() {
         )}
 
         {screen === "orders" && <OrdersBoard />}
+
+        {screen === "settings" && (
+          <RestaurantSettings signedIn={signedIn} currentUserId={session?.user?.id ?? null} />
+        )}
 
         {screen === "editor" && activeDoc && (
           <>

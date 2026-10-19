@@ -54,6 +54,7 @@ const nextConfig: NextConfig = {
       { source: "/menus", destination: "/" },
       { source: "/menus/:path*", destination: "/" },
       { source: "/orders", destination: "/" },
+      { source: "/settings", destination: "/" },
     ];
   },
 };
