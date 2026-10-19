@@ -290,14 +290,16 @@ function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }
       setNotice(
         `Invitation re-sent to ${invitation.email}. The previous link no longer works.`
       );
-      onTeamChanged();
-      await refreshPending();
     } catch (resendError) {
       setError(
         resendError instanceof Error ? resendError.message : "Could not resend the invitation."
       );
     } finally {
       setPendingBusy(null);
+      // The link is rotated before the email is sent, so a failed delivery
+      // still changed the row (and left an audit event) — re-read both.
+      await refreshPending();
+      onTeamChanged();
     }
   }
 
@@ -310,13 +312,13 @@ function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }
       await revokeInvitation(restaurantId, invitation.id);
       setPending((prev) => prev?.filter((row) => row.id !== invitation.id) ?? prev);
       setNotice(`Invitation to ${invitation.email} revoked. The emailed link no longer works.`);
-      onTeamChanged();
     } catch (revokeError) {
       setError(
         revokeError instanceof Error ? revokeError.message : "Could not revoke the invitation."
       );
     } finally {
       setPendingBusy(null);
+      onTeamChanged();
     }
   }
 
@@ -335,14 +337,18 @@ function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }
         setNotice(
           `Invitation emailed to ${result.invitation.email}. They'll join as ${result.invitation.role} once they accept it.`
         );
-        await refreshPending();
       }
-      onTeamChanged();
       setAddEmail("");
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Could not add the member. Try again.");
     } finally {
       setAdding(false);
+      // A failed delivery can still leave a pending invitation (the row is
+      // written before the email is sent) — show it so it can be resent or
+      // revoked instead of silently lingering, and reload the trail since
+      // the invitation itself was recorded.
+      await refreshPending();
+      onTeamChanged();
     }
   }
 
