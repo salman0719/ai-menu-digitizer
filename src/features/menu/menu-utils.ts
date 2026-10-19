@@ -271,3 +271,49 @@ export function setItemAvailability(
 ): MenuDocument {
   return updateItem(doc, categoryId, itemId, { available });
 }
+
+/** Where a menu title usually splits into "place — which menu". */
+const TITLE_SEPARATORS = [" — ", " – ", " · ", " | ", " - ", ":"];
+
+/**
+ * Suggest a restaurant name from local menu titles for the first-run
+ * "Name your restaurant" field. Each title contributes the part before a
+ * separator ("—", "–", "·", "|", spaced "-", ":"), minus a trailing "menu"
+ * word; the most common leftover wins, keeping its first-seen casing.
+ * Suggestion only — the field stays editable, and nothing is invented when
+ * the titles say nothing (returns null).
+ */
+export function suggestRestaurantName(titles: string[]): string | null {
+  const seen = new Map<string, { count: number; display: string }>();
+  for (const title of titles) {
+    const candidate = restaurantNameCandidate(title);
+    if (!candidate) continue;
+    const key = candidate.toLowerCase();
+    const entry = seen.get(key);
+    if (entry) entry.count += 1;
+    else seen.set(key, { count: 1, display: candidate });
+  }
+  let best: { count: number; display: string } | null = null;
+  for (const entry of seen.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  if (!best) return null;
+  // The create API caps names at 120 characters.
+  return best.display.slice(0, 120).trim() || null;
+}
+
+/** The restaurant-name part of one title, or null when it has none. */
+function restaurantNameCandidate(title: string): string | null {
+  let candidate = title.trim();
+  if (!candidate) return null;
+  for (const separator of TITLE_SEPARATORS) {
+    const index = candidate.indexOf(separator);
+    if (index >= 0) {
+      candidate = candidate.slice(0, index);
+      break;
+    }
+  }
+  candidate = candidate.replace(/(\s+|^)menu$/i, "").trim();
+  if (!candidate) candidate = title.trim().replace(/(\s+|^)menu$/i, "").trim();
+  return candidate || null;
+}

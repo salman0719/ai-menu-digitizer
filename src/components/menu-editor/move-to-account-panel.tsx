@@ -23,15 +23,19 @@ import {
 interface MoveToAccountPanelProps {
   /** How many local-only menus the move would consider (for the button label). */
   menuCount: number;
+  /** Name guessed from the local menu titles, to prefill the create field. */
+  suggestedName?: string | null;
   /** Called after a run that imported at least one menu (refresh the library). */
   onMoved?: () => void;
 }
 
-export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelProps) {
+export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveToAccountPanelProps) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
-  const [newName, setNewName] = useState("");
+  /** The create field's value: the suggestion from the menu titles until the user types. */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const newName = nameDraft ?? suggestedName ?? "";
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -73,7 +77,7 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
       const created = await createRestaurant(name);
       setRestaurants((prev) => [...(prev ?? []), created]);
       setSelectedId(created.id);
-      setNewName("");
+      setNameDraft(null);
     } catch {
       setError("Could not create the restaurant. Check your connection and try again.");
     } finally {
@@ -181,10 +185,15 @@ export function MoveToAccountPanel({ menuCount, onMoved }: MoveToAccountPanelPro
             <input
               type="text"
               value={newName}
-              onChange={(event) => setNewName(event.target.value)}
+              onChange={(event) => setNameDraft(event.target.value)}
               placeholder="e.g. Sunny Side Café"
               className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
             />
+            {suggestedName && nameDraft === null && (
+              <span className="font-normal text-stone-400">
+                Suggested from your menu titles — change it if you like.
+              </span>
+            )}
           </label>
           <button
             type="button"

@@ -20,7 +20,7 @@ import {
   parseImportedMenu,
   serializeMenu,
 } from "@/features/menu/import-export";
-import { createMenuDocument } from "@/features/menu/menu-utils";
+import { createMenuDocument, suggestRestaurantName } from "@/features/menu/menu-utils";
 import type { MenuDocument } from "@/features/menu/schema";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import {
@@ -1125,7 +1125,11 @@ export default function Home() {
   // Library rows carry their account state: menus on the server show as
   // synced; the rest are browser-only until moved (or downloaded).
   const libraryMenus = menus.map((menu) => ({ ...menu, onServer: serverIds.has(menu.id) }));
-  const localOnlyCount = libraryMenus.filter((menu) => !menu.onServer).length;
+  const localOnly = libraryMenus.filter((menu) => !menu.onServer);
+  const localOnlyCount = localOnly.length;
+  // A name for the first-run "Name your restaurant" field, guessed from the
+  // titles of the menus the move would copy (null when they say nothing).
+  const suggestedRestaurantName = suggestRestaurantName(localOnly.map((menu) => menu.title));
 
   // Publish state is only ever shown for the menu it was loaded for; a stale
   // answer for a previously opened menu is never displayed.
@@ -1183,6 +1187,7 @@ export default function Home() {
             {signedIn && localOnlyCount > 0 && (
               <MoveToAccountPanel
                 menuCount={localOnlyCount}
+                suggestedName={suggestedRestaurantName}
                 onMoved={() => void mergeAccountMenus()}
               />
             )}
