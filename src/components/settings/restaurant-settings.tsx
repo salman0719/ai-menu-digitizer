@@ -223,6 +223,7 @@ interface TeamCardProps {
 function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps) {
   const [members, setMembers] = useState<MemberOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState<"owner" | "staff">("staff");
   const [adding, setAdding] = useState(false);
@@ -248,9 +249,17 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
     if (!email || adding) return;
     setAdding(true);
     setError(null);
+    setNotice(null);
     try {
-      const added = await addMember(restaurantId, email, addRole);
-      setMembers((prev) => [...(prev ?? []), added]);
+      const result = await addMember(restaurantId, email, addRole);
+      if (result.kind === "member") {
+        setMembers((prev) => [...(prev ?? []), result.member]);
+        setNotice(`${result.member.name} joined as ${result.member.role}.`);
+      } else {
+        setNotice(
+          `Invitation emailed to ${result.invitation.email}. They'll join as ${result.invitation.role} once they accept it.`
+        );
+      }
       setAddEmail("");
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Could not add the member. Try again.");
@@ -345,10 +354,12 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
         </button>
       </div>
       <p className="mt-1 text-[11px] leading-4 text-stone-400">
-        They need to have signed in with this email at least once — there are no invitations yet.
+        If they already have an account they join immediately; otherwise we email them a one-time
+        invitation link that accepts on sign-in (expires in 7 days).
       </p>
 
       {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      {notice && !error && <p className="mt-2 text-xs text-emerald-800">{notice}</p>}
 
       {members === null && !error && (
         <p role="status" className="mt-3 text-xs text-stone-400">
@@ -365,7 +376,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-stone-900">
-                  {member.name}
+                  {member.name.trim() ? member.name : member.email}
                   {member.userId === currentUserId && (
                     <span className="ml-1 text-xs font-normal text-stone-400">(you)</span>
                   )}
