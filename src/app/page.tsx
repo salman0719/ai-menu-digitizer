@@ -64,6 +64,8 @@ import {
   type AppScreen,
   type EditorMode,
 } from "@/features/navigation/routes";
+import { staffMenuIds } from "@/features/tenancy/access";
+import { fetchRestaurants } from "@/features/tenancy/client";
 
 type Phase = "upload" | "ready" | "extracting" | "done";
 
@@ -186,6 +188,9 @@ export default function Home() {
   /** Ids of the caller's menus that exist on the server (chips + operations). */
   const serverIdsRef = useRef<ReadonlySet<string>>(new Set());
   const [serverIds, setServerIds] = useState<ReadonlySet<string>>(new Set());
+  /** Ids of account menus where the caller is staff only (view, never edit). */
+  const staffMenusRef = useRef<ReadonlySet<string>>(new Set());
+  const [staffMenus, setStaffMenus] = useState<ReadonlySet<string>>(new Set());
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
@@ -270,6 +275,7 @@ export default function Home() {
   useEffect(() => {
     if (!signedIn) {
       replaceServerIds(new Set());
+      replaceStaffMenus(new Set());
       return;
     }
     // Sign-in: merge account menus into the library, and reconcile a menu
@@ -288,6 +294,11 @@ export default function Home() {
   function replaceServerIds(next: ReadonlySet<string>) {
     serverIdsRef.current = next;
     setServerIds(next);
+  }
+
+  function replaceStaffMenus(next: ReadonlySet<string>) {
+    staffMenusRef.current = next;
+    setStaffMenus(next);
   }
 
   function addServerId(id: string) {
@@ -330,6 +341,11 @@ export default function Home() {
       try {
         const serverMenus = await fetchServerMenus();
         replaceServerIds(new Set(serverMenus.map((menu) => menu.id)));
+        try {
+          replaceStaffMenus(staffMenuIds(serverMenus, await fetchRestaurants()));
+        } catch {
+          // Role lookup is best-effort; the server still refuses staff writes.
+        }
         const localIds = new Set((await listMenus()).map((menu) => menu.id));
         let cachedAny = false;
         for (const summary of serverMenus) {
@@ -400,6 +416,8 @@ export default function Home() {
    */
   async function pushToAccount(saved: MenuDocument): Promise<boolean> {
     if (!signedInRef.current || serverBaseRef.current === null) return false;
+    // Staff access is view-only: keep the local copy, never push an edit.
+    if (staffMenusRef.current.has(saved.id)) return false;
     if (conflictRef.current) return false;
     setSaveState({ kind: "saving", message: "Saving to your account…" });
     try {
@@ -1138,6 +1156,9 @@ export default function Home() {
   const activePublication = publicationMenuId === activePublicationMenuId ? publication : null;
   const activePublicationLoaded =
     publicationMenuId === activePublicationMenuId && publicationLoaded;
+  // Staff on the menu's restaurant get a view-only editor (the server refuses
+  // their writes anyway; the UI must not offer the controls at all).
+  const activeMenuIsStaff = activeDoc ? staffMenus.has(activeDoc.id) : false;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -1223,15 +1244,22 @@ export default function Home() {
                 onKeepMine={() => void handleKeepMyVersion()}
               />
             )}
+            {activeMenuIsStaff && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                You have staff access to this restaurant — menus are view-only for staff. Ask an
+                owner to make changes.
+              </p>
+            )}
             <MenuEditor
               doc={activeDoc}
               selectedItemId={selectedItemId}
               onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
-              mode={editorMode}
+              mode={activeMenuIsStaff ? "preview" : editorMode}
               onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
               onChange={handleDocChange}
               saveState={saveState}
               syncMode={signedIn ? "account" : "local"}
+              canManage={!activeMenuIsStaff}
               imageUrl={editorImageUrl}
               onExportJson={handleExportJson}
               onExportCsv={handleExportCsv}

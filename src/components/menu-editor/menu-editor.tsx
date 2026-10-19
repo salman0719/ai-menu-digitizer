@@ -82,6 +82,11 @@ interface MenuEditorProps {
   onDeleteMenu: () => void;
   onBack: () => void;
   /**
+   * False when the caller has staff access: owner-only controls (editing
+   * modes, publishing) are hidden entirely, not just disabled.
+   */
+  canManage?: boolean;
+  /**
    * Publishing state and actions (Step 9). Absent when nothing can publish
    * in this context, in which case the preview simply omits the panel.
    */
@@ -145,6 +150,7 @@ export function MenuEditor({
   onChange,
   saveState,
   syncMode,
+  canManage = true,
   imageUrl,
   onExportJson,
   onExportCsv,
@@ -457,7 +463,20 @@ export function MenuEditor({
         )}
       </p>
       <span className="flex-1" />
-      {mode === "edit" ? (
+      {!canManage ? (
+        <>
+          {mode !== "qr" && (
+            <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
+              Table QR
+            </button>
+          )}
+          {mode !== "preview" && (
+            <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
+              Preview menu
+            </button>
+          )}
+        </>
+      ) : mode === "edit" ? (
         <>
           <button
             type="button"
@@ -552,7 +571,7 @@ export function MenuEditor({
             Print / save PDF
           </button>
         </div>
-        {publishing && (
+        {publishing && canManage && (
           <PublishPanel
             signedIn={syncMode === "account"}
             themeId={previewThemeId}
