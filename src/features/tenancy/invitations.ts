@@ -4,6 +4,7 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { restaurant, restaurantInvitation, restaurantMembership, user } from "@/lib/db/schema";
 import type { RestaurantRole } from "@/lib/db/schema";
+import { recordAuditEvent } from "./audit";
 import type { TenancyDb } from "./repo";
 
 /**
@@ -226,7 +227,15 @@ export async function createInvitationForOwner(
   role: RestaurantRole
 ): Promise<CreatedInvitation> {
   await requireOwnerForInvitations(db, inviterUserId, restaurantId);
-  return issueInvitation(db, inviterUserId, restaurantId, email, role);
+  const created = await issueInvitation(db, inviterUserId, restaurantId, email, role);
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: inviterUserId,
+    action: "invitation_sent",
+    targetEmail: created.invitation.email,
+    detail: created.invitation.role,
+  });
+  return created;
 }
 
 /** Still-open invitations for the owner's team panel (newest first). */
@@ -286,7 +295,15 @@ export async function resendInvitationForOwner(
   if (!row || row.acceptedAt) {
     throw new InvitationError("not_found", "That invitation does not exist.");
   }
-  return issueInvitation(db, userId, restaurantId, row.email, row.role);
+  const created = await issueInvitation(db, userId, restaurantId, row.email, row.role);
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "invitation_resent",
+    targetEmail: created.invitation.email,
+    detail: created.invitation.role,
+  });
+  return created;
 }
 
 /** Owner-only: revoke a pending invitation (its link stops working). */
@@ -306,10 +323,22 @@ export async function revokeInvitationForOwner(
         isNull(restaurantInvitation.acceptedAt)
       )
     )
-    .returning({ id: restaurantInvitation.id });
-  if (deleted.length === 0) {
+    .returning({
+      id: restaurantInvitation.id,
+      email: restaurantInvitation.email,
+      role: restaurantInvitation.role,
+    });
+  const removed = deleted[0];
+  if (!removed) {
     throw new InvitationError("not_found", "That invitation does not exist.");
   }
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "invitation_revoked",
+    targetEmail: removed.email,
+    detail: removed.role,
+  });
 }
 
 /** Look an invitation up by its raw token (null for unknown tokens). */
@@ -381,9 +410,18 @@ export async function acceptInvitation(
     .set({ acceptedAt: new Date() })
     .where(and(eq(restaurantInvitation.id, row.id), isNull(restaurantInvitation.acceptedAt)));
 
+  const role = existing[0]?.role ?? row.role;
+  await recordAuditEvent(db, {
+    restaurantId: row.restaurantId,
+    actorUserId: input.userId,
+    action: "invitation_accepted",
+    targetEmail: row.email,
+    detail: role,
+  });
+
   return {
     restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
-    role: existing[0]?.role ?? row.role,
+    role,
   };
 }

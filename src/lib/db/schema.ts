@@ -185,6 +185,55 @@ export const restaurantInvitation = pgTable(
   })
 );
 
+/** Team actions recorded for the audit trail (newest first when listed). */
+export const AUDIT_ACTIONS = [
+  "invitation_sent",
+  "invitation_resent",
+  "invitation_revoked",
+  "invitation_accepted",
+  "member_added",
+  "member_role_changed",
+  "member_removed",
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/**
+ * One team-management event, for the account's activity list.
+ *
+ * Names and addresses are snapshotted (`actor_name`, `target_name`,
+ * `target_email`) so history stays readable after an account is deleted;
+ * the id columns are best-effort links and go null with the user. Rows
+ * cascade with the restaurant.
+ */
+export const restaurantAuditEvent = pgTable(
+  "restaurant_audit_event",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    /** Snapshot of the actor's display name at the time of the action. */
+    actorName: text("actor_name").notNull(),
+    action: text("action", { enum: AUDIT_ACTIONS }).notNull(),
+    /** Snapshot of the affected account/address. */
+    targetEmail: text("target_email"),
+    targetName: text("target_name"),
+    /** Free-form human detail, e.g. "staff → owner" or the invited role. */
+    detail: text("detail"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    restaurantCreatedIdx: index("restaurant_audit_restaurant_created_idx").on(
+      t.restaurantId,
+      t.createdAt
+    ),
+  })
+);
+
 /**
  * A menu document owned by a restaurant (Step 8 — server-backed menus).
  * `doc` is the full canonical `MenuDocument` as jsonb, re-validated with
@@ -407,6 +456,7 @@ export const schema = {
   restaurant,
   restaurantMembership,
   restaurantInvitation,
+  restaurantAuditEvent,
   menu,
   menuRevision,
   publishedMenu,

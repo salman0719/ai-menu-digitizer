@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { CommitInput } from "@/components/menu-editor/fields";
+import { TeamActivity } from "@/components/settings/team-activity";
 import {
   addMember,
   deleteRestaurant,
@@ -41,6 +42,8 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
   const [selectedId, setSelectedId] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bumped after each successful team change so the activity card reloads.
+  const [teamVersion, setTeamVersion] = useState(0);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -194,6 +197,13 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
             restaurantId={selected.id}
             restaurantName={selected.name}
             currentUserId={currentUserId}
+            onTeamChanged={() => setTeamVersion((version) => version + 1)}
+          />
+
+          <TeamActivity
+            key={`activity-${selected.id}`}
+            restaurantId={selected.id}
+            refreshKey={teamVersion}
           />
 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
@@ -221,10 +231,12 @@ interface TeamCardProps {
   restaurantId: string;
   restaurantName: string;
   currentUserId: string | null;
+  /** Called after a change lands, so the audit trail can reload. */
+  onTeamChanged: () => void;
 }
 
 /** The team list plus add/role/remove controls, scoped to one restaurant. */
-function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps) {
+function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }: TeamCardProps) {
   const [members, setMembers] = useState<MemberOption[] | null>(null);
   const [pending, setPending] = useState<PendingInvitation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -278,6 +290,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
       setNotice(
         `Invitation re-sent to ${invitation.email}. The previous link no longer works.`
       );
+      onTeamChanged();
       await refreshPending();
     } catch (resendError) {
       setError(
@@ -297,6 +310,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
       await revokeInvitation(restaurantId, invitation.id);
       setPending((prev) => prev?.filter((row) => row.id !== invitation.id) ?? prev);
       setNotice(`Invitation to ${invitation.email} revoked. The emailed link no longer works.`);
+      onTeamChanged();
     } catch (revokeError) {
       setError(
         revokeError instanceof Error ? revokeError.message : "Could not revoke the invitation."
@@ -323,6 +337,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
         );
         await refreshPending();
       }
+      onTeamChanged();
       setAddEmail("");
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Could not add the member. Try again.");
@@ -338,6 +353,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
     try {
       const updated = await updateMemberRole(restaurantId, member.userId, role);
       setMembers((prev) => prev?.map((m) => (m.userId === updated.userId ? updated : m)) ?? prev);
+      onTeamChanged();
     } catch (roleError) {
       setError(roleError instanceof Error ? roleError.message : "Could not change the role. Try again.");
       try {
@@ -365,6 +381,7 @@ function TeamCard({ restaurantId, restaurantName, currentUserId }: TeamCardProps
     try {
       await removeMember(restaurantId, member.userId);
       setMembers((prev) => prev?.filter((m) => m.userId !== member.userId) ?? prev);
+      onTeamChanged();
     } catch (removeError) {
       setError(
         removeError instanceof Error ? removeError.message : "Could not remove the member. Try again."

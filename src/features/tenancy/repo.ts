@@ -3,6 +3,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 
 import { restaurant, restaurantMembership, user } from "@/lib/db/schema";
 import type { RestaurantRole, RestaurantWithRole } from "@/lib/db/schema";
+import { recordAuditEvent } from "./audit";
 
 /**
  * Tenancy repository — every function is scoped by `userId` so a signed-in
@@ -228,6 +229,14 @@ export async function addMemberForOwner(
     // Unique (restaurant, user) index — a concurrent add won the race.
     throw new TenancyRepoError("already_member", "That account already belongs to this restaurant.");
   }
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_added",
+    targetEmail: target.email,
+    targetName: target.name,
+    detail: role,
+  });
   return { userId: target.id, name: target.name, email: target.email, role };
 }
 
@@ -279,6 +288,14 @@ export async function updateMemberRoleForOwner(
   }
   const changed = await getMember(db, restaurantId, targetUserId);
   if (!changed) throw new TenancyRepoError("not_found", "That member does not belong to this restaurant.");
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_role_changed",
+    targetEmail: changed.email,
+    targetName: changed.name,
+    detail: `${target.role} → ${changed.role}`,
+  });
   return changed;
 }
 
@@ -313,6 +330,14 @@ export async function removeMemberForOwner(
   } else {
     await db.delete(restaurantMembership).where(filter);
   }
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_removed",
+    targetEmail: target.email,
+    targetName: target.name,
+    detail: target.role,
+  });
 }
 
 /** One member with their account info, or null. */

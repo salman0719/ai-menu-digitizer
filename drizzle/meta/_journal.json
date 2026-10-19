@@ -43,6 +43,13 @@
       "when": 1792411654344,
       "tag": "0005_jittery_preak",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792412934949,
+      "tag": "0006_zippy_nehzno",
+      "breakpoints": true
     }
   ]
 }

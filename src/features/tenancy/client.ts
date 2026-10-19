@@ -67,6 +67,28 @@ const pendingInvitationSchema = z.object({
 
 export type PendingInvitation = z.infer<typeof pendingInvitationSchema>;
 
+/** One row of the team audit trail. */
+const auditEventSchema = z.object({
+  id: z.string(),
+  action: z.enum([
+    "member_added",
+    "member_role_changed",
+    "member_removed",
+    "invitation_sent",
+    "invitation_resent",
+    "invitation_revoked",
+    "invitation_accepted",
+  ]),
+  actorName: z.string(),
+  targetEmail: z.string().nullable(),
+  targetName: z.string().nullable(),
+  detail: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export type AuditEventOption = z.infer<typeof auditEventSchema>;
+
+const auditEventsEnvelope = z.object({ events: z.array(auditEventSchema) });
 const pendingInvitationsEnvelope = z.object({ invitations: z.array(pendingInvitationSchema) });
 const invitationSummaryEnvelope = z.object({ invitation: invitationSummarySchema });
 const acceptEnvelope = z.object({
@@ -262,6 +284,15 @@ export async function revokeInvitation(
   invitationId: string
 ): Promise<void> {
   await requestJson(invitationPath(restaurantId, invitationId), { method: "DELETE" }, () => undefined);
+}
+
+/** Recent team activity (any member of the restaurant). */
+export async function fetchAuditEvents(restaurantId: string): Promise<AuditEventOption[]> {
+  return requestJson(
+    `/api/restaurants/${encodeURIComponent(restaurantId)}/audit`,
+    undefined,
+    (payload) => auditEventsEnvelope.parse(payload).events
+  );
 }
 
 /** Public invitation details for the accept page (token holder only). */
