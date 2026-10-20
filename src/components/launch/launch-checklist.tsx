@@ -48,7 +48,7 @@ function stepActionLabel(step: LaunchStep): string {
     case "theme":
       return "Preview themes";
     case "cards":
-      return "Open Table cards";
+      return "Open Table QR";
     case "publish":
       return "Publish";
     case "order":

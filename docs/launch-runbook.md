@@ -75,7 +75,7 @@ Target: under ten minutes from photo to first order.
 3. **Review**: open every item flagged, fill in prices the AI left empty, and
    remove anything that is not on the menu.
 4. **Theme**: open Preview, pick a theme and layout.
-5. **Table cards**: open Table cards, print one per table, and tick the step in
+5. **Table QR**: open Table QR, print one card per table, and tick the step in
    `/launch`.
 6. **Publish**: press Publish, copy the public link, open it on a phone that
    has never seen the app.
