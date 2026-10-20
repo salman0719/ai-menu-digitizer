@@ -12,11 +12,11 @@
 
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 
-import type { ProviderUsage } from "@/lib/ai/provider";
+import type { ProviderName, ProviderUsage } from "@/lib/ai/provider";
 import { extractionUsage } from "@/lib/db/schema";
 import type { TenancyDb } from "@/features/tenancy/repo";
 
-import { costMicros, tokenRatesFromEnv, type TokenRates } from "./pricing";
+import { configuredProviders, costMicros, tokenRatesFor, type TokenRates } from "./pricing";
 import { monthWindow, monthlyExtractionCap, type UsageSummary } from "./schema";
 
 /** A month of a busy café is a few dozen rows; stop reading far beyond that. */
@@ -28,6 +28,8 @@ export interface RecordExtractionUsageInput {
   /** Hashed caller address for anonymous extraction; null when signed in. */
   callerHash: string | null;
   requestId: string;
+  /** Which vendor served the request; rates and the row both use it. */
+  provider: ProviderName;
   model: string;
   pages: number;
   imageBytes: number;
@@ -44,12 +46,13 @@ export async function recordExtractionUsage(
   db: TenancyDb,
   input: RecordExtractionUsageInput
 ): Promise<void> {
-  const rates = input.rates === undefined ? tokenRatesFromEnv() : input.rates;
+  const rates = input.rates === undefined ? tokenRatesFor(input.provider) : input.rates;
   const usage = input.usage;
   await db.insert(extractionUsage).values({
     userId: input.userId,
     callerHash: input.callerHash,
     requestId: input.requestId,
+    provider: input.provider,
     model: input.model,
     pages: input.pages,
     imageBytes: input.imageBytes,
@@ -93,7 +96,7 @@ export async function getMonthlyUsageSummary(
     .orderBy(desc(extractionUsage.createdAt))
     .limit(MAX_USAGE_ROWS_SCANNED);
 
-  const rates = tokenRatesFromEnv(env);
+  const ratesConfigured = configuredProviders(env).length > 0;
   let succeeded = 0;
   let failed = 0;
   let pages = 0;
@@ -135,12 +138,13 @@ export async function getMonthlyUsageSummary(
     inputTokens: sawInput ? inputTokens : null,
     outputTokens: sawOutput ? outputTokens : null,
     // Empty month + configured rates = a real $0.00; otherwise any unpriced
-    // row makes the total unknown rather than a misleading partial sum.
-    costMicros: rates === null || unpriced > 0 ? null : costTotal,
-    unpricedRequests: rates === null ? requests : unpriced,
+    // row (unset rates for its vendor, or missing token counts) makes the
+    // total unknown rather than a misleading partial sum.
+    costMicros: !ratesConfigured || unpriced > 0 ? null : costTotal,
+    unpricedRequests: !ratesConfigured ? requests : unpriced,
     cap,
     remaining: Math.max(0, cap - requests),
-    ratesConfigured: rates !== null,
+    ratesConfigured,
   };
 }
 

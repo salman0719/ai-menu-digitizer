@@ -288,7 +288,7 @@ function UsageCard({ status }: { status: LaunchStatus }) {
         {usage.costMicros !== null
           ? `Provider cost this month: ${formatMicroUsd(usage.costMicros)}.`
           : usage.ratesConfigured
-            ? "Cost is unknown for this month because some calls did not report token counts."
+            ? "Cost is unknown for this month because some calls did not report token counts or used a vendor without configured rates."
             : "Provider cost is not configured on this server yet, so only usage is counted."}
       </p>
       <p className="mt-1 text-xs text-stone-400">

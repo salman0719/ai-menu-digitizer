@@ -23,6 +23,7 @@ import {
 import type { MenuCategory, MenuDocument, MenuItem } from "@/features/menu/schema";
 import { appendExtractionToDocument } from "@/features/menu/convert";
 import { searchMenu } from "@/features/menu/search";
+import { describeExtractionSource } from "@/features/menu/source-label";
 import type { EditorMode } from "@/features/navigation/routes";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
@@ -165,6 +166,8 @@ export function MenuEditor({
     (sum, c) => sum + c.items.filter((i) => i.price === null || i.reviewNotes.length > 0).length,
     0
   );
+  // Provenance, so a surprising line can be traced to the model that read it.
+  const sourceLabel = describeExtractionSource(doc.source);
 
   // Search box: pure client-side filter, see search.ts for the rules.
   const [query, setQuery] = useState("");
@@ -401,18 +404,19 @@ export function MenuEditor({
       // Normalize first, mirroring the capture screen: AVIF is transcoded
       // here because the provider cannot read it.
       const prepared = await Promise.all(files.map((file) => prepareImageForUpload(file)));
-      const menu = await extractMenuFromFiles(
+      const extraction = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
-      if (menu.categories.length === 0) {
+      if (extraction.menu.categories.length === 0) {
         setAddPages({
           status: "error",
           message: "The new pages added no readable items — nothing changed.",
         });
         return;
       }
-      const merged = appendExtractionToDocument(docRef.current, menu, {
-        provider: "gemini",
+      const merged = appendExtractionToDocument(docRef.current, extraction.menu, {
+        provider: extraction.provider,
+        model: extraction.model,
         originalFileName: files[0]?.name,
       });
       onChange(merged.doc);
@@ -763,11 +767,19 @@ export function MenuEditor({
             }
           />
         </div>
-        {doc.source?.provider === "demo" && (
-          <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
-            Demo data
-          </p>
-        )}
+        {sourceLabel &&
+          (doc.source?.provider === "demo" ? (
+            <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
+              Demo data
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-stone-500">
+              {sourceLabel}
+              {doc.source?.originalFileName && (
+                <span className="text-stone-400"> · {doc.source.originalFileName}</span>
+              )}
+            </p>
+          ))}
         {imageUrl && (
           <div className="mt-3">
             <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>

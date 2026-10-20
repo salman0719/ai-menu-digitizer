@@ -13,13 +13,15 @@ import {
   type ProviderImageMimeType,
   type SupportedImageMimeType,
 } from "../image-constraints";
+import { logEvent } from "../observability/log";
 import { ExtractedMenu, extractedMenuSchema } from "./extraction-schema";
 import { buildExtractionPrompt, buildRepairPrompt } from "./prompts";
+import type { ProviderSlot } from "./provider-config";
 import {
   addUsage,
-  ExtractionProvider,
   NO_USAGE,
   ProviderError,
+  ProviderName,
   ProviderUsage,
 } from "./provider";
 
@@ -48,26 +50,36 @@ export class ServiceError extends Error {
    * A failed extraction is still a paid API call, so the cost brake counts it.
    */
   readonly usage: ProviderUsage | null;
+  /** Vendor that failed last, when the failure happened at a provider. */
+  readonly provider: ProviderName | null;
+  readonly model: string | null;
 
   constructor(
     status: number,
     code: ServiceErrorCode,
     message: string,
-    usage: ProviderUsage | null = null
+    usage: ProviderUsage | null = null,
+    provider: ProviderName | null = null,
+    model: string | null = null
   ) {
     super(message);
     this.name = "ServiceError";
     this.status = status;
     this.code = code;
     this.usage = usage;
+    this.provider = provider;
+    this.model = model;
   }
 }
 
 /** A successful extraction plus what it cost the provider account. */
 export interface ExtractionOutcome {
   menu: ExtractedMenu;
-  /** Summed across the first call and the repair retry. */
+  /** Summed across every attempt, including one that failed over. */
   usage: ProviderUsage;
+  /** Which vendor and model actually produced this menu. */
+  provider: ProviderName;
+  model: string;
 }
 
 export interface ImageInput {
@@ -84,8 +96,13 @@ interface NormalizedImage {
 }
 
 export interface ServiceDeps {
-  /** Null when no API key is configured — extraction is unavailable. */
-  provider: ExtractionProvider | null;
+  /**
+   * Configured vendors in the order to try them. Empty when no API key is
+   * configured — extraction is unavailable. See `buildProviderChain`.
+   */
+  chain: ProviderSlot[];
+  /** Correlates fallback log lines with the request log. */
+  requestId?: string;
 }
 
 function parseMenu(rawText: string): ExtractedMenu | null {
@@ -114,13 +131,14 @@ function describeIssues(rawText: string): string[] {
   });
 }
 
-function mapProviderError(error: ProviderError): ServiceError {
+function mapProviderError(error: ProviderError, slot: ProviderSlot): ServiceError {
+  const keyName = slot.name === "gemini" ? "GEMINI_API_KEY" : "GROQ_API_KEY";
   switch (error.code) {
     case "auth":
       return new ServiceError(
         500,
         "provider_auth_failed",
-        "The server's AI credentials are invalid. Check GEMINI_API_KEY."
+        `The server's AI credentials are invalid. Check ${keyName}.`
       );
     case "quota":
       return new ServiceError(
@@ -213,21 +231,108 @@ function validateImages(images: ImageInput[]): NormalizedImage[] {
 }
 
 /**
- * Extract one menu from one or more page images in a single provider call,
- * so a menu that spans pages comes back merged (categories continue across
- * pages instead of being extracted twice).
+ * Vendors that can read this exact upload. A vendor is skipped when it has
+ * a hard page limit below the upload's page count or cannot read one of the
+ * image types; it is never sent an image it cannot read.
+ */
+function eligibleSlots(chain: ProviderSlot[], images: NormalizedImage[]): ProviderSlot[] {
+  return chain.filter(
+    (slot) =>
+      images.length <= slot.maxImages &&
+      images.every((image) => slot.supportedMimeTypes.includes(image.mimeType))
+  );
+}
+
+/** Explain why no configured vendor can read this upload. */
+function unsupportedForChain(
+  chain: ProviderSlot[],
+  images: NormalizedImage[]
+): ServiceError {
+  const pageLimit = Math.max(...chain.map((slot) => slot.maxImages));
+  if (images.length > pageLimit) {
+    return new ServiceError(
+      400,
+      "too_many_pages",
+      `This menu has ${images.length} pages, but the configured AI provider reads at most ${pageLimit} per extraction. Send fewer pages or split the menu into two scans.`
+    );
+  }
+  const types = [...new Set(images.map((image) => image.mimeType))].join(", ");
+  return new ServiceError(
+    400,
+    "invalid_file_type",
+    `The configured AI provider can't read these page images (${types}). Re-upload them as JPEG or PNG.`
+  );
+}
+
+/**
+ * One vendor's full attempt: first call, then a single controlled repair
+ * retry when the JSON does not validate. Throws {@link ServiceError} or
+ * {@link ProviderError}.
+ */
+async function extractWithSlot(
+  slot: ProviderSlot,
+  parts: Array<{ imageBase64: string; mimeType: ProviderImageMimeType }>,
+  pageCount: number,
+  track: (usage: ProviderUsage) => void
+): Promise<ExtractedMenu> {
+  const first = await slot.provider.generateText({
+    promptText: buildExtractionPrompt(pageCount),
+    images: parts,
+  });
+  track(first.usage);
+  const menu = parseMenu(first.text);
+  if (menu) return menu;
+
+  const repair = await slot.provider.generateText({
+    promptText: buildRepairPrompt(
+      first.text.slice(0, MAX_REPAIR_INPUT_CHARS),
+      describeIssues(first.text)
+    ),
+    images: parts,
+  });
+  track(repair.usage);
+  const repaired = parseMenu(repair.text);
+  if (repaired) return repaired;
+  throw new ServiceError(
+    502,
+    "invalid_ai_response",
+    "The AI returned data in an unexpected format. Try again or use a clearer image."
+  );
+}
+
+/** Provider failures that another vendor can plausibly recover from. */
+const FALLBACK_PROVIDER_CODES = new Set<ProviderError["code"]>([
+  "auth",
+  "quota",
+  "unavailable",
+]);
+
+/**
+ * Extract one menu from one or more page images, so a menu that spans pages
+ * comes back merged (categories continue across pages instead of being
+ * extracted twice).
+ *
+ * The configured vendors are tried in order: a vendor that is rate-limited,
+ * unauthorized, unreachable, or unable to produce valid JSON hands over to
+ * the next one. Upload validation, content blocks, and capability limits are
+ * final — retrying those on another vendor would not change the answer.
  */
 export async function extractMenuFromImages(
   images: ImageInput[],
   deps: ServiceDeps
 ): Promise<ExtractionOutcome> {
   const normalized = validateImages(images);
-  if (!deps.provider) {
+  if (deps.chain.length === 0) {
     throw new ServiceError(
       503,
       "missing_api_key",
       "AI extraction isn't available right now. You can still explore with demo data."
     );
+  }
+
+  const eligible = eligibleSlots(deps.chain, normalized);
+  if (eligible.length === 0) {
+    throw unsupportedForChain(deps.chain, normalized);
   }
 
   const parts = normalized.map((input) => ({
@@ -236,44 +341,56 @@ export async function extractMenuFromImages(
   }));
 
   // Token usage accumulates across calls so the recorded cost reflects every
-  // billed request, including a repair retry that still ended in failure.
+  // billed request, including a repair retry or a failed-over attempt.
   let usage: ProviderUsage = NO_USAGE;
   const track = (next: ProviderUsage): void => {
     usage = addUsage(usage, next);
   };
 
-  try {
-    const first = await deps.provider.generateText({
-      promptText: buildExtractionPrompt(images.length),
-      images: parts,
-    });
-    track(first.usage);
-    const menu = parseMenu(first.text);
-    if (menu) return { menu, usage };
+  let lastError: ServiceError | null = null;
+  for (let index = 0; index < eligible.length; index += 1) {
+    const slot = eligible[index];
+    try {
+      const menu = await extractWithSlot(slot, parts, images.length, track);
+      return { menu, usage, provider: slot.name, model: slot.model };
+    } catch (error) {
+      const mapped =
+        error instanceof ServiceError
+          ? error
+          : error instanceof ProviderError
+            ? mapProviderError(error, slot)
+            : null;
+      if (!mapped) throw error;
 
-    // One controlled repair retry, then give up with a useful error.
-    const repair = await deps.provider.generateText({
-      promptText: buildRepairPrompt(
-        first.text.slice(0, MAX_REPAIR_INPUT_CHARS),
-        describeIssues(first.text)
-      ),
-      images: parts,
-    });
-    track(repair.usage);
-    const repaired = parseMenu(repair.text);
-    if (repaired) return { menu: repaired, usage };
-    throw new ServiceError(
-      502,
-      "invalid_ai_response",
-      "The AI returned data in an unexpected format. Try again or use a clearer image.",
-      usage
-    );
-  } catch (error) {
-    if (error instanceof ServiceError) throw error;
-    if (error instanceof ProviderError) {
-      const mapped = mapProviderError(error);
-      throw new ServiceError(mapped.status, mapped.code, mapped.message, usage);
+      lastError = new ServiceError(
+        mapped.status,
+        mapped.code,
+        mapped.message,
+        usage,
+        slot.name,
+        slot.model
+      );
+      const retryable =
+        mapped.code === "invalid_ai_response" ||
+        (error instanceof ProviderError && FALLBACK_PROVIDER_CODES.has(error.code));
+      const next = eligible[index + 1];
+      if (!retryable || !next) break;
+
+      logEvent("warn", "ai.provider_fallback", {
+        requestId: deps.requestId,
+        from: slot.name,
+        to: next.name,
+        code: mapped.code,
+      });
     }
-    throw error;
   }
+
+  throw (
+    lastError ??
+    new ServiceError(
+      502,
+      "provider_unavailable",
+      "The AI provider is unavailable. Try again in a moment."
+    )
+  );
 }

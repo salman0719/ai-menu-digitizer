@@ -50,6 +50,13 @@
       "when": 1792412934949,
       "tag": "0006_zippy_nehzno",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792490342019,
+      "tag": "0007_next_revanche",
+      "breakpoints": true
     }
   ]
 }

@@ -52,9 +52,12 @@ import {
 } from "@/features/publishing/client";
 import type { PublicationStatus } from "@/features/publishing/schema";
 import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-themes";
-import type { ExtractedMenu } from "@/lib/ai/extraction-schema";
 import { authClient } from "@/lib/auth-client";
-import { ExtractClientError, extractMenuFromFiles } from "@/lib/extract-client";
+import {
+  ExtractClientError,
+  extractMenuFromFiles,
+  type MenuExtractionResult,
+} from "@/lib/extract-client";
 import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-constraints";
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 import {
@@ -141,7 +144,7 @@ export default function Home() {
   const [pages, setPages] = useState<PageImage[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("upload");
-  const [extracted, setExtracted] = useState<ExtractedMenu | null>(null);
+  const [extracted, setExtracted] = useState<MenuExtractionResult | null>(null);
   /** Draft persisted automatically after a successful AI extraction. */
   const [draftSave, setDraftSave] = useState<"idle" | "saving" | "saved" | "unavailable">("idle");
   const draftDocRef = useRef<MenuDocument | null>(null);
@@ -208,7 +211,7 @@ export default function Home() {
     signedInRef.current = signedIn;
   }, [signedIn]);
 
-  const result: PreviewMenu | null = extracted ?? demoDoc;
+  const result: PreviewMenu | null = extracted?.menu ?? demoDoc;
 
   useEffect(() => {
     return () => {
@@ -981,13 +984,13 @@ export default function Home() {
       // Normalize first: AVIF is transcoded to JPEG here because the provider
       // cannot read it, and mislabeled files get their real MIME type.
       const prepared = await Promise.all(files.map(prepareImageForUpload));
-      const menu = await extractMenuFromFiles(
+      const extraction = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
-      setExtracted(menu);
+      setExtracted(extraction);
       setSource("ai");
       setPhase("done");
-      void autoSaveDraft(menu, files[0] ?? null);
+      void autoSaveDraft(extraction, files[0] ?? null);
     } catch (error) {
       setExtractError(
         error instanceof ExtractClientError
@@ -1019,15 +1022,16 @@ export default function Home() {
    * is optional rather than the act of saving. Skips empty results (nothing
    * worth storing) and keeps the newest draft when extractions overlap.
    */
-  async function autoSaveDraft(menu: ExtractedMenu, primaryPage: File | null) {
+  async function autoSaveDraft(extraction: MenuExtractionResult, primaryPage: File | null) {
     const token = (draftTokenRef.current += 1);
-    if (menu.categories.length === 0) {
+    if (extraction.menu.categories.length === 0) {
       draftDocRef.current = null;
       setDraftSave("idle");
       return;
     }
-    const doc = extractedMenuToDocument(menu, {
-      provider: "gemini",
+    const doc = extractedMenuToDocument(extraction.menu, {
+      provider: extraction.provider,
+      model: extraction.model,
       originalFileName: primaryPage?.name,
     });
     draftDocRef.current = doc;
@@ -1073,8 +1077,9 @@ export default function Home() {
         // Reuse the autosaved draft instead of writing a second record.
         const doc =
           draftDocRef.current ??
-          extractedMenuToDocument(extracted, {
-            provider: "gemini",
+          extractedMenuToDocument(extracted.menu, {
+            provider: extracted.provider,
+            model: extracted.model,
             originalFileName: firstPage?.file.name,
           });
         const saved = storageDownRef.current ? doc : await saveMenu(doc);

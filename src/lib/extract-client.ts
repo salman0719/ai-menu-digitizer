@@ -54,13 +54,25 @@ const KNOWN_CODES: readonly string[] = [
 ];
 
 /**
+ * One extraction result: the menu plus which vendor/model served it, so the
+ * saved menu documents where its data actually came from (including when the
+ * request failed over to a second provider).
+ */
+export interface MenuExtractionResult {
+  menu: ExtractedMenu;
+  /** Reported by the server; absent only on an older/mismatched server. */
+  provider?: string;
+  model?: string;
+}
+
+/**
  * Post one or more page images of the same menu (in reading order). The
  * server extracts them in a single call and returns one merged menu.
  */
 export async function extractMenuFromFiles(
   input: File | File[],
   fetchImpl: typeof fetch = fetch
-): Promise<ExtractedMenu> {
+): Promise<MenuExtractionResult> {
   const files = Array.isArray(input) ? input : [input];
   const form = new FormData();
   for (const file of files) form.append("image", file);
@@ -103,5 +115,15 @@ export async function extractMenuFromFiles(
       "The server returned an unexpected response. Try again."
     );
   }
-  return menu as ExtractedMenu;
+  const provider =
+    isRecord(body) && typeof body.provider === "string" && body.provider
+      ? body.provider
+      : undefined;
+  const model =
+    isRecord(body) && typeof body.model === "string" && body.model ? body.model : undefined;
+  return {
+    menu: menu as ExtractedMenu,
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+  };
 }
