@@ -1267,7 +1267,6 @@ export default function Home() {
               accountMode={signedIn}
               ownedRestaurants={signedIn ? ownedRestaurants : []}
               onMoveToAccount={handleMoveMenuToAccount}
-              activeId={activeDoc?.id ?? null}
               unavailable={storageDown}
               onOpen={(id) => void handleOpenMenu(id)}
               onNew={() => void handleNewMenu()}

@@ -23,7 +23,6 @@ interface LibraryPanelProps {
    * show on that row, or null when the move succeeded (or was already there).
    */
   onMoveToAccount?: (menuId: string, restaurantId: string) => Promise<string | null>;
-  activeId: string | null;
   unavailable: boolean;
   onOpen: (id: string) => void;
   onNew: () => void;
@@ -42,7 +41,6 @@ export function LibraryPanel({
   accountMode,
   ownedRestaurants = [],
   onMoveToAccount,
-  activeId,
   unavailable,
   onOpen,
   onNew,
@@ -121,10 +119,7 @@ export function LibraryPanel({
       ) : (
         <ul className="space-y-3">
           {menus.map((menu) => (
-            <li
-              key={menu.id}
-              className={`rounded-2xl border bg-white p-4 ${menu.id === activeId ? "border-amber-600" : "border-stone-200"}`}
-            >
+            <li key={menu.id} className="rounded-2xl border border-stone-200 bg-white p-4">
               {menu.corrupt ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
