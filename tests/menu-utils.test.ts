@@ -13,6 +13,7 @@ import {
   moveItemsToCategory,
   renameCategory,
   setItemAvailability,
+  suggestRestaurantName,
   updateItem,
 } from "../src/features/menu/menu-utils";
 
@@ -157,5 +158,30 @@ describe("menu-utils", () => {
     expect(() => deleteCategory(doc, "nope")).toThrow();
     expect(() => addItem(doc, "nope", { name: "X" })).toThrow();
     expect(() => deleteItem(doc, doc.categories[0].id, "nope")).toThrow();
+  });
+});
+
+describe("suggestRestaurantName", () => {
+  it("uses the shared place name when titles split on a separator", () => {
+    expect(
+      suggestRestaurantName(["My Café — Lunch Menu", "My Café — Dinner Menu", "My Café · Drinks"])
+    ).toBe("My Café");
+  });
+
+  it("strips a trailing menu word from single titles", () => {
+    expect(suggestRestaurantName(["Sunny Side Café Menu"])).toBe("Sunny Side Café");
+    expect(suggestRestaurantName(["Sunny Side Café - Menu"])).toBe("Sunny Side Café");
+  });
+
+  it("keeps the most common candidate and its first-seen casing", () => {
+    expect(
+      suggestRestaurantName(["Lunch Menu", "Brunch Menu", "lunch - Dinner Menu", "Lunch — Drinks"])
+    ).toBe("Lunch");
+  });
+
+  it("invents nothing when the titles say nothing", () => {
+    expect(suggestRestaurantName([])).toBeNull();
+    expect(suggestRestaurantName(["", "   "])).toBeNull();
+    expect(suggestRestaurantName(["Menu"])).toBeNull();
   });
 });

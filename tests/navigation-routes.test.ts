@@ -11,6 +11,7 @@ describe("application routes", () => {
   it("parses top-level screen paths", () => {
     expect(parseAppRoute("/menus")).toEqual({ screen: "library" });
     expect(parseAppRoute("/orders")).toEqual({ screen: "orders" });
+    expect(parseAppRoute("/settings")).toEqual({ screen: "settings" });
     expect(parseAppRoute("/")).toEqual({ screen: "capture" });
   });
 
@@ -58,6 +59,7 @@ describe("application routes", () => {
       { screen: "capture" },
       { screen: "library" },
       { screen: "orders" },
+      { screen: "settings" },
       { screen: "editor", menuId: "menu id/&1", mode: "edit" },
       { screen: "editor", menuId: "menu id/&1", mode: "reorder" },
       { screen: "editor", menuId: "menu id/&1", mode: "qr" },

@@ -1,8 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 
-import { restaurant, restaurantMembership } from "@/lib/db/schema";
+import { restaurant, restaurantMembership, user } from "@/lib/db/schema";
 import type { RestaurantRole, RestaurantWithRole } from "@/lib/db/schema";
+import { recordAuditEvent } from "./audit";
 
 /**
  * Tenancy repository — every function is scoped by `userId` so a signed-in
@@ -111,6 +112,247 @@ export async function deleteRestaurantForOwner(
     .where(eq(restaurant.id, restaurantId))
     .returning({ id: restaurant.id });
   return deleted.length > 0;
+}
+
+/**
+ * Errors for member management, mirroring MenuRepoError: callers map codes
+ * to HTTP, messages are safe to show a user, nothing internal leaks.
+ */
+export type TenancyRepoErrorCode =
+  | "not_found"
+  | "forbidden"
+  | "user_not_found"
+  | "already_member"
+  | "last_owner";
+
+export class TenancyRepoError extends Error {
+  readonly code: TenancyRepoErrorCode;
+
+  constructor(code: TenancyRepoErrorCode, message: string) {
+    super(message);
+    this.name = "TenancyRepoError";
+    this.code = code;
+  }
+}
+
+/** A member as seen by their team: account info plus the restaurant role. */
+export interface RestaurantMember {
+  userId: string;
+  name: string;
+  email: string;
+  role: RestaurantRole;
+}
+
+const memberSelect = (db: TenancyDb) =>
+  db
+    .select({
+      userId: restaurantMembership.userId,
+      name: user.name,
+      email: user.email,
+      role: restaurantMembership.role,
+    })
+    .from(restaurantMembership)
+    .innerJoin(user, eq(user.id, restaurantMembership.userId));
+
+/**
+ * Owner gate for member management. Non-members get `not_found` (ids stay
+ * unprobeable across tenants), staff gets `forbidden`.
+ */
+async function requireOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string
+): Promise<"owner"> {
+  const role = await roleOf(db, userId, restaurantId);
+  if (role === null) throw new TenancyRepoError("not_found", "That restaurant does not exist.");
+  if (role !== "owner") {
+    throw new TenancyRepoError("forbidden", "Only the restaurant owner can manage members.");
+  }
+  return "owner";
+}
+
+/**
+ * "Some owner other than `userId` exists" — the guard that keeps a
+ * restaurant from ever losing its last owner. As a subquery it travels with
+ * the UPDATE/DELETE itself, so the check and the write are one statement
+ * (the Neon HTTP driver has no interactive transactions).
+ */
+function anotherOwnerExists(restaurantId: string, userId: string) {
+  return sql`(select count(*) from ${restaurantMembership} where ${restaurantMembership.restaurantId} = ${restaurantId} and ${restaurantMembership.role} = 'owner' and ${restaurantMembership.userId} <> ${userId}) > 0`;
+}
+
+/** The members of a restaurant the caller belongs to (any role). */
+export async function listMembersForUser(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string
+): Promise<RestaurantMember[]> {
+  const member = await getRestaurantForUser(db, userId, restaurantId);
+  if (!member) throw new TenancyRepoError("not_found", "That restaurant does not exist.");
+  return memberSelect(db)
+    .where(eq(restaurantMembership.restaurantId, restaurantId))
+    .orderBy(asc(restaurantMembership.createdAt));
+}
+
+/**
+ * Owner-only: add an existing account (found by email) as owner or staff.
+ * There is no invitation flow yet — the person must have signed in once.
+ */
+export async function addMemberForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string,
+  email: string,
+  role: RestaurantRole
+): Promise<RestaurantMember> {
+  await requireOwner(db, userId, restaurantId);
+
+  const accounts = await db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(sql`lower(${user.email}) = lower(${email.trim()})`)
+    .limit(1);
+  const target = accounts[0];
+  if (!target) {
+    throw new TenancyRepoError(
+      "user_not_found",
+      "No account uses that email yet — ask them to sign in once first."
+    );
+  }
+  if (await getMember(db, restaurantId, target.id)) {
+    throw new TenancyRepoError("already_member", "That account already belongs to this restaurant.");
+  }
+
+  try {
+    await db.insert(restaurantMembership).values({ restaurantId, userId: target.id, role });
+  } catch {
+    // Unique (restaurant, user) index — a concurrent add won the race.
+    throw new TenancyRepoError("already_member", "That account already belongs to this restaurant.");
+  }
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_added",
+    targetEmail: target.email,
+    targetName: target.name,
+    detail: role,
+  });
+  return { userId: target.id, name: target.name, email: target.email, role };
+}
+
+/**
+ * Owner-only role change. Demoting an owner is refused unless another owner
+ * remains — a restaurant never ends up ownerless (race-safe: the guard is
+ * part of the UPDATE statement itself).
+ */
+export async function updateMemberRoleForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string,
+  targetUserId: string,
+  role: RestaurantRole
+): Promise<RestaurantMember> {
+  await requireOwner(db, userId, restaurantId);
+
+  const target = await getMember(db, restaurantId, targetUserId);
+  if (!target) {
+    throw new TenancyRepoError("not_found", "That member does not belong to this restaurant.");
+  }
+  if (target.role === role) return target;
+
+  if (target.role === "owner") {
+    const updated = await db
+      .update(restaurantMembership)
+      .set({ role })
+      .where(
+        and(
+          eq(restaurantMembership.restaurantId, restaurantId),
+          eq(restaurantMembership.userId, targetUserId),
+          anotherOwnerExists(restaurantId, targetUserId)
+        )
+      )
+      .returning({ userId: restaurantMembership.userId });
+    if (updated.length === 0) {
+      throw new TenancyRepoError("last_owner", "A restaurant needs at least one owner.");
+    }
+  } else {
+    await db
+      .update(restaurantMembership)
+      .set({ role })
+      .where(
+        and(
+          eq(restaurantMembership.restaurantId, restaurantId),
+          eq(restaurantMembership.userId, targetUserId)
+        )
+      );
+  }
+  const changed = await getMember(db, restaurantId, targetUserId);
+  if (!changed) throw new TenancyRepoError("not_found", "That member does not belong to this restaurant.");
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_role_changed",
+    targetEmail: changed.email,
+    targetName: changed.name,
+    detail: `${target.role} → ${changed.role}`,
+  });
+  return changed;
+}
+
+/**
+ * Owner-only removal, with the same last-owner guard as demotion.
+ */
+export async function removeMemberForOwner(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string,
+  targetUserId: string
+): Promise<void> {
+  await requireOwner(db, userId, restaurantId);
+
+  const target = await getMember(db, restaurantId, targetUserId);
+  if (!target) {
+    throw new TenancyRepoError("not_found", "That member does not belong to this restaurant.");
+  }
+
+  const filter = and(
+    eq(restaurantMembership.restaurantId, restaurantId),
+    eq(restaurantMembership.userId, targetUserId)
+  );
+  if (target.role === "owner") {
+    const removed = await db
+      .delete(restaurantMembership)
+      .where(and(filter, anotherOwnerExists(restaurantId, targetUserId)))
+      .returning({ userId: restaurantMembership.userId });
+    if (removed.length === 0) {
+      throw new TenancyRepoError("last_owner", "A restaurant needs at least one owner.");
+    }
+  } else {
+    await db.delete(restaurantMembership).where(filter);
+  }
+  await recordAuditEvent(db, {
+    restaurantId,
+    actorUserId: userId,
+    action: "member_removed",
+    targetEmail: target.email,
+    targetName: target.name,
+    detail: target.role,
+  });
+}
+
+/** One member with their account info, or null. */
+async function getMember(
+  db: TenancyDb,
+  restaurantId: string,
+  memberUserId: string
+): Promise<RestaurantMember | null> {
+  const rows = await memberSelect(db).where(
+    and(
+      eq(restaurantMembership.restaurantId, restaurantId),
+      eq(restaurantMembership.userId, memberUserId)
+    )
+  );
+  return rows[0] ?? null;
 }
 
 /** The caller's role in the restaurant, or null if they are not a member. */

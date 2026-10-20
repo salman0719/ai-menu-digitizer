@@ -1,4 +1,4 @@
-export type AppScreen = "capture" | "library" | "orders" | "editor" | "item";
+export type AppScreen = "capture" | "library" | "orders" | "settings" | "editor" | "item";
 
 /**
  * The surface shown for an open menu: the edit workspace, the compact
@@ -8,7 +8,7 @@ export type AppScreen = "capture" | "library" | "orders" | "editor" | "item";
 export type EditorMode = "edit" | "reorder" | "qr" | "preview";
 
 export type AppRoute =
-  | { screen: "capture" | "library" | "orders" }
+  | { screen: "capture" | "library" | "orders" | "settings" }
   | { screen: "editor"; menuId: string; mode: EditorMode }
   | { screen: "item"; menuId: string; itemId: string };
 
@@ -45,6 +45,7 @@ export function parseAppRoute(input: string | URL): AppRoute {
   if (url.pathname === "/") return { screen: "capture" };
   if (url.pathname === "/menus") return { screen: "library" };
   if (url.pathname === "/orders") return { screen: "orders" };
+  if (url.pathname === "/settings") return { screen: "settings" };
 
   const selection = menuSelectionFromPathname(url.pathname);
   if (selection?.itemId) {
@@ -66,6 +67,8 @@ export function appRouteHref(route: AppRoute): string {
       return "/menus";
     case "orders":
       return "/orders";
+    case "settings":
+      return "/settings";
     case "editor": {
       const menuPath = `/menus/${encodeURIComponent(route.menuId)}`;
       return route.mode === "edit" ? menuPath : `${menuPath}/${route.mode}`;

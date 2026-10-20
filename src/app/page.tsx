@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
 import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
+import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
@@ -20,7 +21,7 @@ import {
   parseImportedMenu,
   serializeMenu,
 } from "@/features/menu/import-export";
-import { createMenuDocument } from "@/features/menu/menu-utils";
+import { createMenuDocument, suggestRestaurantName } from "@/features/menu/menu-utils";
 import type { MenuDocument } from "@/features/menu/schema";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import {
@@ -63,6 +64,8 @@ import {
   type AppScreen,
   type EditorMode,
 } from "@/features/navigation/routes";
+import { staffMenuIds } from "@/features/tenancy/access";
+import { fetchRestaurants } from "@/features/tenancy/client";
 
 type Phase = "upload" | "ready" | "extracting" | "done";
 
@@ -185,6 +188,9 @@ export default function Home() {
   /** Ids of the caller's menus that exist on the server (chips + operations). */
   const serverIdsRef = useRef<ReadonlySet<string>>(new Set());
   const [serverIds, setServerIds] = useState<ReadonlySet<string>>(new Set());
+  /** Ids of account menus where the caller is staff only (view, never edit). */
+  const staffMenusRef = useRef<ReadonlySet<string>>(new Set());
+  const [staffMenus, setStaffMenus] = useState<ReadonlySet<string>>(new Set());
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
@@ -269,6 +275,7 @@ export default function Home() {
   useEffect(() => {
     if (!signedIn) {
       replaceServerIds(new Set());
+      replaceStaffMenus(new Set());
       return;
     }
     // Sign-in: merge account menus into the library, and reconcile a menu
@@ -287,6 +294,11 @@ export default function Home() {
   function replaceServerIds(next: ReadonlySet<string>) {
     serverIdsRef.current = next;
     setServerIds(next);
+  }
+
+  function replaceStaffMenus(next: ReadonlySet<string>) {
+    staffMenusRef.current = next;
+    setStaffMenus(next);
   }
 
   function addServerId(id: string) {
@@ -329,6 +341,11 @@ export default function Home() {
       try {
         const serverMenus = await fetchServerMenus();
         replaceServerIds(new Set(serverMenus.map((menu) => menu.id)));
+        try {
+          replaceStaffMenus(staffMenuIds(serverMenus, await fetchRestaurants()));
+        } catch {
+          // Role lookup is best-effort; the server still refuses staff writes.
+        }
         const localIds = new Set((await listMenus()).map((menu) => menu.id));
         let cachedAny = false;
         for (const summary of serverMenus) {
@@ -399,6 +416,8 @@ export default function Home() {
    */
   async function pushToAccount(saved: MenuDocument): Promise<boolean> {
     if (!signedInRef.current || serverBaseRef.current === null) return false;
+    // Staff access is view-only: keep the local copy, never push an edit.
+    if (staffMenusRef.current.has(saved.id)) return false;
     if (conflictRef.current) return false;
     setSaveState({ kind: "saving", message: "Saving to your account…" });
     try {
@@ -859,9 +878,11 @@ export default function Home() {
     requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
   }
 
-  function confirmDiscard(): boolean {
+  function confirmDiscard(
+    message = "This will discard the current extracted menu. Continue?"
+  ): boolean {
     if (!extracted && !demoDoc) return true;
-    return window.confirm("This will discard the current extracted menu. Continue?");
+    return window.confirm(message);
   }
 
   /**
@@ -897,17 +918,36 @@ export default function Home() {
     applySelection(incoming);
   }
 
-  /** Append pages to the current selection; the whole set is validated as one batch. */
+  /**
+   * Append pages to the current selection; the whole set is validated as one
+   * batch. Adding a page never discards the images — only a previous
+   * extraction of them is stale — so the confirm says exactly that, and the
+   * new extraction runs right away over the old pages plus the new ones
+   * instead of making the user press Extract a second time.
+   */
   function addPages(incoming: File[]) {
     if (incoming.length === 0) return;
-    if (!confirmDiscard()) return;
+    if (phase === "extracting") {
+      setFileError("An extraction is running — add pages once it finishes.");
+      return;
+    }
     const combined = [...pages.map((page) => page.file), ...incoming];
     const check = validateImageBatch(combined);
     if (!check.valid) {
       setFileError(check.message);
       return;
     }
+    // The add control only exists while pages are selected, so there is
+    // always a previous selection to combine; the guard in confirmDiscard
+    // decides whether there is an extraction result worth confirming.
+    const confirmMessage =
+      `This discards the current extraction result — the images themselves are kept. ` +
+      `A new extraction will run on all ${combined.length} images together: the ` +
+      `${pages.length} already selected plus ${incoming.length} new ` +
+      `${incoming.length === 1 ? "page" : "pages"}. Continue?`;
+    if (!confirmDiscard(confirmMessage)) return;
     applySelection(combined);
+    void extractFiles(combined);
   }
 
   /** Replace one page, keeping the rest of the selection in place. */
@@ -931,22 +971,23 @@ export default function Home() {
     applySelection([]);
   }
 
-  async function handleExtract() {
-    if (pages.length === 0 || phase === "extracting") return;
+  /** Run one extraction over an explicit file list (normally the selection). */
+  async function extractFiles(files: File[]) {
+    if (files.length === 0 || phase === "extracting") return;
     setPhase("extracting");
     setFileError(null);
     setExtractError(null);
     try {
       // Normalize first: AVIF is transcoded to JPEG here because the provider
       // cannot read it, and mislabeled files get their real MIME type.
-      const prepared = await Promise.all(pages.map((page) => prepareImageForUpload(page.file)));
+      const prepared = await Promise.all(files.map(prepareImageForUpload));
       const menu = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
       setExtracted(menu);
       setSource("ai");
       setPhase("done");
-      void autoSaveDraft(menu);
+      void autoSaveDraft(menu, files[0] ?? null);
     } catch (error) {
       setExtractError(
         error instanceof ExtractClientError
@@ -958,6 +999,10 @@ export default function Home() {
       setPhase("ready");
     }
     scrollToResult();
+  }
+
+  function handleExtract() {
+    void extractFiles(pages.map((page) => page.file));
   }
 
   function handleDemo() {
@@ -974,7 +1019,7 @@ export default function Home() {
    * is optional rather than the act of saving. Skips empty results (nothing
    * worth storing) and keeps the newest draft when extractions overlap.
    */
-  async function autoSaveDraft(menu: ExtractedMenu) {
+  async function autoSaveDraft(menu: ExtractedMenu, primaryPage: File | null) {
     const token = (draftTokenRef.current += 1);
     if (menu.categories.length === 0) {
       draftDocRef.current = null;
@@ -983,11 +1028,11 @@ export default function Home() {
     }
     const doc = extractedMenuToDocument(menu, {
       provider: "gemini",
-      originalFileName: pages[0]?.file.name,
+      originalFileName: primaryPage?.name,
     });
     draftDocRef.current = doc;
     // One blob per menu: the first page stands in as the source image.
-    const primaryPageBlob = pages[0]?.file ?? null;
+    const primaryPageBlob = primaryPage;
     if (storageDownRef.current) {
       setDraftSave("unavailable");
       return;
@@ -1099,7 +1144,11 @@ export default function Home() {
   // Library rows carry their account state: menus on the server show as
   // synced; the rest are browser-only until moved (or downloaded).
   const libraryMenus = menus.map((menu) => ({ ...menu, onServer: serverIds.has(menu.id) }));
-  const localOnlyCount = libraryMenus.filter((menu) => !menu.onServer).length;
+  const localOnly = libraryMenus.filter((menu) => !menu.onServer);
+  const localOnlyCount = localOnly.length;
+  // A name for the first-run "Name your restaurant" field, guessed from the
+  // titles of the menus the move would copy (null when they say nothing).
+  const suggestedRestaurantName = suggestRestaurantName(localOnly.map((menu) => menu.title));
 
   // Publish state is only ever shown for the menu it was loaded for; a stale
   // answer for a previously opened menu is never displayed.
@@ -1107,6 +1156,9 @@ export default function Home() {
   const activePublication = publicationMenuId === activePublicationMenuId ? publication : null;
   const activePublicationLoaded =
     publicationMenuId === activePublicationMenuId && publicationLoaded;
+  // Staff on the menu's restaurant get a view-only editor (the server refuses
+  // their writes anyway; the UI must not offer the controls at all).
+  const activeMenuIsStaff = activeDoc ? staffMenus.has(activeDoc.id) : false;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -1125,6 +1177,8 @@ export default function Home() {
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
                 { id: "orders", label: "Orders" },
+                // Settings only applies to accounts (restaurants live there).
+                ...(signedIn ? [{ id: "settings" as const, label: "Settings" }] : []),
               ] as const
             ).map((tab) => (
               <button
@@ -1157,6 +1211,7 @@ export default function Home() {
             {signedIn && localOnlyCount > 0 && (
               <MoveToAccountPanel
                 menuCount={localOnlyCount}
+                suggestedName={suggestedRestaurantName}
                 onMoved={() => void mergeAccountMenus()}
               />
             )}
@@ -1175,6 +1230,10 @@ export default function Home() {
 
         {screen === "orders" && <OrdersBoard />}
 
+        {screen === "settings" && (
+          <RestaurantSettings signedIn={signedIn} currentUserId={session?.user?.id ?? null} />
+        )}
+
         {screen === "editor" && activeDoc && (
           <>
             {conflict && (
@@ -1185,15 +1244,22 @@ export default function Home() {
                 onKeepMine={() => void handleKeepMyVersion()}
               />
             )}
+            {activeMenuIsStaff && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                You have staff access to this restaurant — menus are view-only for staff. Ask an
+                owner to make changes.
+              </p>
+            )}
             <MenuEditor
               doc={activeDoc}
               selectedItemId={selectedItemId}
               onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
-              mode={editorMode}
+              mode={activeMenuIsStaff ? "preview" : editorMode}
               onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
               onChange={handleDocChange}
               saveState={saveState}
               syncMode={signedIn ? "account" : "local"}
+              canManage={!activeMenuIsStaff}
               imageUrl={editorImageUrl}
               onExportJson={handleExportJson}
               onExportCsv={handleExportCsv}
