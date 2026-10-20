@@ -54,9 +54,10 @@ errors, or add lint/type suppressions just to make checks pass.
 
 - Next.js App Router + TypeScript strict + Tailwind CSS.
 - Zod for AI output, stored records, and imported files.
-- Gemini API only via server-side route (`src/app/api/extract-menu/route.ts`).
-  Key lives in `GEMINI_API_KEY` (server only). Never use `NEXT_PUBLIC_` for secrets,
-  never ship the key in client bundles or logs.
+- Image extraction vendors (Gemini, Groq) only via the server-side route
+  (`src/app/api/extract-menu/route.ts`). Keys live in `GEMINI_API_KEY` /
+  `GROQ_API_KEY` (server only). Never use `NEXT_PUBLIC_` for secrets, never
+  ship a key in client bundles or logs.
 - Native IndexedDB for menus + image blobs. localStorage only for tiny prefs.
 - Vitest for unit tests.
 - Phase 2 rules (when a roadmap step schedules them): server DB and auth per

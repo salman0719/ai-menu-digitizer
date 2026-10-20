@@ -41,8 +41,12 @@ sample data, so the editor, persistence, and export can all be exercised.
 
 | Variable             | Where             | Purpose                                                           |
 | -------------------- | ----------------- | ----------------------------------------------------------------- |
-| `GEMINI_API_KEY`     | Server only       | Gemini API key. Required for real extraction.                     |
+| `GEMINI_API_KEY`     | Server only       | Gemini API key. One of the two extraction vendors.                 |
+| `GROQ_API_KEY`       | Server (optional) | Groq API key. Adds Groq (faster/cheaper) and failover.             |
 | `GEMINI_MODEL`       | Server (optional) | Model override; defaults to `gemini-3.5-flash-lite`.              |
+| `GROQ_MODEL`         | Server (optional) | Model override; defaults to `qwen/qwen3.8-27b`.                    |
+| `AI_PROVIDER`        | Server (optional) | Vendor tried first: `gemini` (default) or `groq`.                 |
+| `AI_FALLBACK_PROVIDER` | Server (optional) | Fallback vendor; unset = the other configured vendor, `none` = no failover. |
 | `DATABASE_URL`       | Server (optional) | Neon Postgres URL. Absent = local-only mode.                      |
 | `BETTER_AUTH_SECRET` | Server only       | Better Auth secret; generate with `openssl rand -base64 32`.      |
 | `BETTER_AUTH_URL`    | Server            | App base URL (local `http://localhost:3200`; prod = site URL).    |
@@ -52,7 +56,8 @@ sample data, so the editor, persistence, and export can all be exercised.
 | `CONTACT_EMAIL`      | Server            | Address shown on `/privacy` and `/terms`; unset renders an explicit notice. |
 | `CRON_SECRET`        | Server only       | Bearer secret for the on-demand purge at `/api/cron/retention`. |
 | `EXTRACTION_MONTHLY_CAP` | Server (optional) | Per-account monthly extraction cap (default 150).             |
-| `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | Server (optional) | Enables cost in the spend panel; unset means cost is reported as unavailable. |
+| `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | Server (optional) | Enables cost for Gemini calls in the spend panel; unset means those calls are unpriced. |
+| `GROQ_INPUT_USD_PER_MTOK`, `GROQ_OUTPUT_USD_PER_MTOK` | Server (optional) | The same, for Groq calls. Each vendor is priced with its own rates. |
 | `ORDER_RETENTION_DAYS` | Server (optional) | Order history window used by the purge when it is run (default 90). |
 
 Rules enforced by the code:
@@ -172,14 +177,18 @@ privacy page makes no automatic-deletion promise.
 
 1. Push the repository to GitHub/GitLab (when you choose to).
 2. Import the project in Vercel — it is detected as Next.js automatically.
-3. Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) under
-   Project → Settings → Environment Variables. Production builds fail
-   extraction gracefully without a key (demo mode still works).
+3. Set `GEMINI_API_KEY` (and optionally `GROQ_API_KEY`) under
+   Project → Settings → Environment Variables. Without any key the build still
+   succeeds and extraction fails gracefully (demo mode still works). Setting
+   both keys enables automatic failover: a quota/outage/credential failure on
+   the primary vendor is retried on the other one. `AI_PROVIDER` picks which
+   goes first; `AI_FALLBACK_PROVIDER=none` turns failover off.
 4. Deploy. The extraction endpoint runs as a serverless Next.js route; there
    is no separate server or long-running process.
 5. Verify with a real image after deploying: upload → extract → edit → reload.
 
-Extraction requires no services beyond `GEMINI_API_KEY`. The scaffolded
+Extraction requires no services beyond a `GEMINI_API_KEY` (and optionally
+`GROQ_API_KEY`). The scaffolded
 account features (not live yet) additionally need `DATABASE_URL` (Neon),
 `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and Resend credentials before
 sign-in works in production.

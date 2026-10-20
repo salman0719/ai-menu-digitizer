@@ -15,13 +15,15 @@ where useful). Secrets stay server-side; none of them may be `NEXT_PUBLIC_`.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | yes | Extraction. |
+| `GEMINI_API_KEY` | yes | Extraction via Gemini. |
+| `GROQ_API_KEY` | optional | Extraction via Groq, and failover when the primary vendor is rate-limited or down. `AI_PROVIDER` chooses the primary (default `gemini`); unset `AI_FALLBACK_PROVIDER` means the other configured vendor, `none` disables failover. |
 | `DATABASE_URL` | yes | Neon Postgres. |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | yes | Magic-link sessions. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | yes | Sign-in email and ops alerts. |
 | `OPS_ALERT_EMAIL` | yes | Where failure/volume alerts land. Without it, alerts only reach the logs. |
 | `CONTACT_EMAIL` | yes | Shown on the privacy and terms pages. |
-| `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | recommended | Enables cost in the spend panel. Leave unset and the panel says cost is unavailable. |
+| `GEMINI_INPUT_USD_PER_MTOK`, `GEMINI_OUTPUT_USD_PER_MTOK` | recommended | Enables cost for Gemini calls in the spend panel. |
+| `GROQ_INPUT_USD_PER_MTOK`, `GROQ_OUTPUT_USD_PER_MTOK` | recommended with Groq | Same for Groq. A vendor without both rates leaves its calls unpriced, so the panel reports the month's cost as unavailable rather than a partial sum. |
 | `EXTRACTION_MONTHLY_CAP` | optional | The per-account cost brake (default 150/month). |
 | `ORDER_RETENTION_DAYS` | optional | Order history window (default 90). |
 
@@ -43,7 +45,10 @@ before that matters.
 Do this once after the first deploy and after changing alerting.
 
 1. In a **preview** deployment, set `GEMINI_API_KEY` to an obviously invalid
-   value and redeploy.
+   value and redeploy. If `GROQ_API_KEY` is also set, run the drill twice —
+   once with `AI_FALLBACK_PROVIDER=none`, once allowing failover — so you can
+   confirm both "the vendor failed" and "failover rescued it" (look for the
+   `ai.provider_fallback` log line) behave as expected.
 2. Run an extraction from the UI.
 3. Expect: the browser shows a plain error (no key, no stack), and the ops
    inbox receives `[Tablepass] Extraction needs attention: provider_auth_failed`
