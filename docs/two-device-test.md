@@ -23,7 +23,7 @@ public path, and they hide network and cookie problems that a real guest hits.
 
 | # | Do this | Expect |
 | --- | --- | --- |
-| 1 | On the laptop, open **Table QR** and print or display the card for table 3. | A QR code and the public link, both containing `/m/<slug>/order?table=3`. |
+| 1 | On the laptop, open **Table QR**, pick **Table 3** under **Show**, and print or display that single card. | One large QR code, the label `Table 3`, and the typed URL under it — all pointing at `/m/<slug>/order?table=…` for that table. |
 | 2 | On the phone (cellular, signed out), scan the QR. | The themed menu renders at `/m/<slug>/order?table=3`. No sign-in prompt. Items with no price show a dash, never `$0`. |
 | 3 | Add two items (one with a variant), write a short note, send the order. | A receipt code appears (e.g. `#41F563`). No account is requested. |
 | 4 | Watch the laptop's **Orders** tab without refreshing. | The order appears with the right table label, items, note, and a total that equals the published prices. Target: under 10 seconds. |

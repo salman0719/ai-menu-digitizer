@@ -60,6 +60,11 @@ body {
     padding: 0 !important;
   }
 
+  /* A single table card (demo view) prints alone, at full width. */
+  [data-qr-single] {
+    grid-template-columns: 1fr !important;
+  }
+
   [data-qr-card] {
     break-inside: avoid;
     page-break-inside: avoid;

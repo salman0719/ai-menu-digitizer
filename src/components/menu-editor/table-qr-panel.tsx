@@ -20,6 +20,8 @@ import QRCode from "qrcode";
 import type { MenuDocument } from "@/features/menu/schema";
 import {
   defaultTableLabels,
+  displayTableUrl,
+  formatTableLabel,
   MAX_TABLE_LABEL_LENGTH,
   publicTableOrderUrl,
   tableOrderUrl,
@@ -71,6 +73,11 @@ export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
   const [prefix, setPrefix] = useState(() => readStored(PREFIX_STORAGE_KEY, "Table"));
   const [codes, setCodes] = useState<TableCode[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /** One table shown large for a demo; empty shows the whole sheet. */
+  const [focusLabel, setFocusLabel] = useState("");
+  const labels = defaultTableLabels(count, prefix.trim());
+  const focusedLabel = labels.includes(focusLabel) ? focusLabel : null;
+  const visibleCodes = focusedLabel ? codes.filter((code) => code.label === focusedLabel) : codes;
 
   useEffect(() => {
     if (!origin) return;
@@ -104,11 +111,13 @@ export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
   function changeCount(next: number) {
     const clamped = Math.min(Math.max(Math.trunc(next) || 1, 1), MAX_TABLES);
     setCount(clamped);
+    setFocusLabel("");
     writeStored(COUNT_STORAGE_KEY, String(clamped));
   }
 
   function changePrefix(next: string) {
     setPrefix(next.slice(0, MAX_TABLE_LABEL_LENGTH - 3));
+    setFocusLabel("");
     writeStored(PREFIX_STORAGE_KEY, next.slice(0, MAX_TABLE_LABEL_LENGTH - 3));
   }
 
@@ -139,17 +148,33 @@ export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
             className="mt-1 block w-40 rounded-xl border border-stone-300 px-3 py-1.5 text-sm font-normal focus:border-amber-700 focus:outline-none"
           />
         </label>
+        <label className="text-xs font-semibold text-stone-600">
+          Show
+          <select
+            value={focusedLabel ?? ""}
+            onChange={(event) => setFocusLabel(event.target.value)}
+            className="mt-1 block w-40 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-sm font-normal focus:border-amber-700 focus:outline-none"
+          >
+            <option value="">All tables</option>
+            {labels.map((label) => (
+              <option key={label} value={label}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <span className="flex-1" />
         <button
           type="button"
           onClick={() => window.print()}
           className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800"
         >
-          Print cards
+          {focusedLabel ? "Print this card" : "Print cards"}
         </button>
       </div>
 
       <p data-print-hide className="text-xs leading-5 text-stone-500">
+        Showing one table makes a single large card for demos — only that card prints.{" "}
         {publicSlug ? (
           <>
             Each code opens this menu&apos;s live ordering page for one table. The menu comes from
@@ -173,9 +198,12 @@ export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
 
       <div
         data-qr-sheet
-        className="grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 sm:grid-cols-2"
+        data-qr-single={focusedLabel ? "" : undefined}
+        className={`grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 ${
+          focusedLabel ? "mx-auto w-full max-w-sm grid-cols-1" : "sm:grid-cols-2"
+        }`}
       >
-        {codes.map((code) => (
+        {visibleCodes.map((code) => (
           <article
             key={code.label}
             data-qr-card
@@ -184,16 +212,40 @@ export function TableQrPanel({ doc, publicSlug }: TableQrPanelProps) {
             <p className="text-xs font-semibold tracking-widest text-stone-500 uppercase">
               {doc.title.trim() || "Untitled menu"}
             </p>
-            <p className="text-xl font-bold text-stone-900">{code.label}</p>
+            <p
+              className={
+                focusedLabel
+                  ? "text-3xl font-bold text-stone-900"
+                  : "text-xl font-bold text-stone-900"
+              }
+            >
+              {formatTableLabel(code.label)}
+            </p>
             {/* eslint-disable-next-line @next/next/no-img-element -- QR data URLs are inherently local and unoptimized */}
             <img
               src={code.dataUrl}
               alt={`QR code for ${code.label}`}
               width={200}
               height={200}
-              className="h-44 w-44"
+              className={focusedLabel ? "h-64 w-64" : "h-44 w-44"}
             />
-            <p className="text-[10px] leading-4 break-all text-stone-400">Scan to order</p>
+            <p className="text-[10px] leading-4 text-stone-400">Scan to order</p>
+            {publicSlug && (
+              <p className="text-[10px] font-medium leading-4 break-all text-stone-600">
+                {displayTableUrl(code.url)}
+              </p>
+            )}
+            {focusedLabel && (
+              <a
+                data-print-hide
+                href={code.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
+              >
+                Open this table&apos;s order page
+              </a>
+            )}
           </article>
         ))}
       </div>
