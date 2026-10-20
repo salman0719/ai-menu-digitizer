@@ -142,7 +142,7 @@ export function LibraryPanel({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <CommitInput
-                      label={`Rename menu ${menu.title}`}
+                      label={`Rename menu “${menu.title}”`}
                       value={menu.title}
                       onCommit={(title) => onRename(menu.id, title.trim())}
                     />
