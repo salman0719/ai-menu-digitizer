@@ -33,6 +33,10 @@ export interface MoveReport {
   failed: MoveFailure[];
 }
 
+/** What happened to one local menu (per-row moves report it directly). */
+export type MoveOutcome =
+  { status: "imported" } | { status: "skipped" } | { status: "failed"; reason: string };
+
 function failureReason(error: unknown): string {
   if (error instanceof SyncError) {
     switch (error.code) {
@@ -49,6 +53,26 @@ function failureReason(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message;
   return "Unexpected error.";
+}
+
+/**
+ * Copy one local menu into the caller's restaurant on the server. Never
+ * throws for per-menu problems (missing, damaged, or refused): the outcome
+ * carries a reason the UI can show next to that row.
+ */
+export async function moveLocalMenuToAccount(
+  restaurantId: string,
+  menuId: string
+): Promise<MoveOutcome> {
+  try {
+    const doc = await getMenu(menuId);
+    // The document keeps its local id; the server adopts it as the row id.
+    await createServerMenu(restaurantId, doc);
+    return { status: "imported" };
+  } catch (error) {
+    if (error instanceof SyncError && error.code === "exists") return { status: "skipped" };
+    return { status: "failed", reason: failureReason(error) };
+  }
 }
 
 /**
@@ -70,18 +94,10 @@ export async function moveLocalMenusToAccount(restaurantId: string): Promise<Mov
       });
       continue;
     }
-    try {
-      const doc = await getMenu(summary.id);
-      // The document keeps its local id; the server adopts it as the row id.
-      await createServerMenu(restaurantId, doc);
-      report.imported.push(summary.id);
-    } catch (error) {
-      if (error instanceof SyncError && error.code === "exists") {
-        report.skipped.push(summary.id);
-      } else {
-        report.failed.push({ id: summary.id, title: summary.title, reason: failureReason(error) });
-      }
-    }
+    const outcome = await moveLocalMenuToAccount(restaurantId, summary.id);
+    if (outcome.status === "imported") report.imported.push(summary.id);
+    else if (outcome.status === "skipped") report.skipped.push(summary.id);
+    else report.failed.push({ id: summary.id, title: summary.title, reason: outcome.reason });
   }
 
   return report;

@@ -104,7 +104,8 @@ errors, or add lint/type suppressions just to make checks pass.
 - `src/features/menus/` — Step 8 server menus: `repo.ts` (tenancy-scoped,
   conditional-UPDATE `updatedAt` conflict detection), `sync.ts` (typed
   browser client with `SyncError` codes), `move-to-account.ts` (one-way
-  local import); routes in `src/app/api/menus/`; editor UI in
+  local import, one menu or the whole library); routes in
+  `src/app/api/menus/`; editor UI in
   `src/components/menu-editor/conflict-banner.tsx` + `move-to-account-panel.tsx`
 - `tests/helpers/pg-test-db.ts`, `tests/tenancy.test.ts`,
   `tests/auth-magic-link.test.ts` — Step 7 isolation/auth tests (PGlite);

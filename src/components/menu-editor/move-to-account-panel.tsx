@@ -18,6 +18,10 @@ import {
  * and idempotent, so re-running only reports what was already there.
  * Owners can also rename or delete the selected restaurant (delete cascades
  * its menus, published pages and orders server-side, so it warns first).
+ *
+ * Individual rows carry their own "Move to account" action in the library;
+ * `onOwnedChange` keeps that action's target list in step with the
+ * restaurants created, renamed, or deleted here.
  */
 
 interface MoveToAccountPanelProps {
@@ -27,9 +31,16 @@ interface MoveToAccountPanelProps {
   suggestedName?: string | null;
   /** Called after a run that imported at least one menu (refresh the library). */
   onMoved?: () => void;
+  /** The owned restaurants, mirrored up for the per-row move action. */
+  onOwnedChange?: (owned: RestaurantOption[]) => void;
 }
 
-export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveToAccountPanelProps) {
+export function MoveToAccountPanel({
+  menuCount,
+  suggestedName,
+  onMoved,
+  onOwnedChange,
+}: MoveToAccountPanelProps) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -51,6 +62,7 @@ export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveTo
         const list = await fetchRestaurants();
         if (cancelled) return;
         setRestaurants(list);
+        onOwnedChange?.(list.filter((r) => r.role === "owner"));
         const owners = list.filter((r) => r.role === "owner");
         if (owners.length === 1 && owners[0]) setSelectedId(owners[0].id);
       } catch {
@@ -62,11 +74,16 @@ export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveTo
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onOwnedChange]);
 
   const owned = restaurants?.filter((r) => r.role === "owner") ?? [];
   const staffOnly = restaurants !== null && owned.length === 0 && restaurants.length > 0;
   const selected = owned.find((r) => r.id === selectedId) ?? null;
+
+  /** Mirror the owned restaurants up for the per-row move action. */
+  function publishOwned(list: RestaurantOption[]) {
+    onOwnedChange?.(list.filter((restaurant) => restaurant.role === "owner"));
+  }
 
   async function handleCreate() {
     const name = newName.trim();
@@ -75,7 +92,9 @@ export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveTo
     setError(null);
     try {
       const created = await createRestaurant(name);
-      setRestaurants((prev) => [...(prev ?? []), created]);
+      const next = [...(restaurants ?? []), created];
+      setRestaurants(next);
+      publishOwned(next);
       setSelectedId(created.id);
       setNameDraft(null);
     } catch {
@@ -98,7 +117,9 @@ export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveTo
     setError(null);
     try {
       const updated = await renameRestaurant(selected.id, name);
-      setRestaurants((prev) => (prev ?? []).map((r) => (r.id === updated.id ? updated : r)));
+      const next = (restaurants ?? []).map((r) => (r.id === updated.id ? updated : r));
+      setRestaurants(next);
+      publishOwned(next);
       setRenaming(false);
     } catch {
       setError("Could not rename the restaurant. Check your connection and try again.");
@@ -120,7 +141,9 @@ export function MoveToAccountPanel({ menuCount, suggestedName, onMoved }: MoveTo
     setError(null);
     try {
       await deleteRestaurant(selected.id);
-      setRestaurants((prev) => (prev ?? []).filter((r) => r.id !== selected.id));
+      const next = (restaurants ?? []).filter((r) => r.id !== selected.id);
+      setRestaurants(next);
+      publishOwned(next);
       setSelectedId("");
       setRenaming(false);
     } catch {
