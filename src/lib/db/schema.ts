@@ -430,6 +430,13 @@ export const extractionUsage = pgTable(
     /** Hashed caller address for anonymous extraction; null when signed in. */
     callerHash: text("caller_hash"),
     requestId: text("request_id").notNull(),
+    /**
+     * Vendor that served the attempt. Defaults to `gemini` so rows written
+     * before Groq existed (all Gemini) keep an honest value.
+     */
+    provider: text("provider", { enum: ["gemini", "groq"] })
+      .notNull()
+      .default("gemini"),
     model: text("model").notNull(),
     pages: integer("pages").notNull(),
     imageBytes: integer("image_bytes").notNull(),

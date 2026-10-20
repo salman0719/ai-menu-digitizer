@@ -3,19 +3,36 @@
  *
  * Token prices are configuration, not code: the launch has to survive a
  * vendor price change without a deploy, and inventing a price in a constant
- * would make the spend panel lie. Set both rates (USD per million tokens):
+ * would make the spend panel lie. Each vendor has its own pair of rates
+ * (USD per million tokens), because Gemini and Groq bill differently:
  *
  *   GEMINI_INPUT_USD_PER_MTOK=0.30
  *   GEMINI_OUTPUT_USD_PER_MTOK=2.50
+ *   GROQ_INPUT_USD_PER_MTOK=0.80
+ *   GROQ_OUTPUT_USD_PER_MTOK=4.00
  *
- * Until both are set, `costMicros` is null and the UI says the cost is not
- * configured — it never guesses.
+ * Until a vendor's pair is set, calls it served are unpriced: `costMicros`
+ * is null and the UI says the cost is not configured — it never guesses.
  */
 
-import type { ProviderUsage } from "@/lib/ai/provider";
+import type { ProviderName, ProviderUsage } from "@/lib/ai/provider";
 
-export const GEMINI_INPUT_RATE_ENV = "GEMINI_INPUT_USD_PER_MTOK";
-export const GEMINI_OUTPUT_RATE_ENV = "GEMINI_OUTPUT_USD_PER_MTOK";
+export const PROVIDER_NAMES: readonly ProviderName[] = ["gemini", "groq"];
+
+/** Env var names per vendor; names only, never values. */
+export const PROVIDER_RATE_ENV: Record<
+  ProviderName,
+  { input: string; output: string }
+> = {
+  gemini: {
+    input: "GEMINI_INPUT_USD_PER_MTOK",
+    output: "GEMINI_OUTPUT_USD_PER_MTOK",
+  },
+  groq: {
+    input: "GROQ_INPUT_USD_PER_MTOK",
+    output: "GROQ_OUTPUT_USD_PER_MTOK",
+  },
+};
 
 export interface TokenRates {
   /** USD per one million input tokens. */
@@ -30,14 +47,23 @@ function readRate(value: string | undefined): number | null {
   return parsed;
 }
 
-/** Both rates, or null when either is missing. */
-export function tokenRatesFromEnv(
+/** Both rates for one vendor, or null when either is missing. */
+export function tokenRatesFor(
+  provider: ProviderName,
   env: Record<string, string | undefined> = process.env
 ): TokenRates | null {
-  const input = readRate(env[GEMINI_INPUT_RATE_ENV]);
-  const output = readRate(env[GEMINI_OUTPUT_RATE_ENV]);
+  const names = PROVIDER_RATE_ENV[provider];
+  const input = readRate(env[names.input]);
+  const output = readRate(env[names.output]);
   if (input === null || output === null) return null;
   return { inputUsdPerMillion: input, outputUsdPerMillion: output };
+}
+
+/** Vendors whose rates are fully configured. */
+export function configuredProviders(
+  env: Record<string, string | undefined> = process.env
+): ProviderName[] {
+  return PROVIDER_NAMES.filter((provider) => tokenRatesFor(provider, env) !== null);
 }
 
 /**

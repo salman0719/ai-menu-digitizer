@@ -6,9 +6,10 @@ import {
   recordExtractionUsage,
 } from "../src/features/usage/repo";
 import {
+  configuredProviders,
   costMicros,
   formatMicroUsd,
-  tokenRatesFromEnv,
+  tokenRatesFor,
 } from "../src/features/usage/pricing";
 import {
   DEFAULT_MONTHLY_EXTRACTION_CAP,
@@ -20,30 +21,42 @@ import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
 
 const NOW = new Date("2026-10-18T12:00:00.000Z");
 const RATES = { GEMINI_INPUT_USD_PER_MTOK: "0.30", GEMINI_OUTPUT_USD_PER_MTOK: "2.50" };
+const GROQ_RATES = { GROQ_INPUT_USD_PER_MTOK: "0.80", GROQ_OUTPUT_USD_PER_MTOK: "4.00" };
 
 describe("extraction pricing", () => {
   it("has no cost without both rates — never a guessed price", () => {
-    expect(tokenRatesFromEnv({})).toBeNull();
-    expect(tokenRatesFromEnv({ GEMINI_INPUT_USD_PER_MTOK: "0.30" })).toBeNull();
-    expect(
-      costMicros({ inputTokens: 1000, outputTokens: 100 }, null)
-    ).toBeNull();
-    expect(tokenRatesFromEnv(RATES)).toEqual({
+    expect(tokenRatesFor("gemini", {})).toBeNull();
+    expect(tokenRatesFor("gemini", { GEMINI_INPUT_USD_PER_MTOK: "0.30" })).toBeNull();
+    expect(costMicros({ inputTokens: 1000, outputTokens: 100 }, null)).toBeNull();
+    expect(tokenRatesFor("gemini", RATES)).toEqual({
       inputUsdPerMillion: 0.3,
       outputUsdPerMillion: 2.5,
     });
   });
 
+  it("prices each vendor with its own rates, never the other vendor's", () => {
+    expect(tokenRatesFor("groq", RATES)).toBeNull();
+    expect(tokenRatesFor("groq", GROQ_RATES)).toEqual({
+      inputUsdPerMillion: 0.8,
+      outputUsdPerMillion: 4,
+    });
+    expect(configuredProviders(RATES)).toEqual(["gemini"]);
+    expect(configuredProviders({ ...RATES, ...GROQ_RATES })).toEqual(["gemini", "groq"]);
+    expect(configuredProviders({})).toEqual([]);
+  });
+
   it("converts tokens and per-million rates into micro-dollars", () => {
     // 1,000 tokens at $0.30/M = 300 µ$; 100 tokens at $2.50/M = 250 µ$.
-    expect(costMicros({ inputTokens: 1000, outputTokens: 100 }, tokenRatesFromEnv(RATES))).toBe(550);
+    expect(
+      costMicros({ inputTokens: 1000, outputTokens: 100 }, tokenRatesFor("gemini", RATES))
+    ).toBe(550);
     expect(formatMicroUsd(550)).toBe("$0.0006");
     expect(formatMicroUsd(12_345)).toBe("$0.0123");
   });
 
   it("cannot price usage with a missing token count", () => {
     expect(
-      costMicros({ inputTokens: null, outputTokens: 100 }, tokenRatesFromEnv(RATES))
+      costMicros({ inputTokens: null, outputTokens: 100 }, tokenRatesFor("gemini", RATES))
     ).toBeNull();
   });
 });
@@ -80,14 +93,20 @@ describe("usage ledger", () => {
   }, 30_000);
 
   it("sums a month of attempts, including failed ones", async () => {
-    const base = { requestId: "req-1", model: "gemini-test", pages: 1, imageBytes: 1000 };
+    const base = {
+      requestId: "req-1",
+      provider: "gemini" as const,
+      model: "gemini-test",
+      pages: 1,
+      imageBytes: 1000,
+    };
     await recordExtractionUsage(db, {
       ...base,
       userId,
       callerHash: null,
       usage: { inputTokens: 1000, outputTokens: 100 },
       status: "succeeded",
-      rates: tokenRatesFromEnv(RATES),
+      rates: tokenRatesFor("gemini", RATES),
       now: NOW,
     });
     await recordExtractionUsage(db, {
@@ -98,7 +117,7 @@ describe("usage ledger", () => {
       usage: { inputTokens: 500, outputTokens: 50 },
       status: "failed",
       errorCode: "invalid_ai_response",
-      rates: tokenRatesFromEnv(RATES),
+      rates: tokenRatesFor("gemini", RATES),
       now: NOW,
     });
 
@@ -121,15 +140,59 @@ describe("usage ledger", () => {
     expect(summary.costMicros).toBe(1000 * 0.3 + 100 * 2.5 + 500 * 0.3 + 50 * 2.5);
   });
 
+  it("prices a Groq attempt with Groq rates in the same month", async () => {
+    await recordExtractionUsage(db, {
+      userId,
+      callerHash: null,
+      requestId: "gemini-call",
+      provider: "gemini",
+      model: "gemini-test",
+      pages: 1,
+      imageBytes: 10,
+      usage: { inputTokens: 1000, outputTokens: 100 },
+      status: "succeeded",
+      rates: tokenRatesFor("gemini", { ...RATES, ...GROQ_RATES }),
+      now: NOW,
+    });
+    await recordExtractionUsage(db, {
+      userId,
+      callerHash: null,
+      requestId: "groq-call",
+      provider: "groq",
+      model: "groq-test",
+      pages: 2,
+      imageBytes: 20,
+      usage: { inputTokens: 2000, outputTokens: 200 },
+      status: "succeeded",
+      rates: tokenRatesFor("groq", { ...RATES, ...GROQ_RATES }),
+      now: NOW,
+    });
+
+    const summary = await getMonthlyUsageSummary(db, userId, NOW, {
+      ...RATES,
+      ...GROQ_RATES,
+    });
+    // Gemini: 1000×0.30 + 100×2.50 = 550 µ$; Groq:
+    // 2000×0.80 + 200×4.00 = 2400 µ$.
+    expect(summary.costMicros).toBe(550 + 2400);
+    expect(summary.unpricedRequests).toBe(0);
+  });
+
   it("reports no cost at all when one attempt is unpriced", async () => {
-    const base = { requestId: "req", model: "gemini-test", pages: 1, imageBytes: 10 };
+    const base = {
+      requestId: "req",
+      provider: "gemini" as const,
+      model: "gemini-test",
+      pages: 1,
+      imageBytes: 10,
+    };
     await recordExtractionUsage(db, {
       ...base,
       userId,
       callerHash: null,
       usage: { inputTokens: 1000, outputTokens: 100 },
       status: "succeeded",
-      rates: tokenRatesFromEnv(RATES),
+      rates: tokenRatesFor("gemini", RATES),
       now: NOW,
     });
     // A network failure after the call: we know it cost money, not how much.
@@ -140,7 +203,7 @@ describe("usage ledger", () => {
       callerHash: null,
       usage: null,
       status: "failed",
-      rates: tokenRatesFromEnv(RATES),
+      rates: tokenRatesFor("gemini", RATES),
       now: NOW,
     });
 
@@ -154,12 +217,13 @@ describe("usage ledger", () => {
       userId,
       callerHash: null,
       requestId: "req",
+      provider: "gemini",
       model: "gemini-test",
       pages: 1,
       imageBytes: 10,
       usage: { inputTokens: 1000, outputTokens: 100 },
       status: "succeeded",
-      rates: tokenRatesFromEnv({}),
+      rates: tokenRatesFor("gemini", {}),
       now: NOW,
     });
     const summary = await getMonthlyUsageSummary(db, userId, NOW, {});
@@ -173,12 +237,13 @@ describe("usage ledger", () => {
       userId,
       callerHash: null,
       requestId: "last-month",
+      provider: "gemini",
       model: "gemini-test",
       pages: 1,
       imageBytes: 10,
       usage: { inputTokens: 9999, outputTokens: 9999 },
       status: "succeeded",
-      rates: tokenRatesFromEnv(RATES),
+      rates: tokenRatesFor("gemini", RATES),
       now: new Date("2026-09-30T23:59:00.000Z"),
     });
     const summary = await getMonthlyUsageSummary(db, userId, NOW, RATES);
@@ -188,7 +253,13 @@ describe("usage ledger", () => {
   });
 
   it("counts anonymous callers by hash within the window only", async () => {
-    const base = { userId: null, model: "gemini-test", pages: 1, imageBytes: 10 };
+    const base = {
+      userId: null,
+      provider: "gemini" as const,
+      model: "gemini-test",
+      pages: 1,
+      imageBytes: 10,
+    };
     await recordExtractionUsage(db, {
       ...base,
       callerHash: "hash-a",

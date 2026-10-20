@@ -1,0 +1,1 @@
+ALTER TABLE "extraction_usage" ADD COLUMN "provider" text DEFAULT 'gemini' NOT NULL;
