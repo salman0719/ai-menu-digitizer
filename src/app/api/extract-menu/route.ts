@@ -8,8 +8,8 @@ import {
   getMonthlyUsageSummary,
   recordExtractionUsage,
 } from "@/features/usage/repo";
-import { createGeminiProvider, DEFAULT_GEMINI_MODEL } from "@/lib/ai/gemini-provider";
-import type { ProviderUsage } from "@/lib/ai/provider";
+import type { ProviderName, ProviderUsage } from "@/lib/ai/provider";
+import { buildProviderChain } from "@/lib/ai/provider-config";
 import { extractMenuFromImages, ServiceError } from "@/lib/ai/service";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
@@ -19,7 +19,9 @@ import { logEvent, requestIdFrom } from "@/lib/observability/log";
 /**
  * POST /api/extract-menu — multipart form with one or more `image` file
  * fields (pages of the same menu, in order).
- * Success: { menu } (validated extraction result, no stable IDs yet).
+ * Success: { menu, provider, model } (validated extraction result, no stable
+ * IDs yet; the vendor/model that answered are recorded so the menu's source
+ * is honest even when the request failed over).
  * Failure: { error: { code, message } } — never provider internals,
  * credentials, or stack traces. Uploaded bytes are not stored server-side.
  *
@@ -114,6 +116,8 @@ async function checkAllowance(request: Request, requestId: string): Promise<Next
 interface UsageRecordInput {
   request: Request;
   requestId: string;
+  provider: ProviderName;
+  model: string;
   pages: number;
   imageBytes: number;
   usage: ProviderUsage | null;
@@ -129,7 +133,8 @@ async function recordUsage(input: UsageRecordInput): Promise<void> {
       userId,
       callerHash: userId ? null : callerHash(input.request),
       requestId: input.requestId,
-      model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      provider: input.provider,
+      model: input.model,
       pages: input.pages,
       imageBytes: input.imageBytes,
       usage: input.usage,
@@ -155,10 +160,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
     const files = form.getAll("image").filter((entry): entry is File => entry instanceof File);
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    const provider = apiKey
-      ? createGeminiProvider({ apiKey, model: process.env.GEMINI_MODEL || undefined, requestId })
-      : null;
+    // Vendors come from the environment (see provider-config): the primary
+    // first, then an optional fallback. An empty chain means no key is set.
+    const chain = buildProviderChain({ requestId });
 
     const images = await Promise.all(
       files.map(async (file) => ({
@@ -168,31 +172,27 @@ export async function POST(request: Request): Promise<NextResponse> {
       }))
     );
 
-    // Upload validation and the missing-key case belong to the service; running
-    // it once without a provider would double-validate, so check the key here.
-    if (!provider) {
-      throw new ServiceError(
-        503,
-        "missing_api_key",
-        "AI extraction isn't available right now. You can still explore with demo data."
-      );
-    }
-
     const allowance = await checkAllowance(request, requestId);
     if (allowance) return allowance;
 
     const imageBytes = images.reduce((sum, image) => sum + image.bytes.length, 0);
     try {
-      const outcome = await extractMenuFromImages(images, { provider });
+      const outcome = await extractMenuFromImages(images, { chain, requestId });
       await recordUsage({
         request,
         requestId,
+        provider: outcome.provider,
+        model: outcome.model,
         pages: images.length,
         imageBytes,
         usage: outcome.usage,
         status: "succeeded",
       });
-      return NextResponse.json({ menu: outcome.menu });
+      return NextResponse.json({
+        menu: outcome.menu,
+        provider: outcome.provider,
+        model: outcome.model,
+      });
     } catch (error) {
       // A rejected upload never reached the provider (usage is null), so it
       // must not consume the cap. A call that failed after reaching the
@@ -201,6 +201,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         await recordUsage({
           request,
           requestId,
+          // The failing vendor is known during a provider call; upload
+          // rejections never reach one, so fall back to the primary.
+          provider: error.provider ?? chain[0].name,
+          model: error.model ?? chain[0].model,
           pages: images.length,
           imageBytes,
           usage: error.usage,

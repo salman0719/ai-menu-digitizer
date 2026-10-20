@@ -23,13 +23,21 @@ describe("extractMenuFromFiles", () => {
   it("posts the file and returns the menu", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ menu }));
     const result = await extractMenuFromFiles(testFile(), fetchImpl);
-    expect(result).toEqual(menu);
+    expect(result).toEqual({ menu });
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(fetchImpl.mock.calls).toHaveLength(1);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/extract-menu");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
+  });
+
+  it("passes through which vendor served the extraction", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ menu, provider: "groq", model: "qwen-test" })
+    );
+    const result = await extractMenuFromFiles(testFile(), fetchImpl);
+    expect(result).toEqual({ menu, provider: "groq", model: "qwen-test" });
   });
 
   it("posts every page image under the same field, in order", async () => {

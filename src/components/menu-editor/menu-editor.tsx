@@ -401,18 +401,19 @@ export function MenuEditor({
       // Normalize first, mirroring the capture screen: AVIF is transcoded
       // here because the provider cannot read it.
       const prepared = await Promise.all(files.map((file) => prepareImageForUpload(file)));
-      const menu = await extractMenuFromFiles(
+      const extraction = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
-      if (menu.categories.length === 0) {
+      if (extraction.menu.categories.length === 0) {
         setAddPages({
           status: "error",
           message: "The new pages added no readable items — nothing changed.",
         });
         return;
       }
-      const merged = appendExtractionToDocument(docRef.current, menu, {
-        provider: "gemini",
+      const merged = appendExtractionToDocument(docRef.current, extraction.menu, {
+        provider: extraction.provider,
+        model: extraction.model,
         originalFileName: files[0]?.name,
       });
       onChange(merged.doc);
