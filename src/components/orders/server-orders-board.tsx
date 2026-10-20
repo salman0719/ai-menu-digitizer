@@ -29,6 +29,7 @@ import {
 } from "@/features/orders/schema";
 import { fetchStaffOrders, setOrderStatus } from "@/features/orders/client";
 import { SyncError } from "@/features/menus/sync";
+import { formatTableLabel } from "@/features/orders/table-links";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
 
 const POLL_MS = 5000;
@@ -182,7 +183,8 @@ export function ServerOrdersBoard() {
   }
 
   function cancel(order: Order) {
-    if (!window.confirm(`Cancel order #${orderCode(order.id)} for ${order.tableLabel}?`)) return;
+    if (!window.confirm(`Cancel order #${orderCode(order.id)} for ${formatTableLabel(order.tableLabel)}?`))
+      return;
     void move(order, "cancelled");
   }
 
@@ -245,7 +247,9 @@ export function ServerOrdersBoard() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-lg font-bold text-stone-900">{order.tableLabel}</p>
+                      <p className="text-lg font-bold text-stone-900">
+                        {formatTableLabel(order.tableLabel)}
+                      </p>
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLES[order.status]}`}
                       >

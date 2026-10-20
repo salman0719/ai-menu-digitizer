@@ -10,6 +10,7 @@
 
 import type { MenuCategory, MenuItem } from "@/features/menu/schema";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
+import { formatTableLabel } from "@/features/orders/table-links";
 
 export function OrderShell({
   tableLabel,
@@ -35,7 +36,7 @@ export function OrderShell({
         </div>
         {tableLabel && (
           <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
-            Table {tableLabel}
+            {formatTableLabel(tableLabel)}
           </span>
         )}
       </header>

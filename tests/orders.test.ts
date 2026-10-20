@@ -11,6 +11,8 @@ import {
 } from "../src/features/orders/schema";
 import {
   defaultTableLabels,
+  displayTableUrl,
+  formatTableLabel,
   normalizeTableLabel,
   parseTableLink,
   tableOrderPath,
@@ -113,6 +115,22 @@ describe("table links", () => {
     expect(parseTableLink(new URLSearchParams("menu=abc"))).toBeNull();
     expect(parseTableLink({ table: "4" })).toBeNull();
     expect(parseTableLink({ menu: "abc", table: "   " })).toBeNull();
+  });
+
+  it("formats a table label without doubling the word Table", () => {
+    expect(formatTableLabel("Table 3")).toBe("Table 3");
+    expect(formatTableLabel("3")).toBe("Table 3");
+    expect(formatTableLabel("Patio 2")).toBe("Patio 2");
+    expect(formatTableLabel("  ")).toBe("Table");
+  });
+
+  it("prints a URL without its scheme or encoded spaces", () => {
+    expect(displayTableUrl("https://example.test/m/cafe/order?table=Table+3")).toBe(
+      "example.test/m/cafe/order?table=Table 3"
+    );
+    expect(displayTableUrl("http://localhost:3200/order?menu=m1&table=Patio%202")).toBe(
+      "localhost:3200/order?menu=m1&table=Patio 2"
+    );
   });
 
   it("builds public table links from a published slug", () => {
