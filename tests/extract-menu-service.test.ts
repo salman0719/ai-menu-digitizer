@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { MAX_MENU_PAGES, MAX_TOTAL_IMAGE_BYTES } from "../src/lib/image-constraints";
-import { ExtractionProvider, ExtractionRequest, NO_USAGE } from "../src/lib/ai/provider";
+import {
+  ExtractionProvider,
+  ExtractionRequest,
+  NO_USAGE,
+  ProviderError,
+} from "../src/lib/ai/provider";
+import type { ProviderSlot } from "../src/lib/ai/provider-config";
 import { extractMenuFromImages, MAX_IMAGE_BYTES, ServiceError } from "../src/lib/ai/service";
 
 const validMenuJson = JSON.stringify({
@@ -9,6 +15,26 @@ const validMenuJson = JSON.stringify({
   currency: "USD",
   categories: [{ name: "Drinks", items: [{ name: "Espresso", price: 3 }] }],
 });
+
+const ALL_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+] as const;
+
+/** One configured vendor, with the image support Gemini has by default. */
+function slot(provider: ExtractionProvider, overrides: Partial<ProviderSlot> = {}): ProviderSlot {
+  return {
+    name: "gemini",
+    model: "test-model",
+    provider,
+    supportedMimeTypes: [...ALL_IMAGE_TYPES],
+    maxImages: MAX_MENU_PAGES,
+    ...overrides,
+  };
+}
 
 function fakeProvider(responses: string[]): { provider: ExtractionProvider; calls: () => number } {
   let calls = 0;
@@ -28,21 +54,28 @@ function fakeProvider(responses: string[]): { provider: ExtractionProvider; call
 const tinyPng: Uint8Array = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const tinyJpeg: Uint8Array = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
-function onePage(deps: { provider: ExtractionProvider | null }, bytes = tinyPng) {
-  return extractMenuFromImages([{ bytes, mimeType: "image/png" }], deps);
+function onePage(chain: ProviderSlot[], bytes = tinyPng) {
+  return extractMenuFromImages([{ bytes, mimeType: "image/png" }], { chain });
 }
 
 describe("extractMenuFromImages", () => {
   it("returns the parsed menu on the first attempt", async () => {
     const { provider, calls } = fakeProvider([validMenuJson]);
-    const { menu } = await onePage({ provider });
+    const { menu } = await onePage([slot(provider)]);
     expect(menu.title).toBe("Test Café");
     expect(calls()).toBe(1);
   });
 
+  it("reports which vendor and model produced the menu", async () => {
+    const { provider } = fakeProvider([validMenuJson]);
+    const outcome = await onePage([slot(provider, { name: "groq", model: "groq-test-model" })]);
+    expect(outcome.provider).toBe("groq");
+    expect(outcome.model).toBe("groq-test-model");
+  });
+
   it("repairs once when the first response is malformed", async () => {
     const { provider, calls } = fakeProvider(["not json at all", validMenuJson]);
-    const { menu } = await onePage({ provider });
+    const { menu } = await onePage([slot(provider)]);
     expect(menu.title).toBe("Test Café");
     expect(calls()).toBe(2);
   });
@@ -59,7 +92,7 @@ describe("extractMenuFromImages", () => {
         usage: usages[Math.min(call - 1, usages.length - 1)],
       }),
     };
-    const outcome = await onePage({ provider });
+    const outcome = await onePage([slot(provider)]);
     expect(outcome.usage).toEqual({ inputTokens: 2100, outputTokens: 220 });
   });
 
@@ -68,16 +101,20 @@ describe("extractMenuFromImages", () => {
     const provider: ExtractionProvider = {
       generateText: async () => ({
         text: "still not json",
-        usage: call++ === 0 ? { inputTokens: 900, outputTokens: 40 } : { inputTokens: 950, outputTokens: 45 },
+        usage:
+          call++ === 0
+            ? { inputTokens: 900, outputTokens: 40 }
+            : { inputTokens: 950, outputTokens: 45 },
       }),
     };
-    const error = await onePage({ provider }).catch((e: unknown) => e);
+    const error = await onePage([slot(provider)]).catch((e: unknown) => e);
     expect((error as ServiceError).usage).toEqual({ inputTokens: 1850, outputTokens: 85 });
+    expect((error as ServiceError).provider).toBe("gemini");
   });
 
   it("fails usefully after the repair retry also fails", async () => {
     const { provider, calls } = fakeProvider(["oops", "still oops"]);
-    const error = await onePage({ provider }).catch((e: unknown) => e);
+    const error = await onePage([slot(provider)]).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ServiceError);
     expect((error as ServiceError).status).toBe(502);
     expect((error as ServiceError).code).toBe("invalid_ai_response");
@@ -87,24 +124,23 @@ describe("extractMenuFromImages", () => {
   it("rejects bad uploads before touching the provider", async () => {
     const { provider } = fakeProvider([validMenuJson]);
     const generateText = provider.generateText as ReturnType<typeof vi.fn>;
+    const chain = [slot(provider)];
 
     const notAnImage = Uint8Array.from("GIF89a", (char) => char.charCodeAt(0));
     const badType = await extractMenuFromImages([{ bytes: notAnImage, mimeType: "image/gif" }], {
-      provider,
+      chain,
     }).catch((e: unknown) => e);
     expect((badType as ServiceError).code).toBe("invalid_file_type");
 
     const tooBig = await extractMenuFromImages(
       [{ bytes: new Uint8Array(MAX_IMAGE_BYTES + 1), mimeType: "image/jpeg" }],
-      { provider }
+      { chain }
     ).catch((e: unknown) => e);
     expect((tooBig as ServiceError).status).toBe(413);
 
     const empty = await extractMenuFromImages(
       [{ bytes: new Uint8Array(0), mimeType: "image/jpeg" }],
-      {
-        provider,
-      }
+      { chain }
     ).catch((e: unknown) => e);
     expect((empty as ServiceError).code).toBe("empty_file");
 
@@ -113,7 +149,7 @@ describe("extractMenuFromImages", () => {
 
   it("reports missing configuration without calling the provider", async () => {
     const { provider } = fakeProvider([validMenuJson]);
-    const error = await onePage({ provider: null }).catch((e: unknown) => e);
+    const error = await onePage([]).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ServiceError);
     expect((error as ServiceError).status).toBe(503);
     expect((error as ServiceError).code).toBe("missing_api_key");
@@ -121,13 +157,12 @@ describe("extractMenuFromImages", () => {
   });
 
   it("maps quota failures to 429", async () => {
-    const { ProviderError } = await import("../src/lib/ai/provider");
     const failing: ExtractionProvider = {
       generateText: async () => {
         throw new ProviderError("quota", "slow down");
       },
     };
-    const error = await onePage({ provider: failing }).catch((e: unknown) => e);
+    const error = await onePage([slot(failing)]).catch((e: unknown) => e);
     expect((error as ServiceError).status).toBe(429);
     expect((error as ServiceError).code).toBe("quota_exhausted");
   });
@@ -140,7 +175,9 @@ describe("extractMenuFromImages", () => {
         return { text: validMenuJson, usage: NO_USAGE };
       }),
     };
-    await extractMenuFromImages([{ bytes: tinyPng, mimeType: "image/jpeg" }], { provider });
+    await extractMenuFromImages([{ bytes: tinyPng, mimeType: "image/jpeg" }], {
+      chain: [slot(provider)],
+    });
     expect(requests[0].images[0].mimeType).toBe("image/png");
   });
 
@@ -158,7 +195,7 @@ describe("extractMenuFromImages", () => {
     ]);
     const { provider } = fakeProvider([validMenuJson]);
     const error = await extractMenuFromImages([{ bytes: avif, mimeType: "image/jpeg" }], {
-      provider,
+      chain: [slot(provider)],
     }).catch((e: unknown) => e);
     expect((error as ServiceError).code).toBe("invalid_file_type");
     expect((error as ServiceError).message).toContain("AVIF");
@@ -184,7 +221,9 @@ describe("extractMenuFromImages", () => {
       0,
       0,
     ]);
-    await extractMenuFromImages([{ bytes: heic, mimeType: "" }], { provider });
+    await extractMenuFromImages([{ bytes: heic, mimeType: "" }], {
+      chain: [slot(provider)],
+    });
     expect(requests[0].images[0].mimeType).toBe("image/heic");
   });
 
@@ -201,7 +240,7 @@ describe("extractMenuFromImages", () => {
         { bytes: tinyPng, mimeType: "image/png", filename: "page-1.png" },
         { bytes: tinyJpeg, mimeType: "image/jpeg", filename: "page-2.jpg" },
       ],
-      { provider }
+      { chain: [slot(provider)] }
     );
     expect(menu.title).toBe("Test Café");
     expect(requests).toHaveLength(1);
@@ -215,8 +254,9 @@ describe("extractMenuFromImages", () => {
   it("rejects an empty request, too many pages, and oversized page sets", async () => {
     const { provider } = fakeProvider([validMenuJson]);
     const generateText = provider.generateText as ReturnType<typeof vi.fn>;
+    const chain = [slot(provider)];
 
-    const none = await extractMenuFromImages([], { provider }).catch((e: unknown) => e);
+    const none = await extractMenuFromImages([], { chain }).catch((e: unknown) => e);
     expect((none as ServiceError).code).toBe("missing_image");
 
     const tooMany = await extractMenuFromImages(
@@ -224,7 +264,7 @@ describe("extractMenuFromImages", () => {
         bytes: tinyPng,
         mimeType: "image/png" as const,
       })),
-      { provider }
+      { chain }
     ).catch((e: unknown) => e);
     expect((tooMany as ServiceError).status).toBe(400);
     expect((tooMany as ServiceError).code).toBe("too_many_pages");
@@ -236,11 +276,123 @@ describe("extractMenuFromImages", () => {
         { bytes: halfPlusOne, mimeType: "image/jpeg" },
         { bytes: halfPlusOne, mimeType: "image/jpeg" },
       ],
-      { provider }
+      { chain }
     ).catch((e: unknown) => e);
     expect((oversizedSet as ServiceError).status).toBe(413);
     expect((oversizedSet as ServiceError).code).toBe("file_too_large");
 
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  it("fails over to the next vendor and reports the one that answered", async () => {
+    const limited: ExtractionProvider = {
+      generateText: async () => {
+        throw new ProviderError("quota", "slow down");
+      },
+    };
+    const { provider: healthy } = fakeProvider([validMenuJson]);
+    const outcome = await onePage([
+      slot(limited, { name: "gemini", model: "gemini-test" }),
+      slot(healthy, { name: "groq", model: "groq-test" }),
+    ]);
+    expect(outcome.provider).toBe("groq");
+    expect(outcome.model).toBe("groq-test");
+    expect(outcome.menu.title).toBe("Test Café");
+  });
+
+  it("fails over when the first vendor cannot produce valid JSON", async () => {
+    const { provider: broken, calls: brokenCalls } = fakeProvider(["nope", "still nope"]);
+    const { provider: healthy, calls } = fakeProvider([validMenuJson]);
+    const outcome = await onePage([
+      slot(broken, { name: "gemini" }),
+      slot(healthy, { name: "groq" }),
+    ]);
+    expect(brokenCalls()).toBe(2);
+    expect(calls()).toBe(1);
+    expect(outcome.provider).toBe("groq");
+  });
+
+  it("does not fail over on a content block", async () => {
+    const blocked: ExtractionProvider = {
+      generateText: async () => {
+        throw new ProviderError("blocked", "blocked");
+      },
+    };
+    const { provider: other } = fakeProvider([validMenuJson]);
+    const error = await onePage([
+      slot(blocked, { name: "gemini" }),
+      slot(other, { name: "groq" }),
+    ]).catch((e: unknown) => e);
+    expect((error as ServiceError).code).toBe("content_blocked");
+    expect(other.generateText).not.toHaveBeenCalled();
+  });
+
+  it("skips a vendor that cannot read the upload's image types", async () => {
+    const heic = new Uint8Array([
+      0,
+      0,
+      0,
+      0x1c,
+      ...Uint8Array.from("ftypheic", (char) => char.charCodeAt(0)),
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const { provider: groqOnly } = fakeProvider([validMenuJson]);
+    const { provider: gemini } = fakeProvider([validMenuJson]);
+    const outcome = await extractMenuFromImages([{ bytes: heic, mimeType: "" }], {
+      chain: [
+        slot(groqOnly, { name: "groq", supportedMimeTypes: ["image/jpeg", "image/png"] }),
+        slot(gemini, { name: "gemini" }),
+      ],
+    });
+    expect(outcome.provider).toBe("gemini");
+    expect(groqOnly.generateText).not.toHaveBeenCalled();
+  });
+
+  it("skips a vendor whose page limit is below the upload's page count", async () => {
+    const { provider: groqOnly } = fakeProvider([validMenuJson]);
+    const { provider: gemini } = fakeProvider([validMenuJson]);
+    const pages = Array.from({ length: MAX_MENU_PAGES }, () => ({
+      bytes: tinyPng,
+      mimeType: "image/png" as const,
+    }));
+    const outcome = await extractMenuFromImages(pages, {
+      chain: [slot(groqOnly, { name: "groq", maxImages: 3 }), slot(gemini, { name: "gemini" })],
+    });
+    expect(outcome.provider).toBe("gemini");
+    expect(groqOnly.generateText).not.toHaveBeenCalled();
+  });
+
+  it("explains when no configured vendor can read the upload", async () => {
+    const { provider } = fakeProvider([validMenuJson]);
+    const heic = new Uint8Array([
+      0,
+      0,
+      0,
+      0x1c,
+      ...Uint8Array.from("ftypheic", (char) => char.charCodeAt(0)),
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const typeError = await extractMenuFromImages([{ bytes: heic, mimeType: "" }], {
+      chain: [slot(provider, { name: "groq", supportedMimeTypes: ["image/jpeg", "image/png"] })],
+    }).catch((e: unknown) => e);
+    expect((typeError as ServiceError).code).toBe("invalid_file_type");
+    expect((typeError as ServiceError).status).toBe(400);
+    expect(provider.generateText).not.toHaveBeenCalled();
+
+    const pages = Array.from({ length: MAX_MENU_PAGES }, () => ({
+      bytes: tinyPng,
+      mimeType: "image/png" as const,
+    }));
+    const pageError = await extractMenuFromImages(pages, {
+      chain: [slot(provider, { name: "groq", maxImages: 3 })],
+    }).catch((e: unknown) => e);
+    expect((pageError as ServiceError).code).toBe("too_many_pages");
+    expect((pageError as ServiceError).message).toContain("at most 3");
   });
 });

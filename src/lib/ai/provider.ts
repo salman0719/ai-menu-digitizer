@@ -69,3 +69,15 @@ export function addUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
 export interface ExtractionProvider {
   generateText(request: ExtractionRequest): Promise<ProviderResult>;
 }
+
+/** The image-extraction vendors this app can talk to. */
+export type ProviderName = "gemini" | "groq";
+
+/**
+ * Which provider/model actually produced an extraction. Recorded with the
+ * menu and the usage ledger, so "gemini" is never written over a Groq result.
+ */
+export interface ProviderIdentity {
+  provider: ProviderName;
+  model: string;
+}
