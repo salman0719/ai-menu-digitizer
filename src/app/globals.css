@@ -71,6 +71,16 @@ body {
     border: 1px solid #d6d3d1 !important;
   }
 
+  /* Click-to-rename names hint with a dotted underline on screen; never on paper. */
+  [data-qr-name] {
+    text-decoration: none !important;
+  }
+
+  /* A name caught mid-edit prints as plain text, not a form field. */
+  [data-qr-card] input {
+    outline: none !important;
+  }
+
   @page {
     margin: 12mm;
   }

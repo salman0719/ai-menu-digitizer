@@ -11,6 +11,7 @@ import {
 } from "../src/features/orders/schema";
 import {
   defaultTableLabels,
+  sanitizeTableLabels,
   displayTableUrl,
   formatTableLabel,
   normalizeTableLabel,
@@ -97,6 +98,19 @@ describe("table links", () => {
     expect(normalizeTableLabel(undefined)).toBeNull();
   });
 
+  it("sanitizes an explicitly typed table list", () => {
+    expect(sanitizeTableLabels(["Patio 1", "Patio 2", "Bar"])).toEqual([
+      "Patio 1",
+      "Patio 2",
+      "Bar",
+    ]);
+    expect(sanitizeTableLabels(["  Patio   1 ", "", "   ", "Bar", "Bar"])).toEqual([
+      "Patio 1",
+      "Bar",
+    ]);
+    expect(sanitizeTableLabels([])).toEqual([]);
+  });
+
   it("builds and parses order links", () => {
     const path = tableOrderPath("menu-1", "Patio 2");
     expect(path).toBe("/order?menu=menu-1&table=Patio+2");
@@ -134,9 +148,7 @@ describe("table links", () => {
   });
 
   it("builds public table links from a published slug", () => {
-    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe(
-      "/m/my-cafe/order?table=Patio+2"
-    );
+    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe("/m/my-cafe/order?table=Patio+2");
     expect(publicTableOrderUrl("https://example.test/", "my-cafe", "3")).toBe(
       "https://example.test/m/my-cafe/order?table=3"
     );

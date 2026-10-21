@@ -12,6 +12,9 @@ export const TABLE_ORDER_PATH = "/order";
 /** Max label length keeps QR codes scannable and table cards readable. */
 export const MAX_TABLE_LABEL_LENGTH = 24;
 
+/** Max cards on one sheet; keeps the grid and QR payloads sane. */
+export const MAX_TABLES = 40;
+
 export interface TableLink {
   menuId: string;
   tableLabel: string;
@@ -50,6 +53,23 @@ export function defaultTableLabels(count: number, prefix = ""): string[] {
   return Array.from({ length: safe }, (_, index) =>
     prefix ? `${prefix} ${index + 1}` : String(index + 1)
   );
+}
+
+/**
+ * Clean an explicitly typed list ("Patio 1", "Bar", …): trim, drop blanks
+ * and overlong entries, de-duplicate while keeping order, cap length.
+ */
+export function sanitizeTableLabels(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const clean: string[] = [];
+  for (const value of values) {
+    const label = normalizeTableLabel(value);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    clean.push(label);
+    if (clean.length >= MAX_TABLES) break;
+  }
+  return clean;
 }
 
 export function tableOrderPath(menuId: string, tableLabel: string): string {
