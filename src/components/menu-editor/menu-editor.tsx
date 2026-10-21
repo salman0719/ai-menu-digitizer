@@ -765,6 +765,17 @@ export function MenuEditor({
   return (
     <div className="flex flex-col gap-4">
       {headerRow}
+      {/* Publishing is the one step owners look for by name, so it stays on
+          the edit screen — not only inside the preview. */}
+      {publishing && canManage && (
+        <PublishPanel
+          signedIn={syncMode === "account"}
+          themeId={previewThemeId}
+          layout={previewLayout}
+          controls={publishing}
+          onOpenPreview={() => changeMode("preview")}
+        />
+      )}
       <div className="rounded-2xl border border-stone-200 bg-white p-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
           <CommitInput
