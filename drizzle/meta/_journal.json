@@ -57,6 +57,13 @@
       "when": 1792490342019,
       "tag": "0007_next_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792558900961,
+      "tag": "0008_flimsy_guardian",
+      "breakpoints": true
     }
   ]
 }

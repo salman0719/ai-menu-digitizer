@@ -255,6 +255,13 @@ export const menu = pgTable(
     title: text("title").notNull(),
     currency: text("currency"),
     doc: jsonb("doc").$type<unknown>().notNull(),
+    /**
+     * Opening windows (`src/features/availability/schema.ts`): an empty
+     * array means always open. Stored on the menu row — not in `doc` — so
+     * a time change takes effect without republishing, and the table
+     * landing can filter live menus without reading every snapshot.
+     */
+    availability: jsonb("availability").$type<unknown>().notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
