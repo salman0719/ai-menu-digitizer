@@ -228,7 +228,7 @@ export function ServerOrdersBoard() {
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No orders yet</p>
           <p className="mt-1 text-sm text-stone-600">
-            Publish a menu, print its table QR cards, and scan one with a phone to place a real
+            Print your table cards from the Tables tab, then scan one with a phone to place a real
             order — it will show up here within seconds.
           </p>
         </div>

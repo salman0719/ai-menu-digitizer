@@ -76,7 +76,7 @@ export function launchSteps(snapshot: LaunchSnapshot): LaunchStep[] {
     {
       id: "cards",
       title: "Print the table cards",
-      guidance: "Open Table QR in the editor and print one card per table.",
+      guidance: "Open the Tables tab and print one card per table; each card covers every open menu.",
       done: false,
       manual: true,
       detail: "Tick this on the device you printed from — we can't see your printer",
