@@ -1,9 +1,9 @@
 import { Suspense, cache } from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { OrderShell } from "@/components/order/order-menu";
+import { TableOrderTabs } from "@/components/order/table-order-tabs";
 import { isSlug } from "@/features/publishing/slug";
 import { normalizeTableLabel, formatTableLabel } from "@/features/orders/table-links";
 import {
@@ -33,10 +33,6 @@ const loadLanding = cache(
     return listOpenMenusForRestaurantSlug(getDb(), restaurantSlug, new Date());
   }
 );
-
-function itemCount(doc: { categories: { items: unknown[] }[] }): number {
-  return doc.categories.reduce((sum, category) => sum + category.items.length, 0);
-}
 
 export async function generateMetadata({
   params,
@@ -111,23 +107,16 @@ async function TableLandingContent({
 
   const frame = "rounded-2xl border border-stone-200 bg-white";
 
-  return (
-    <OrderShell tableLabel={tableLabel}>
-      <div className={`${frame} p-5`}>
-        <p className="text-sm font-semibold tracking-wider text-amber-800 uppercase">
-          {landing.restaurantName} · {formatTableLabel(tableLabel)}
-        </p>
-        <h1 className="mt-1 text-2xl font-bold text-stone-900">
-          What’s on{landing.menus.length > 1 ? ` — ${landing.menus.length} menus` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-stone-600">
-          {landing.menus.length === 0
-            ? "Ask staff what’s being served right now."
-            : "Pick a menu to start an order. No account or app needed."}
-        </p>
-      </div>
-
-      {landing.menus.length === 0 ? (
+  if (landing.menus.length === 0) {
+    return (
+      <OrderShell tableLabel={tableLabel}>
+        <div className={`${frame} p-5`}>
+          <p className="text-sm font-semibold tracking-wider text-amber-800 uppercase">
+            {landing.restaurantName} · {formatTableLabel(tableLabel)}
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-stone-900">Order from your table</h1>
+          <p className="mt-1 text-sm text-stone-600">Ask staff what’s being served right now.</p>
+        </div>
         <div className={`${frame} p-8 text-center`}>
           <p className="text-lg font-semibold text-stone-900">Nothing being served right now</p>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
@@ -135,33 +124,36 @@ async function TableLandingContent({
             services. Ask staff what’s on, or try again a little later.
           </p>
         </div>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {landing.menus.map((menu) => {
-            const items = itemCount(menu.doc);
-            const orderHref = `/m/${menu.menuSlug}/order?table=${encodeURIComponent(tableLabel)}`;
-            return (
-              <li key={menu.menuId} className={`${frame} flex flex-col p-5`}>
-                <h2 className="text-lg font-bold text-stone-900">
-                  {menu.doc.title.trim() || "Untitled menu"}
-                </h2>
-                <p className="mt-1 text-sm text-stone-600">
-                  {items === 0
-                    ? "No items listed."
-                    : `${items} ${items === 1 ? "item" : "items"} across ${menu.doc.categories.length} ${menu.doc.categories.length === 1 ? "category" : "categories"}`}
-                </p>
-                <span className="flex-1" />
-                <Link
-                  href={orderHref}
-                  className="mt-4 inline-block rounded-full bg-amber-700 px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-amber-800"
-                >
-                  View &amp; order
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      </OrderShell>
+    );
+  }
+
+  return (
+    <OrderShell tableLabel={tableLabel}>
+      <div className={`${frame} p-5`}>
+        <p className="text-sm font-semibold tracking-wider text-amber-800 uppercase">
+          {landing.restaurantName} · {formatTableLabel(tableLabel)}
+        </p>
+        <h1 className="mt-1 text-2xl font-bold text-stone-900">Order from your table</h1>
+        <p className="mt-1 text-sm text-stone-600">
+          {landing.menus.length === 1
+            ? "One menu is open — tap a dish to add it."
+            : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}{" "}
+          No account or app needed.
+        </p>
+      </div>
+
+      <TableOrderTabs
+        restaurantName={landing.restaurantName}
+        restaurantSlug={landing.restaurantSlug}
+        tableLabel={tableLabel}
+        menus={landing.menus.map((menu) => ({
+          menuId: menu.menuId,
+          menuSlug: menu.menuSlug,
+          title: menu.title,
+          doc: menu.doc,
+        }))}
+      />
     </OrderShell>
   );
 }
