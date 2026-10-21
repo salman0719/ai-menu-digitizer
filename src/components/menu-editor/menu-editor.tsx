@@ -46,6 +46,7 @@ import {
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
 
+import { AvailabilityPanel } from "./availability-panel";
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
@@ -796,6 +797,12 @@ export function MenuEditor({
           </p>
         )}
       </div>
+      <AvailabilityPanel
+        key={doc.id}
+        menuId={doc.id}
+        syncMode={syncMode}
+        canManage={canManage}
+      />
       {duplicateGroups.length > 0 && (
         <section
           aria-label="Possible duplicates"
