@@ -114,13 +114,23 @@ describe("orders repo", () => {
       note: "No onions",
     });
     expect(placed.lines).toEqual([
-      { menuItemId: "item-flat", name: "Espresso", variantName: null, unitPrice: 3.5, quantity: 2 },
+      {
+        menuItemId: "item-flat",
+        name: "Espresso",
+        variantName: null,
+        unitPrice: 3.5,
+        quantity: 2,
+        menuId,
+        menuTitle: "Café A — Orders",
+      },
       {
         menuItemId: "item-variant",
         name: "Latte",
         variantName: "Large",
         unitPrice: 5,
         quantity: 1,
+        menuId,
+        menuTitle: "Café A — Orders",
       },
     ]);
 

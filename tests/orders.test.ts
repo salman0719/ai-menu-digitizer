@@ -28,13 +28,23 @@ const espresso: OrderLine = {
   variantName: "Small",
   unitPrice: 2,
   quantity: 2,
+  menuId: null,
+  menuTitle: null,
 };
 
 describe("order totals", () => {
   it("multiplies quantities and rounds to cents", () => {
     const lines: OrderLine[] = [
       { ...espresso },
-      { menuItemId: "i2", name: "Croissant", variantName: null, unitPrice: 3.1, quantity: 3 },
+      {
+        menuItemId: "i2",
+        name: "Croissant",
+        variantName: null,
+        unitPrice: 3.1,
+        quantity: 3,
+        menuId: null,
+        menuTitle: null,
+      },
     ];
     expect(orderTotal(lines)).toBe(13.3);
   });

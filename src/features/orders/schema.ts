@@ -27,11 +27,22 @@ export const orderLineSchema = z.object({
   /** Price per unit as printed, or null when the menu had none. */
   unitPrice: z.number().nullable().default(null),
   quantity: z.number().int().positive(),
+  /**
+   * Which menu this line was ordered from (multi-menu table orders).
+   * Null on rows written before per-line provenance existed; the order
+   * row's `menuTitle` is still the board's display title.
+   */
+  menuId: z.string().min(1).nullable().default(null),
+  /** Menu title snapshot, so history reads without loading the menu. */
+  menuTitle: z.string().min(1).nullable().default(null),
 });
 
 export const orderSchema = z.object({
   id: z.string().min(1),
-  /** The menu it was ordered from; null once that menu is deleted. */
+  /**
+   * The menu it was ordered from. Null for multi-menu table orders (each
+   * line carries its own menu) and once a single menu is deleted.
+   */
   menuId: z.string().min(1).nullable(),
   /** Menu title snapshot, so the board reads without loading the menu. */
   menuTitle: z.string().min(1),
@@ -48,7 +59,11 @@ export const orderSchema = z.object({
 export type OrderLine = z.infer<typeof orderLineSchema>;
 export type Order = z.infer<typeof orderSchema>;
 
-export type OrderLineInput = Omit<OrderLine, "quantity"> & { quantity?: number };
+export type OrderLineInput = Omit<OrderLine, "quantity" | "menuId" | "menuTitle"> & {
+  quantity?: number;
+  menuId?: string | null;
+  menuTitle?: string | null;
+};
 
 /** Sum of priced lines, or null when any line has no price. */
 export function orderTotal(lines: readonly OrderLine[]): number | null {
@@ -72,7 +87,10 @@ export function addLine(lines: readonly OrderLine[], input: OrderLineInput): Ord
   }
   const next = lines.map((line) => ({ ...line }));
   const match = next.find(
-    (line) => line.menuItemId === input.menuItemId && line.variantName === (input.variantName ?? null)
+    (line) =>
+      line.menuItemId === input.menuItemId &&
+      line.variantName === (input.variantName ?? null) &&
+      (line.menuId ?? null) === (input.menuId ?? null)
   );
   if (match) {
     match.quantity += quantity;
@@ -84,6 +102,8 @@ export function addLine(lines: readonly OrderLine[], input: OrderLineInput): Ord
     variantName: input.variantName ?? null,
     unitPrice: input.unitPrice ?? null,
     quantity,
+    menuId: input.menuId ?? null,
+    menuTitle: input.menuTitle ?? null,
   });
   return next;
 }

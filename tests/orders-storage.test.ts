@@ -32,6 +32,8 @@ function line(overrides: Partial<Parameters<typeof createOrder>[0]["lines"][numb
     variantName: "Small" as string | null,
     unitPrice: 2 as number | null,
     quantity: 2,
+    menuId: null as string | null,
+    menuTitle: null as string | null,
     ...overrides,
   };
 }

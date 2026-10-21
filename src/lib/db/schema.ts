@@ -398,6 +398,14 @@ export const orderLine = pgTable(
     /** Integer cents, or null when the menu showed no price. */
     unitPriceCents: integer("unit_price_cents"),
     quantity: integer("quantity").notNull(),
+    /**
+     * Which menu this line came from (multi-menu table orders). Nullable
+     * like `order.menu_id`: clears when the menu is deleted, and stays
+     * null on rows written before per-line provenance existed.
+     */
+    menuId: text("menu_id").references(() => menu.id, { onDelete: "set null" }),
+    /** Menu title snapshot, so history reads without loading the menu. */
+    menuTitle: text("menu_title"),
   },
   (t) => ({
     orderIdx: index("order_line_order_idx").on(t.orderId),
