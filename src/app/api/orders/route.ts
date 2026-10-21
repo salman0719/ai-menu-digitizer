@@ -7,6 +7,7 @@ import {
   listOrdersForStaff,
   OrderRepoError,
   placeOrderFromSlug,
+  placeTableOrder,
 } from "@/features/orders/repo";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
@@ -34,23 +35,40 @@ import { logEvent, requestIdFrom } from "@/lib/observability/log";
 
 const MAX_BODY_BYTES = 8 * 1024;
 
-const orderBodySchema = z.object({
-  slug: z.string().trim().min(1).max(64),
-  tableLabel: z.string().trim().min(1).max(24),
-  note: z.string().max(280).nullable().optional(),
-  lines: z
-    .array(
-      z.object({
-        menuItemId: z.string().min(1).max(64),
-        variantName: z.string().min(1).max(48).nullable().optional(),
-        quantity: z.number().int().min(1).max(20),
-      })
-    )
-    .min(1)
-    .max(30),
-  /** Honeypot: rendered off-screen, so only a script fills it. */
-  website: z.string().max(200).optional(),
+const orderLineBodySchema = z.object({
+  menuItemId: z.string().min(1).max(64),
+  variantName: z.string().min(1).max(48).nullable().optional(),
+  quantity: z.number().int().min(1).max(20),
+  /** Which menu this line comes from — required on the table path. */
+  menuSlug: z.string().trim().min(1).max(64).nullable().optional(),
 });
+
+const orderBodySchema = z
+  .object({
+    /** Single-menu path (older QRs): the menu's own public slug. */
+    slug: z.string().trim().min(1).max(64).nullable().optional(),
+    /** Table path (`/r/<slug>/t/<table>`): the restaurant's public slug. */
+    restaurantSlug: z.string().trim().min(1).max(64).nullable().optional(),
+    tableLabel: z.string().trim().min(1).max(24),
+    note: z.string().max(280).nullable().optional(),
+    lines: z.array(orderLineBodySchema).min(1).max(30),
+    /** Honeypot: rendered off-screen, so only a script fills it. */
+    website: z.string().max(200).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.slug && data.restaurantSlug) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Send either a menu link or a restaurant link, not both.",
+      });
+    } else if (!data.slug && !data.restaurantSlug) {
+      ctx.addIssue({ code: "custom", message: "A menu or restaurant link is required." });
+    } else if (data.restaurantSlug && data.lines.some((line) => !line.menuSlug)) {
+      ctx.addIssue({ code: "custom", message: "Every line needs its menu." });
+    } else if (data.slug && data.lines.some((line) => line.menuSlug)) {
+      ctx.addIssue({ code: "custom", message: "Lines cannot name a menu on this link." });
+    }
+  });
 
 function errorResponse(
   code: string,
@@ -140,12 +158,29 @@ export async function POST(request: Request) {
       return response;
     }
 
-    const order = await placeOrderFromSlug(getDb(), {
-      slug: parsed.data.slug,
-      tableLabel: parsed.data.tableLabel,
-      note: parsed.data.note ?? null,
-      lines: parsed.data.lines,
-    });
+    const order = parsed.data.restaurantSlug
+      ? await placeTableOrder(getDb(), {
+          restaurantSlug: parsed.data.restaurantSlug,
+          tableLabel: parsed.data.tableLabel,
+          note: parsed.data.note ?? null,
+          lines: parsed.data.lines.map((line) => ({
+            menuSlug: line.menuSlug ?? "",
+            menuItemId: line.menuItemId,
+            variantName: line.variantName,
+            quantity: line.quantity,
+          })),
+        })
+      : parsed.data.slug
+        ? await placeOrderFromSlug(getDb(), {
+            slug: parsed.data.slug,
+            tableLabel: parsed.data.tableLabel,
+            note: parsed.data.note ?? null,
+            lines: parsed.data.lines,
+          })
+        : null;
+    if (!order) {
+      return errorResponse("invalid_body", "A menu or restaurant link is required.", 400);
+    }
     const response = NextResponse.json({ order }, { status: 201 });
     response.headers.set("Cache-Control", "no-store");
     return response;
