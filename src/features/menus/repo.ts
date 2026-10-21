@@ -4,6 +4,10 @@ import { menu, restaurant, restaurantMembership } from "@/lib/db/schema";
 import type { RestaurantRole } from "@/lib/db/schema";
 import type { TenancyDb } from "@/features/tenancy/repo";
 import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
+import {
+  menuAvailabilitySchema,
+  type MenuAvailability,
+} from "@/features/availability/schema";
 
 /**
  * Server repository for menu documents (Step 8 — server-backed menus).
@@ -50,6 +54,8 @@ export interface ServerMenuSummary {
   restaurantName: string;
   title: string;
   currency: string | null;
+  /** Opening windows (empty = always open); edited without republishing. */
+  availability: MenuAvailability;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +71,7 @@ type MenuWithRole = {
   restaurantName: string;
   title: string;
   currency: string | null;
+  availability: unknown;
   doc: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -79,6 +86,7 @@ const menuJoin = (db: TenancyDb) =>
       restaurantName: restaurant.name,
       title: menu.title,
       currency: menu.currency,
+      availability: menu.availability,
       doc: menu.doc,
       createdAt: menu.createdAt,
       updatedAt: menu.updatedAt,
@@ -93,12 +101,17 @@ function iso(value: Date): string {
 }
 
 function toSummary(row: Omit<MenuWithRole, "doc" | "role">): ServerMenuSummary {
+  const availability = menuAvailabilitySchema.safeParse(row.availability);
+  if (!availability.success) {
+    throw new Error(`stored menu ${row.id} has invalid availability`);
+  }
   return {
     id: row.id,
     restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
     title: row.title,
     currency: row.currency,
+    availability: availability.data,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -171,6 +184,8 @@ export async function createMenuForUser(
       id: doc.id,
       restaurantId,
       ...stampRowValues(doc, updatedAt),
+      // New menus open always until the owner configures windows.
+      availability: [],
       createdAt: updatedAt,
     });
   } catch (error) {

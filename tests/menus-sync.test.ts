@@ -24,6 +24,7 @@ const serverMenuPayload = {
     restaurantName: "Sunny Side Café",
     title: "Sunny Side Café",
     currency: "USD",
+    availability: [],
     createdAt: "2026-10-18T05:00:00.000Z",
     updatedAt: "2026-10-18T06:00:00.000Z",
     doc: createSampleMenuDocument(),
