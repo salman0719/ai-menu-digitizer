@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { moveLocalMenusToAccount } from "@/features/menus/move-to-account";
+import { moveLocalMenuToAccount, moveLocalMenusToAccount } from "@/features/menus/move-to-account";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import type { MenuDocument } from "@/features/menu/schema";
 import { closeDatabase, DB_NAME } from "@/features/menu/indexeddb";
@@ -273,5 +273,55 @@ describe("moveLocalMenusToAccount", () => {
     const { listMenus } = await import("@/features/menu/storage");
     const remaining = await listMenus();
     expect(remaining.map((m) => m.id)).toEqual(["menu-damaged"]);
+  });
+});
+
+describe("moveLocalMenuToAccount", () => {
+  it("copies just the requested menu and leaves the rest in this browser", async () => {
+    await saveMenu({ ...createSampleMenuDocument(), id: "menu-pick-me", title: "Pick me" });
+    await saveMenu({ ...createSampleMenuDocument(), id: "menu-leave-me", title: "Leave me" });
+
+    const state: ServerState = { menus: new Map(), restaurants: [] };
+    stubServer(state);
+
+    const outcome = await moveLocalMenuToAccount("r-1", "menu-pick-me");
+
+    expect(outcome).toEqual({ status: "imported" });
+    expect([...state.menus.keys()]).toEqual(["menu-pick-me"]);
+    expect(state.restaurants).toEqual(["r-1"]);
+    // Still one-way: both local documents survive.
+    const { listMenus } = await import("@/features/menu/storage");
+    expect((await listMenus()).map((m) => m.id).sort()).toEqual(["menu-leave-me", "menu-pick-me"]);
+  });
+
+  it("reports a second move of the same menu as skipped", async () => {
+    await saveMenu({ ...createSampleMenuDocument(), id: "menu-twice" });
+    const state: ServerState = { menus: new Map(), restaurants: [] };
+    stubServer(state);
+
+    expect(await moveLocalMenuToAccount("r-1", "menu-twice")).toEqual({ status: "imported" });
+    expect(await moveLocalMenuToAccount("r-1", "menu-twice")).toEqual({ status: "skipped" });
+    expect(state.menus.size).toBe(1);
+  });
+
+  it("returns a reason instead of throwing when the local menu is gone", async () => {
+    const state: ServerState = { menus: new Map(), restaurants: [] };
+    stubServer(state);
+
+    const outcome = await moveLocalMenuToAccount("r-1", "menu-deleted");
+
+    expect(outcome.status).toBe("failed");
+    if (outcome.status === "failed") expect(outcome.reason).toMatch(/no longer exists/i);
+    expect(state.menus.size).toBe(0);
+  });
+
+  it("returns the offline reason instead of throwing", async () => {
+    await saveMenu({ ...createSampleMenuDocument(), id: "menu-offline-one" });
+    stubServer({ menus: new Map(), restaurants: [] }, { offline: true });
+
+    const outcome = await moveLocalMenuToAccount("r-1", "menu-offline-one");
+
+    expect(outcome.status).toBe("failed");
+    if (outcome.status === "failed") expect(outcome.reason).toMatch(/unreachable/i);
   });
 });

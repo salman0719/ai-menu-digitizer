@@ -68,7 +68,8 @@ import {
   type EditorMode,
 } from "@/features/navigation/routes";
 import { staffMenuIds } from "@/features/tenancy/access";
-import { fetchRestaurants } from "@/features/tenancy/client";
+import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
+import { moveLocalMenuToAccount } from "@/features/menus/move-to-account";
 
 type Phase = "upload" | "ready" | "extracting" | "done";
 
@@ -194,6 +195,8 @@ export default function Home() {
   /** Ids of account menus where the caller is staff only (view, never edit). */
   const staffMenusRef = useRef<ReadonlySet<string>>(new Set());
   const [staffMenus, setStaffMenus] = useState<ReadonlySet<string>>(new Set());
+  /** Restaurants the caller owns: the targets for moving menus to the account. */
+  const [ownedRestaurants, setOwnedRestaurants] = useState<RestaurantOption[]>([]);
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
@@ -209,6 +212,25 @@ export default function Home() {
 
   useEffect(() => {
     signedInRef.current = signedIn;
+  }, [signedIn]);
+
+  // Moving a single menu needs the owned restaurants up front, so each
+  // browser-only row can offer its target without opening the move panel.
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await fetchRestaurants();
+        if (!cancelled) setOwnedRestaurants(list.filter((r) => r.role === "owner"));
+      } catch {
+        // Best-effort: the move panel shows its own load error, and the
+        // server still refuses a move the caller may not make.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [signedIn]);
 
   const result: PreviewMenu | null = extracted?.menu ?? demoDoc;
@@ -717,6 +739,25 @@ export default function Home() {
     }
   }
 
+  /**
+   * Move one browser-only menu into an owned restaurant. The library row
+   * shows the returned message on failure; success marks the row as on the
+   * account right away, then reconciles with the server list.
+   */
+  async function handleMoveMenuToAccount(
+    menuId: string,
+    restaurantId: string
+  ): Promise<string | null> {
+    const title = menus.find((menu) => menu.id === menuId)?.title ?? "That menu";
+    const outcome = await moveLocalMenuToAccount(restaurantId, menuId);
+    if (outcome.status === "failed") {
+      return `“${title}” could not be moved — ${outcome.reason}`;
+    }
+    addServerId(menuId);
+    await mergeAccountMenus();
+    return null;
+  }
+
   /** Load the open menu's publication state (signed in only). */
   async function refreshPublication(menuId: string) {
     if (!signedInRef.current) {
@@ -1218,12 +1259,14 @@ export default function Home() {
                 menuCount={localOnlyCount}
                 suggestedName={suggestedRestaurantName}
                 onMoved={() => void mergeAccountMenus()}
+                onOwnedChange={setOwnedRestaurants}
               />
             )}
             <LibraryPanel
               menus={libraryMenus}
               accountMode={signedIn}
-              activeId={activeDoc?.id ?? null}
+              ownedRestaurants={signedIn ? ownedRestaurants : []}
+              onMoveToAccount={handleMoveMenuToAccount}
               unavailable={storageDown}
               onOpen={(id) => void handleOpenMenu(id)}
               onNew={() => void handleNewMenu()}

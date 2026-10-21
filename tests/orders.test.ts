@@ -11,6 +11,9 @@ import {
 } from "../src/features/orders/schema";
 import {
   defaultTableLabels,
+  sanitizeTableLabels,
+  displayTableUrl,
+  formatTableLabel,
   normalizeTableLabel,
   parseTableLink,
   tableOrderPath,
@@ -95,6 +98,19 @@ describe("table links", () => {
     expect(normalizeTableLabel(undefined)).toBeNull();
   });
 
+  it("sanitizes an explicitly typed table list", () => {
+    expect(sanitizeTableLabels(["Patio 1", "Patio 2", "Bar"])).toEqual([
+      "Patio 1",
+      "Patio 2",
+      "Bar",
+    ]);
+    expect(sanitizeTableLabels(["  Patio   1 ", "", "   ", "Bar", "Bar"])).toEqual([
+      "Patio 1",
+      "Bar",
+    ]);
+    expect(sanitizeTableLabels([])).toEqual([]);
+  });
+
   it("builds and parses order links", () => {
     const path = tableOrderPath("menu-1", "Patio 2");
     expect(path).toBe("/order?menu=menu-1&table=Patio+2");
@@ -115,10 +131,24 @@ describe("table links", () => {
     expect(parseTableLink({ menu: "abc", table: "   " })).toBeNull();
   });
 
-  it("builds public table links from a published slug", () => {
-    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe(
-      "/m/my-cafe/order?table=Patio+2"
+  it("formats a table label without doubling the word Table", () => {
+    expect(formatTableLabel("Table 3")).toBe("Table 3");
+    expect(formatTableLabel("3")).toBe("Table 3");
+    expect(formatTableLabel("Patio 2")).toBe("Patio 2");
+    expect(formatTableLabel("  ")).toBe("Table");
+  });
+
+  it("prints a URL without its scheme or encoded spaces", () => {
+    expect(displayTableUrl("https://example.test/m/cafe/order?table=Table+3")).toBe(
+      "example.test/m/cafe/order?table=Table 3"
     );
+    expect(displayTableUrl("http://localhost:3200/order?menu=m1&table=Patio%202")).toBe(
+      "localhost:3200/order?menu=m1&table=Patio 2"
+    );
+  });
+
+  it("builds public table links from a published slug", () => {
+    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe("/m/my-cafe/order?table=Patio+2");
     expect(publicTableOrderUrl("https://example.test/", "my-cafe", "3")).toBe(
       "https://example.test/m/my-cafe/order?table=3"
     );

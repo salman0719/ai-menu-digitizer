@@ -23,6 +23,7 @@ import {
   type OrderLine,
 } from "@/features/orders/schema";
 import { createOrder, OrderStorageError } from "@/features/orders/storage";
+import { formatTableLabel } from "@/features/orders/table-links";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
 import { getMenu, StorageError } from "@/features/menu/storage";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
@@ -203,7 +204,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
             Order received
           </p>
           <p className="mt-3 text-2xl font-bold text-stone-900">
-            #{orderCode(placed.id)} · Table {placed.tableLabel}
+            #{orderCode(placed.id)} · {formatTableLabel(placed.tableLabel)}
           </p>
           <p className="mt-2 text-sm text-stone-600">
             {placed.lines.length} {placed.lines.length === 1 ? "line" : "lines"} ·{" "}
@@ -230,7 +231,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
         <div className="flex flex-col gap-4">
           <div className={`${frame} p-5`}>
             <p className="text-sm font-semibold tracking-wider text-amber-800 uppercase">
-              Table {tableLabel}
+              {formatTableLabel(tableLabel)}
             </p>
             <h1 className="mt-1 text-2xl font-bold text-stone-900">
               {menu.title.trim() || "Untitled menu"}

@@ -27,6 +27,7 @@ import {
   type OrderLine,
 } from "@/features/orders/schema";
 import { SyncError } from "@/features/menus/sync";
+import { formatTableLabel } from "@/features/orders/table-links";
 
 import { OrderMenuSection, OrderShell, formatOrderTotal } from "./order-menu";
 
@@ -111,7 +112,7 @@ export function ServerTableOrder({ slug, doc, tableLabel, restaurantName }: Serv
             Order received
           </p>
           <p className="mt-3 text-2xl font-bold text-stone-900">
-            #{orderCode(placed.id)} · Table {placed.tableLabel}
+            #{orderCode(placed.id)} · {formatTableLabel(placed.tableLabel)}
           </p>
           <p className="mt-2 text-sm text-stone-600">
             {placed.lines.length} {placed.lines.length === 1 ? "line" : "lines"} ·{" "}
@@ -139,7 +140,7 @@ export function ServerTableOrder({ slug, doc, tableLabel, restaurantName }: Serv
         <div className="flex flex-col gap-4">
           <div className={`${frame} p-5`}>
             <p className="text-sm font-semibold tracking-wider text-amber-800 uppercase">
-              {restaurantName} · Table {tableLabel}
+              {restaurantName} · {formatTableLabel(tableLabel)}
             </p>
             <h1 className="mt-1 text-2xl font-bold text-stone-900">
               {doc.title.trim() || "Untitled menu"}

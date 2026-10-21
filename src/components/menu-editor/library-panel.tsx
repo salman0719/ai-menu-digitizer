@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import type { MenuSummary } from "@/features/menu/storage";
+import type { RestaurantOption } from "@/features/tenancy/client";
 
 import { CommitInput } from "./fields";
 
@@ -13,7 +16,13 @@ interface LibraryPanelProps {
   menus: LibraryMenu[];
   /** Signed in: every row carries an account-status chip. */
   accountMode: boolean;
-  activeId: string | null;
+  /** Restaurants the caller owns — where a per-row move can put a menu. */
+  ownedRestaurants?: RestaurantOption[];
+  /**
+   * Move one browser-only menu into a restaurant. Resolves to a message to
+   * show on that row, or null when the move succeeded (or was already there).
+   */
+  onMoveToAccount?: (menuId: string, restaurantId: string) => Promise<string | null>;
   unavailable: boolean;
   onOpen: (id: string) => void;
   onNew: () => void;
@@ -30,13 +39,52 @@ function formatDate(iso: string): string {
 export function LibraryPanel({
   menus,
   accountMode,
-  activeId,
+  ownedRestaurants = [],
+  onMoveToAccount,
   unavailable,
   onOpen,
   onNew,
   onRename,
   onDelete,
 }: LibraryPanelProps) {
+  /** The row whose restaurant picker is open (one move at a time). */
+  const [pickerMenuId, setPickerMenuId] = useState<string | null>(null);
+  const [targetId, setTargetId] = useState("");
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<{ id: string; message: string } | null>(null);
+  const moveAvailable = onMoveToAccount != null && ownedRestaurants.length > 0;
+
+  function startMove(id: string) {
+    setMoveError(null);
+    const only = ownedRestaurants.length === 1 ? ownedRestaurants[0] : undefined;
+    if (only) {
+      // One restaurant means no choice to make: move straight away.
+      setTargetId(only.id);
+      void runMove(id, only.id);
+      return;
+    }
+    setTargetId("");
+    setPickerMenuId(id);
+  }
+
+  async function runMove(id: string, restaurantId: string) {
+    if (!restaurantId || !onMoveToAccount || movingId !== null) return;
+    setMovingId(id);
+    setMoveError(null);
+    try {
+      const message = await onMoveToAccount(id, restaurantId);
+      if (message) setMoveError({ id, message });
+      else setPickerMenuId(null);
+    } catch {
+      setMoveError({
+        id,
+        message: "Could not move that menu. Check your connection and try again.",
+      });
+    } finally {
+      setMovingId(null);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -71,10 +119,7 @@ export function LibraryPanel({
       ) : (
         <ul className="space-y-3">
           {menus.map((menu) => (
-            <li
-              key={menu.id}
-              className={`rounded-2xl border bg-white p-4 ${menu.id === activeId ? "border-amber-600" : "border-stone-200"}`}
-            >
+            <li key={menu.id} className="rounded-2xl border border-stone-200 bg-white p-4">
               {menu.corrupt ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -97,7 +142,7 @@ export function LibraryPanel({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <CommitInput
-                      label={`Rename menu ${menu.title}`}
+                      label={`Rename menu “${menu.title}”`}
                       value={menu.title}
                       onCommit={(title) => onRename(menu.id, title.trim())}
                     />
@@ -109,8 +154,8 @@ export function LibraryPanel({
                         <span
                           className={
                             menu.onServer
-                              ? "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900"
-                              : "rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
+                              ? "mt-1 inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-emerald-900"
+                              : "mt-1 inline-block whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-amber-900"
                           }
                         >
                           {menu.onServer ? "On your account" : "This browser only"}
@@ -118,7 +163,17 @@ export function LibraryPanel({
                       )}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {!menu.onServer && moveAvailable && (
+                      <button
+                        type="button"
+                        onClick={() => startMove(menu.id)}
+                        disabled={movingId !== null}
+                        className="rounded-full border border-amber-700 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                      >
+                        {movingId === menu.id ? "Moving…" : "Move to account"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onOpen(menu.id)}
@@ -143,6 +198,50 @@ export function LibraryPanel({
                     </button>
                   </div>
                 </div>
+              )}
+              {pickerMenuId === menu.id && (
+                <div className="mt-3 flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:flex-row sm:items-end">
+                  <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-stone-600">
+                    Move “{menu.title}” into
+                    <select
+                      value={targetId}
+                      onChange={(event) => setTargetId(event.target.value)}
+                      className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                    >
+                      <option value="" disabled>
+                        Choose a restaurant…
+                      </option>
+                      {ownedRestaurants.map((restaurant) => (
+                        <option key={restaurant.id} value={restaurant.id}>
+                          {restaurant.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void runMove(menu.id, targetId)}
+                      disabled={!targetId || movingId !== null}
+                      className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                    >
+                      {movingId === menu.id ? "Moving…" : "Move"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPickerMenuId(null)}
+                      disabled={movingId !== null}
+                      className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {moveError?.id === menu.id && (
+                <p role="alert" className="mt-2 text-xs text-red-700">
+                  {moveError.message}
+                </p>
               )}
             </li>
           ))}
