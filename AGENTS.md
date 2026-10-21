@@ -83,6 +83,11 @@ errors, or add lint/type suppressions just to make checks pass.
 - `src/app/api/extract-menu/` — API route (Agent C owns)
 - `src/components/menu-editor/`, `src/features/menu/indexeddb.ts`,
   `storage.ts`, `import-export.ts` — editor + persistence (Agent D owns)
+- `src/components/tables/restaurant-tables.tsx` — the signed-in Tables tab:
+  restaurant picker for owners and staff; one QR per table, scoped to the
+  restaurant (`/r/<slug>/t/<label>`), never to one menu.
+  `table-qr-panel.tsx` is shared with the menu editor, where it survives only
+  as the browser-only menu fallback.
 - `src/components/upload/`, layout — shell + upload (Agent B owns)
 - `tests/` — schema, utils, import-export, route tests
 - `src/lib/db/`, `drizzle/` — Drizzle schema + lazy Neon client; generated

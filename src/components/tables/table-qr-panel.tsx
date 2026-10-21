@@ -1,21 +1,24 @@
 "use client";
 
 /**
- * Printable table cards.
+ * Printable table cards for one restaurant.
  *
  * One QR code per table, not per menu: when the restaurant has claimed its
  * `/r/<slug>` link, every code encodes `{origin}/r/<slug>/t/<label>` — the
  * table landing that shows every currently-open menu, so a scanned code
- * works on any phone (Steps 1–4). Claiming is one tap for the owner; staff
- * see cards but never the claim button.
+ * works on any phone (Steps 1–4). The panel has two homes: the
+ * restaurant-level Tables tab (`context="restaurant"`, the canonical one)
+ * and a menu editor (`context="menu"`), where it is only the fallback for a
+ * menu that exists only in this browser.
  *
- * Fallbacks preserve the older flows: a menu that exists only in this
- * browser keeps the Phase 1 `{origin}/order?menu=<menuId>&table=<label>`
- * codes (this device's storage only), and an account menu the panel cannot
- * resolve right now keeps its own public `/m/<slug>/order` code.
+ * Fallbacks preserve the older flows: a browser-only menu keeps the Phase 1
+ * `{origin}/order?menu=<menuId>&table=<label>` codes (this device's storage
+ * only), and an account menu the panel cannot resolve right now keeps its
+ * own public `/m/<slug>/order` code.
  *
- * Codes are generated in the browser (no third-party image API); slugs and
- * table labels are not sensitive either way.
+ * Claiming is one tap for the owner; staff see cards but never the claim
+ * button. Codes are generated in the browser (no third-party image API);
+ * slugs and table labels are not sensitive either way.
  */
 
 import { useEffect, useState } from "react";
@@ -44,14 +47,25 @@ const PREFIX_STORAGE_KEY = "table-qr-prefix";
 const LABELS_STORAGE_KEY = "table-qr-labels";
 const CUSTOM_FLAG_KEY = "table-qr-custom";
 
-interface TableQrPanelProps {
-  doc: MenuDocument;
-  /** This menu's own public slug; the fallback code target when no table link is live. */
-  publicSlug?: string | null;
-  menuId: string;
-  syncMode: "local" | "account";
-  canManage?: boolean;
-}
+type TableQrPanelProps =
+  | {
+      /** Menu editor: codes fall back to this menu when no restaurant link is live. */
+      context: "menu";
+      doc: MenuDocument;
+      /** This menu's own public slug; the fallback code target when no table link is live. */
+      publicSlug?: string | null;
+      menuId: string;
+      syncMode: "local" | "account";
+      canManage?: boolean;
+    }
+  | {
+      /** Tables tab: the cards belong to the restaurant, never to one menu. */
+      context: "restaurant";
+      restaurantId: string;
+      restaurantName: string;
+      /** Owners may claim the link; staff print cards but never claim it. */
+      isOwner: boolean;
+    };
 
 interface TableCode {
   label: string;
@@ -84,15 +98,32 @@ function writeStored(key: string, value: string) {
   }
 }
 
-export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = true }: TableQrPanelProps) {
+export function TableQrPanel(props: TableQrPanelProps) {
+  // One panel, two homes: the Tables tab knows its restaurant up front,
+  // while a menu editor has to resolve it from the open menu.
+  const doc = props.context === "menu" ? props.doc : null;
+  const menuId = props.context === "menu" ? props.menuId : null;
+  const publicSlug = props.context === "menu" ? (props.publicSlug ?? null) : null;
+  const syncMode: "local" | "account" = props.context === "menu" ? props.syncMode : "account";
+  const canManage = props.context === "menu" ? (props.canManage ?? true) : props.isOwner;
+  const restaurantId = props.context === "restaurant" ? props.restaurantId : null;
+  const restaurantName = props.context === "restaurant" ? props.restaurantName : null;
+  const isOwner = props.context === "restaurant" ? props.isOwner : false;
+  /** Table names are a venue preference, so the Tables tab scopes them. */
+  const storageSuffix = restaurantId ? `:${restaurantId}` : "";
+  const countKey = `${COUNT_STORAGE_KEY}${storageSuffix}`;
+  const prefixKey = `${PREFIX_STORAGE_KEY}${storageSuffix}`;
+  const labelsKey = `${LABELS_STORAGE_KEY}${storageSuffix}`;
+  const customFlagKey = `${CUSTOM_FLAG_KEY}${storageSuffix}`;
+
   // Origin is only available in the browser; codes are generated after mount,
   // so the server-rendered shell never depends on it.
   const [origin] = useState(() => (typeof window === "undefined" ? "" : window.location.origin));
   const [count, setCount] = useState(() => {
-    const stored = Number(readStored(COUNT_STORAGE_KEY, "8"));
+    const stored = Number(readStored(countKey, "8"));
     return Number.isInteger(stored) && stored >= 1 && stored <= MAX_TABLES ? stored : 8;
   });
-  const [prefix, setPrefix] = useState(() => readStored(PREFIX_STORAGE_KEY, "Table"));
+  const [prefix, setPrefix] = useState(() => readStored(prefixKey, "Table"));
   /**
    * Explicit per-table names. Null means "generate from count + prefix";
    * a list means the owner pressed "Edit table names" and owns each row.
@@ -100,9 +131,9 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
   const [custom, setCustom] = useState<string[] | null>(() => {
     if (typeof window === "undefined") return null;
     try {
-      if (window.localStorage.getItem(CUSTOM_FLAG_KEY) !== "1") return null;
+      if (window.localStorage.getItem(customFlagKey) !== "1") return null;
       const parsed = sanitizeTableLabels(
-        JSON.parse(window.localStorage.getItem(LABELS_STORAGE_KEY) ?? "[]") as string[]
+        JSON.parse(window.localStorage.getItem(labelsKey) ?? "[]") as string[]
       );
       return parsed.length > 0 ? parsed : null;
     } catch {
@@ -117,7 +148,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [linkState, setLinkState] = useState<LinkState>(
-    syncMode === "account" ? { status: "loading" } : { status: "local" }
+    restaurantId || syncMode === "account" ? { status: "loading" } : { status: "local" }
   );
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -125,10 +156,40 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
   const focusedLabel = labels.includes(focusLabel) ? focusLabel : null;
   const visibleCodes = focusedLabel ? codes.filter((code) => code.label === focusedLabel) : codes;
 
-  // Resolve the restaurant link for account menus: menu → restaurant →
-  // `/r/<slug>`. Anything the panel cannot resolve keeps the older per-menu
-  // codes (the `legacy` path) so printing never dead-ends offline.
+  // Resolve the restaurant link. The Tables tab is handed the restaurant id;
+  // a menu editor walks menu → restaurant → `/r/<slug>`. Anything the menu
+  // context cannot resolve keeps the older per-menu codes (the `legacy`
+  // path) so printing never dead-ends offline.
   useEffect(() => {
+    if (restaurantId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const link = await fetchRestaurantLink(restaurantId);
+          if (cancelled) return;
+          if (link.slug) {
+            setLinkState({ status: "live", restaurantName: link.name, slug: link.slug });
+          } else {
+            setLinkState({
+              status: "unclaimed",
+              restaurantId: link.id,
+              restaurantName: link.name,
+              isOwner,
+            });
+          }
+        } catch (loadError: unknown) {
+          if (cancelled) return;
+          setLinkState({
+            status: "unavailable",
+            message:
+              loadError instanceof SyncError ? loadError.message : "Could not reach the account.",
+          });
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
     if (syncMode !== "account") return;
     let cancelled = false;
     (async () => {
@@ -162,9 +223,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
         setLinkState({
           status: "unavailable",
           message:
-            loadError instanceof SyncError
-              ? loadError.message
-              : "Could not reach the account.",
+            loadError instanceof SyncError ? loadError.message : "Could not reach the account.",
         });
       }
     })();
@@ -173,18 +232,19 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
     };
     // publicSlug intentionally excluded: resolving the restaurant must not
     // depend on this menu's publication state.
-  }, [syncMode, menuId]);
+  }, [restaurantId, isOwner, syncMode, menuId]);
 
   const tableSlug = linkState.status === "live" ? linkState.slug : null;
   const cardEyebrow =
-    linkState.status === "live"
+    linkState.status === "live" || linkState.status === "unclaimed"
       ? linkState.restaurantName
-      : linkState.status === "unclaimed"
-        ? linkState.restaurantName
-        : doc.title;
+      : (doc?.title ?? restaurantName ?? "");
 
   useEffect(() => {
     if (!origin) return;
+    // The Tables tab has no per-menu fallback: until the link is claimed
+    // there is nothing honest to encode.
+    if (restaurantId && !tableSlug) return;
     let cancelled = false;
     const labels = custom ?? defaultTableLabels(count, prefix.trim());
     Promise.all(
@@ -193,7 +253,10 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
           ? restaurantTableUrl(origin, tableSlug, label)
           : publicSlug
             ? publicTableOrderUrl(origin, publicSlug, label)
-            : tableOrderUrl(origin, doc.id, label);
+            : menuId
+              ? tableOrderUrl(origin, menuId, label)
+              : null;
+        if (!url) return null;
         const dataUrl = await QRCode.toDataURL(url, {
           width: 320,
           margin: 1,
@@ -204,7 +267,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
       })
     )
       .then((result) => {
-        if (!cancelled) setCodes(result);
+        if (!cancelled) setCodes(result.filter((code): code is TableCode => code !== null));
       })
       .catch(() => {
         if (!cancelled) setError("Could not generate the QR codes in this browser.");
@@ -212,14 +275,14 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
     return () => {
       cancelled = true;
     };
-  }, [origin, count, prefix, custom, doc.id, publicSlug, tableSlug]);
+  }, [origin, count, prefix, custom, menuId, publicSlug, tableSlug, restaurantId]);
 
   useEffect(() => {
     if (custom) {
-      writeStored(LABELS_STORAGE_KEY, JSON.stringify(sanitizeTableLabels(custom)));
-      writeStored(CUSTOM_FLAG_KEY, "1");
+      writeStored(labelsKey, JSON.stringify(sanitizeTableLabels(custom)));
+      writeStored(customFlagKey, "1");
     }
-  }, [custom]);
+  }, [custom, labelsKey, customFlagKey]);
 
   async function handleClaim(restaurantId: string, restaurantName: string) {
     if (claiming) return;
@@ -246,14 +309,14 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
     setCount(clamped);
     setFocusLabel("");
     setEditingLabel(null);
-    writeStored(COUNT_STORAGE_KEY, String(clamped));
+    writeStored(countKey, String(clamped));
   }
 
   function changePrefix(next: string) {
     setPrefix(next.slice(0, MAX_TABLE_LABEL_LENGTH - 3));
     setFocusLabel("");
     setEditingLabel(null);
-    writeStored(PREFIX_STORAGE_KEY, next.slice(0, MAX_TABLE_LABEL_LENGTH - 3));
+    writeStored(prefixKey, next.slice(0, MAX_TABLE_LABEL_LENGTH - 3));
   }
 
   function resetNames() {
@@ -261,7 +324,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
     setEditingLabel(null);
     setFocusLabel("");
     try {
-      window.localStorage.removeItem(CUSTOM_FLAG_KEY);
+      window.localStorage.removeItem(customFlagKey);
     } catch {
       /* preference only */
     }
@@ -291,7 +354,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
     });
   }
 
-  const resolvingAccount = syncMode === "account" && linkState.status === "loading";
+  const resolvingLink = linkState.status === "loading";
 
   return (
     <div className="flex flex-col gap-4">
@@ -316,18 +379,37 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
                 {claiming ? "Claiming…" : "Claim your restaurant link"}
               </button>
               {claimError && (
-                <p role="alert" className="mx-auto mt-2 max-w-md rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
+                <p
+                  role="alert"
+                  className="mx-auto mt-2 max-w-md rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800"
+                >
                   {claimError}
                 </p>
               )}
             </>
           ) : (
             <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-stone-600">
-              The link isn&apos;t claimed yet — ask the restaurant owner to open this tab and claim
-              it.
+              The link isn&apos;t claimed yet — ask the restaurant owner to claim it from their
+              sign-in, then the cards can be printed.
             </p>
           )}
         </div>
+      ) : restaurantId && !tableSlug ? (
+        <p
+          data-print-hide
+          role={linkState.status === "unavailable" ? "alert" : "status"}
+          className={
+            linkState.status === "unavailable"
+              ? "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900"
+              : "text-xs text-stone-500"
+          }
+        >
+          {linkState.status === "loading"
+            ? "Finding your restaurant link…"
+            : linkState.status === "unavailable"
+              ? `${linkState.message} Table cards need the restaurant link — try again when you're back online.`
+              : "Table cards will appear here once the restaurant link is live."}
+        </p>
       ) : (
         <>
           <div
@@ -409,7 +491,7 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
 
           <p data-print-hide className="text-xs leading-5 text-stone-500">
             Showing one table makes a single large card for demos — only that card prints.{" "}
-            {resolvingAccount ? (
+            {resolvingLink ? (
               <>Finding your restaurant link…</>
             ) : tableSlug ? (
               <>
@@ -447,10 +529,10 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
             data-print-hide
             className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900"
           >
-            <span className="font-bold">Name your tables:</span> click any table&apos;s name right on
-            its card and type — for example, change “Table 3” to “Patio 2” or “Bar”, then press Enter or
-            click anywhere else to save. While you&apos;re typing, the Print button takes a break; it
-            wakes up again as soon as you click away.
+            <span className="font-bold">Name your tables:</span> click any table&apos;s name right
+            on its card and type — for example, change “Table 3” to “Patio 2” or “Bar”, then press
+            Enter or click anywhere else to save. While you&apos;re typing, the Print button takes a
+            break; it wakes up again as soon as you click away.
           </p>
 
           {error && (
@@ -482,7 +564,9 @@ export function TableQrPanel({ doc, publicSlug, menuId, syncMode, canManage = tr
                     value={draft}
                     size={Math.min(Math.max(draft.length + 1, 8), MAX_TABLE_LABEL_LENGTH)}
                     maxLength={MAX_TABLE_LABEL_LENGTH}
-                    onChange={(event) => setDraft(event.target.value.slice(0, MAX_TABLE_LABEL_LENGTH))}
+                    onChange={(event) =>
+                      setDraft(event.target.value.slice(0, MAX_TABLE_LABEL_LENGTH))
+                    }
                     onBlur={commitEditing}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") (event.target as HTMLInputElement).blur();

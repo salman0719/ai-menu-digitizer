@@ -46,12 +46,13 @@ import {
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
 
+import { TableQrPanel } from "@/components/tables/table-qr-panel";
+
 import { AvailabilityPanel } from "./availability-panel";
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
 import { PublishPanel, type PublishingControls } from "./publish-panel";
-import { TableQrPanel } from "./table-qr-panel";
 
 export interface SaveState {
   kind: "saved" | "saving" | "error";
@@ -88,6 +89,12 @@ interface MenuEditorProps {
    * modes, publishing) are hidden entirely, not just disabled.
    */
   canManage?: boolean;
+  /**
+   * True when this menu lives on the server. Table cards are restaurant-wide,
+   * so account menus print them from the Tables tab; only a browser-only menu
+   * keeps the in-editor QR mode (its codes really are per menu).
+   */
+  onServer?: boolean;
   /**
    * Publishing state and actions (Step 9). Absent when nothing can publish
    * in this context, in which case the preview simply omits the panel.
@@ -153,6 +160,7 @@ export function MenuEditor({
   saveState,
   syncMode,
   canManage = true,
+  onServer = false,
   imageUrl,
   onExportJson,
   onExportCsv,
@@ -470,7 +478,7 @@ export function MenuEditor({
       <span className="flex-1" />
       {!canManage ? (
         <>
-          {mode !== "qr" && (
+          {!onServer && mode !== "qr" && (
             <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
               Table QR
             </button>
@@ -494,9 +502,11 @@ export function MenuEditor({
           <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
             ↕ Reorder
           </button>
-          <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
-            Table QR
-          </button>
+          {!onServer && (
+            <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
+              Table QR
+            </button>
+          )}
           <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
             Preview menu
           </button>
@@ -514,6 +524,7 @@ export function MenuEditor({
       <div className="flex flex-col gap-4">
         {headerRow}
         <TableQrPanel
+          context="menu"
           doc={doc}
           // Only a live publication can serve a stranger's phone; an
           // unpublished menu keeps the browser-scoped Phase 1 codes.
@@ -800,12 +811,7 @@ export function MenuEditor({
           </p>
         )}
       </div>
-      <AvailabilityPanel
-        key={doc.id}
-        menuId={doc.id}
-        syncMode={syncMode}
-        canManage={canManage}
-      />
+      <AvailabilityPanel key={doc.id} menuId={doc.id} syncMode={syncMode} canManage={canManage} />
       {duplicateGroups.length > 0 && (
         <section
           aria-label="Possible duplicates"

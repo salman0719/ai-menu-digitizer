@@ -1,0 +1,132 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { TableQrPanel } from "@/components/tables/table-qr-panel";
+import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
+
+/**
+ * Restaurant-level table cards.
+ *
+ * A table code encodes the restaurant link (`/r/<slug>/t/<label>`), so the
+ * cards belong to the restaurant, not to whichever menu was open when they
+ * were printed. The panel therefore lives here, next to Orders: every member
+ * (owner or staff) can print, while only an owner sees the claim action.
+ */
+export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
+  const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await fetchRestaurants();
+        if (cancelled) return;
+        setRestaurants(list);
+        // One restaurant means no choice to make: open it straight away.
+        if (list.length === 1 && list[0]) setSelectedId(list[0].id);
+      } catch {
+        if (!cancelled) {
+          setLoadError("Could not load your restaurants. Check your connection and try again.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const selected = restaurants?.find((restaurant) => restaurant.id === selectedId) ?? null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div data-print-hide>
+        <h2 className="text-xl font-bold text-stone-900">Table QR codes</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-stone-600">
+          One code per table, for the whole restaurant. Each card opens that table&apos;s page with
+          every menu that is open right now — so adding a lunch menu, republishing, or renaming a
+          menu never makes a printed card out of date.
+        </p>
+      </div>
+
+      {!signedIn && (
+        <div className="rounded-2xl border border-stone-200 bg-white p-5">
+          <p className="text-sm font-medium text-stone-900">Sign in to print table cards</p>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            Table cards point at your restaurant link, which lives in your account.
+          </p>
+          <a
+            href="/sign-in"
+            className="mt-3 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Sign in
+          </a>
+        </div>
+      )}
+
+      {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
+
+      {signedIn && restaurants === null && !loadError && (
+        <p role="status" className="text-xs text-stone-400">
+          Loading your restaurants…
+        </p>
+      )}
+
+      {signedIn && restaurants !== null && restaurants.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
+          <p className="font-medium text-stone-900">No restaurant yet</p>
+          <p className="mt-1 text-sm text-stone-600">
+            Move a menu to your account and a restaurant is created for it — then come back here to
+            print the cards.
+          </p>
+          <a
+            href="/menus"
+            className="mt-3 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Go to My menus
+          </a>
+        </div>
+      )}
+
+      {signedIn && restaurants !== null && restaurants.length > 0 && (
+        <div data-print-hide className="rounded-2xl border border-stone-200 bg-white p-5">
+          <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+            Restaurant
+            <select
+              value={selectedId}
+              onChange={(event) => setSelectedId(event.target.value)}
+              className="max-w-sm rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              <option value="" disabled>
+                Choose a restaurant…
+              </option>
+              {restaurants.map((restaurant) => (
+                <option key={restaurant.id} value={restaurant.id}>
+                  {restaurant.name}
+                  {restaurant.role === "staff" ? " (staff)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-2 text-xs leading-5 text-stone-500">
+            Cards stay attached to this restaurant. Staff can print them; only an owner can claim or
+            change the restaurant link.
+          </p>
+        </div>
+      )}
+
+      {signedIn && selected && (
+        <TableQrPanel
+          key={selected.id}
+          context="restaurant"
+          restaurantId={selected.id}
+          restaurantName={selected.name}
+          isOwner={selected.role === "owner"}
+        />
+      )}
+    </div>
+  );
+}
