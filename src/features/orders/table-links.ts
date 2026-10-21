@@ -84,6 +84,19 @@ export function tableOrderUrl(origin: string, menuId: string, tableLabel: string
 }
 
 /**
+ * Multi-menu table landing (Steps 1–2): one QR per table resolves to the
+ * restaurant, and the diner sees every currently-open menu there. The table
+ * label is path-encoded so names like "Patio 2" survive the QR payload.
+ */
+export function restaurantTablePath(restaurantSlug: string, tableLabel: string): string {
+  return `/r/${restaurantSlug}/t/${encodeURIComponent(tableLabel)}`;
+}
+
+export function restaurantTableUrl(origin: string, restaurantSlug: string, tableLabel: string): string {
+  return `${origin.replace(/\/+$/, "")}${restaurantTablePath(restaurantSlug, tableLabel)}`;
+}
+
+/**
  * Server-backed table link (Step 10): the published menu's own address, so a
  * QR code works on any phone instead of only the browser holding the menu.
  */

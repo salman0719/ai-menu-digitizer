@@ -319,6 +319,4 @@ export async function listOpenMenusForRestaurantSlug(
 }
 
 /** Public table-landing path for a restaurant slug — the QR target shape. */
-export function restaurantTablePath(restaurantSlug: string, tableLabel: string): string {
-  return `/r/${restaurantSlug}/t/${encodeURIComponent(tableLabel)}`;
-}
+export { restaurantTablePath } from "@/features/orders/table-links";
