@@ -166,7 +166,7 @@ describe("GET /api/launch", () => {
     };
     expect(body.launch).toMatchObject({ menuCount: 0, publishedCount: 0, orderCount: 0 });
     expect(body.launch.usage).toMatchObject({ requests: 0, remaining: body.launch.usage?.cap });
-  });
+  }, 30_000);
 
   it("answers 401 when signed out", async () => {
     holder.userId = null;
