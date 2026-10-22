@@ -173,6 +173,11 @@ export default function Home() {
   const replaceIndexRef = useRef<number | null>(null);
   /** Preview URLs currently shown for `pages` (revoked on swap and unmount). */
   const liveUrlsRef = useRef<string[]>([]);
+  /**
+   * Mirror of `editorImageUrl`: the route effect must know whether the open
+   * menu's source image is currently shown (ref read — no extra effect runs).
+   */
+  const editorImageUrlRef = useRef<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<MenuDocument | null>(null);
   const lastSavedRef = useRef<string | null>(null);
@@ -252,6 +257,7 @@ export default function Home() {
   navigateToRef.current = navigateTo;
   openDocRef.current = openDoc;
   activeDocIdRef.current = activeDoc?.id ?? null;
+  editorImageUrlRef.current = editorImageUrl;
 
   useEffect(() => {
     if (!navigationReadyRef.current || !routeMenuId(route) || sessionPending) return;
@@ -259,7 +265,26 @@ export default function Home() {
     if (!menuId) return;
     if (activeDocIdRef.current === menuId) {
       openedRouteMenuRef.current = menuId;
-      return;
+      // Fast path: the doc is already in memory (editor mode switches, and
+      // returns to a menu that was left open). "Back to library" releases
+      // the source image URL while keeping the doc, so returning through
+      // this path must restore the image — otherwise the editor reopens
+      // without it. Only the image is re-read; the doc is not.
+      if (editorImageUrlRef.current) return;
+      let imageCancelled = false;
+      void (async () => {
+        try {
+          const stored = await getImage(menuId);
+          if (imageCancelled || activeDocIdRef.current !== menuId) return;
+          setEditorImage(stored?.blob ? URL.createObjectURL(stored.blob) : null);
+        } catch {
+          // The editor is fully usable without the image; the next full
+          // open of this menu retries the read.
+        }
+      })();
+      return () => {
+        imageCancelled = true;
+      };
     }
     if (openedRouteMenuRef.current === menuId) return;
     openedRouteMenuRef.current = menuId;
