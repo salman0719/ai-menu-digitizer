@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { TableQrPanel } from "@/components/tables/table-qr-panel";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
 
 /**
@@ -70,9 +71,19 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
       {signedIn && restaurants === null && !loadError && (
-        <p role="status" className="text-xs text-stone-400">
-          Loading your restaurants…
-        </p>
+        <div role="status" aria-busy="true" className="flex flex-col gap-4">
+          <span className="sr-only">Loading your restaurants…</span>
+          <div className="rounded-2xl border border-stone-200 bg-white p-5">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-9 w-full max-w-sm" />
+            <Skeleton className="mt-3 h-3 w-3/5" />
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((card) => (
+              <Skeleton key={card} className="aspect-square w-full rounded-2xl" />
+            ))}
+          </div>
+        </div>
       )}
 
       {signedIn && restaurants !== null && restaurants.length === 0 && (
