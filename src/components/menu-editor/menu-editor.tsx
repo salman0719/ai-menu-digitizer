@@ -792,53 +792,56 @@ export function MenuEditor({
           onOpenPreview={() => changeMode("preview")}
         />
       )}
-      <div className="rounded-2xl border border-stone-200 bg-white p-5">
-        <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-          <CommitInput
-            label="Menu title"
-            value={doc.title}
-            onCommit={(title) => onChange({ ...doc, title: title.trim() })}
-          />
-          <CommitInput
-            label="Currency"
-            value={doc.currency ?? ""}
-            validate={() => null}
-            placeholder="e.g. USD"
-            onCommit={(currency) =>
-              onChange({ ...doc, currency: currency.trim() ? currency.trim() : null })
-            }
-          />
-        </div>
-        {sourceLabel &&
-          (doc.source?.provider === "demo" ? (
-            <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
-              Demo data
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-stone-500">
-              {sourceLabel}
-              {doc.source?.originalFileName && (
-                <span className="text-stone-400"> · {doc.source.originalFileName}</span>
-              )}
-            </p>
-          ))}
-        {imageUrl && (
-          <div className="mt-3">
-            <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>
-            <img
-              src={imageUrl}
-              alt="Original uploaded menu"
-              className="max-h-28 w-auto rounded-lg border border-stone-200 object-contain"
+      */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-stone-200 bg-white p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+            <CommitInput
+              label="Menu title"
+              value={doc.title}
+              onCommit={(title) => onChange({ ...doc, title: title.trim() })}
+            />
+            <CommitInput
+              label="Currency"
+              value={doc.currency ?? ""}
+              validate={() => null}
+              placeholder="e.g. USD"
+              onCommit={(currency) =>
+                onChange({ ...doc, currency: currency.trim() ? currency.trim() : null })
+              }
             />
           </div>
-        )}
-        {reviewCount > 0 && (
-          <p className="mt-2 text-xs font-medium text-amber-800">
-            {reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review.
-          </p>
-        )}
+          {sourceLabel &&
+            (doc.source?.provider === "demo" ? (
+              <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
+                Demo data
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-stone-500">
+                {sourceLabel}
+                {doc.source?.originalFileName && (
+                  <span className="text-stone-400"> · {doc.source.originalFileName}</span>
+                )}
+              </p>
+            ))}
+          {imageUrl && (
+            <div className="mt-3">
+              <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>
+              <img
+                src={imageUrl}
+                alt="Original uploaded menu"
+                className="max-h-28 w-auto rounded-lg border border-stone-200 object-contain"
+              />
+            </div>
+          )}
+          {reviewCount > 0 && (
+            <p className="mt-2 text-xs font-medium text-amber-800">
+              {reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review.
+            </p>
+          )}
+        </div>
+        <AvailabilityPanel key={doc.id} menuId={doc.id} syncMode={syncMode} canManage={canManage} />
       </div>
-      <AvailabilityPanel key={doc.id} menuId={doc.id} syncMode={syncMode} canManage={canManage} />
       {duplicateGroups.length > 0 && (
         <section
           aria-label="Possible duplicates"
