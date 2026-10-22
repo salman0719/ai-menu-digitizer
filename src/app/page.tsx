@@ -158,6 +158,8 @@ export default function Home() {
 
   // Library + editor state.
   const [menus, setMenus] = useState<MenuSummary[]>([]);
+  /** True until the first library read settles (skeleton rows, not the empty state). */
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [storageDown, setStorageDown] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<MenuDocument | null>(null);
@@ -375,6 +377,8 @@ export default function Home() {
       setStorageDown(true);
       storageDownRef.current = true;
       if (error instanceof StorageError) setLibraryError(error.message);
+    } finally {
+      setLibraryLoading(false);
     }
   }
 
@@ -1295,6 +1299,7 @@ export default function Home() {
             )}
             <LibraryPanel
               menus={libraryMenus}
+              loading={libraryLoading}
               accountMode={signedIn}
               ownedRestaurants={signedIn ? ownedRestaurants : []}
               onMoveToAccount={handleMoveMenuToAccount}

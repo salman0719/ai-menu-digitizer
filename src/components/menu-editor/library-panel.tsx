@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import type { MenuSummary } from "@/features/menu/storage";
 import type { RestaurantOption } from "@/features/tenancy/client";
 
@@ -14,6 +15,8 @@ export interface LibraryMenu extends MenuSummary {
 
 interface LibraryPanelProps {
   menus: LibraryMenu[];
+  /** True until the first library read settles — rows skeleton, never the empty state. */
+  loading?: boolean;
   /** Signed in: every row carries an account-status chip. */
   accountMode: boolean;
   /** Restaurants the caller owns — where a per-row move can put a menu. */
@@ -38,6 +41,7 @@ function formatDate(iso: string): string {
 
 export function LibraryPanel({
   menus,
+  loading = false,
   accountMode,
   ownedRestaurants = [],
   onMoveToAccount,
@@ -109,7 +113,25 @@ export function LibraryPanel({
         </p>
       )}
 
-      {menus.length === 0 ? (
+      {loading ? (
+        <div role="status" aria-busy="true" className="flex flex-col gap-3">
+          <span className="sr-only">Loading your menus…</span>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="rounded-2xl border border-stone-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-5 w-2/5" />
+                  <Skeleton className="mt-2 h-3 w-3/5" />
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-16 rounded-full" />
+                  <Skeleton className="h-8 w-20 rounded-full" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : menus.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
           <p className="font-medium text-stone-900">No saved menus yet</p>
           <p className="mt-1 text-sm text-stone-600">
