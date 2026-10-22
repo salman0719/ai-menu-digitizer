@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { moveLocalMenusToAccount, type MoveReport } from "@/features/menus/move-to-account";
 import {
   createRestaurant,
@@ -189,9 +190,16 @@ export function MoveToAccountPanel({
       {loadError && <p className="mt-2 text-xs text-red-700">{loadError}</p>}
 
       {restaurants === null && !loadError && (
-        <p role="status" className="mt-2 text-xs text-stone-400">
-          Loading your restaurants…
-        </p>
+        <div role="status" aria-busy="true" className="mt-3">
+          <span className="sr-only">Loading your restaurants…</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex flex-1 flex-col gap-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+            <Skeleton className="h-9 w-36 rounded-full" />
+          </div>
+        </div>
       )}
 
       {staffOnly && (

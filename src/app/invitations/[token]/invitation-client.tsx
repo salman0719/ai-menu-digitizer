@@ -3,12 +3,32 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   acceptInvitation,
   fetchInvitation,
   type InvitationDetails,
 } from "@/features/tenancy/client";
 import { authClient } from "@/lib/auth-client";
+
+/**
+ * Loading placeholder for the invitation content under its heading. Also
+ * used as the server page's Suspense fallback, so the streamed page and the
+ * client fetch show the same shape.
+ */
+export function InvitationSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="flex flex-col gap-6">
+      <span className="sr-only">Loading the invitation…</span>
+      <Skeleton className="h-4 w-4/5" />
+      <div className="rounded-lg border border-stone-200 bg-white p-4">
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="mt-2 h-3 w-1/2" />
+      </div>
+      <Skeleton className="h-10 w-full rounded-lg" />
+    </div>
+  );
+}
 
 type SignInState =
   | { kind: "idle" }
@@ -126,11 +146,7 @@ export function InvitationClient({ token }: { token: string }) {
         </p>
       )}
 
-      {!invitation && !loadError && (
-        <p role="status" className="text-sm text-stone-500">
-          Loading the invitation…
-        </p>
-      )}
+      {!invitation && !loadError && <InvitationSkeleton />}
 
       {invitation && (
         <div className="rounded-lg border border-stone-200 bg-white p-4 text-sm text-stone-700">

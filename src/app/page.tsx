@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
 import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
@@ -158,6 +159,8 @@ export default function Home() {
 
   // Library + editor state.
   const [menus, setMenus] = useState<MenuSummary[]>([]);
+  /** True until the first library read settles (skeleton rows, not the empty state). */
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [storageDown, setStorageDown] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<MenuDocument | null>(null);
@@ -375,6 +378,8 @@ export default function Home() {
       setStorageDown(true);
       storageDownRef.current = true;
       if (error instanceof StorageError) setLibraryError(error.message);
+    } finally {
+      setLibraryLoading(false);
     }
   }
 
@@ -1295,6 +1300,7 @@ export default function Home() {
             )}
             <LibraryPanel
               menus={libraryMenus}
+              loading={libraryLoading}
               accountMode={signedIn}
               ownedRestaurants={signedIn ? ownedRestaurants : []}
               onMoveToAccount={handleMoveMenuToAccount}
@@ -1554,9 +1560,27 @@ export default function Home() {
           </>
         )}
         {screen === "editor" && !activeDoc && (
-          <p role="status" className="text-sm text-stone-500">
-            Opening menu…
-          </p>
+          <div role="status" aria-busy="true" className="flex flex-col gap-4">
+            <span className="sr-only">Opening menu…</span>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-28 rounded-full" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+            <div className="grid items-start gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-stone-200 bg-white p-5">
+                <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+                  <Skeleton className="h-9" />
+                  <Skeleton className="h-9" />
+                </div>
+                <Skeleton className="mt-3 h-28" />
+              </div>
+              <div className="rounded-2xl border border-stone-200 bg-white p-4">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="mt-2 h-3 w-3/5" />
+                <Skeleton className="mt-4 h-9" />
+              </div>
+            </div>
+          </div>
         )}
       </main>
       <SiteFooter />

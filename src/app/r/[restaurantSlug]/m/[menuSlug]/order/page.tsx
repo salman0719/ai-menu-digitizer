@@ -2,7 +2,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { OrderShell } from "@/components/order/order-menu";
+import { OrderShell, OrderSkeleton } from "@/components/order/order-menu";
 import { ServerTableOrder } from "@/components/order/server-table-order";
 import { normalizeTableLabel } from "@/features/orders/table-links";
 import { getPublishedMenuByPath } from "@/features/publishing/repo";
@@ -111,9 +111,7 @@ async function TableOrderLink({
 function OrderLoading() {
   return (
     <OrderShell>
-      <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center" role="status">
-        <p className="text-sm text-stone-600">Loading the menu…</p>
-      </div>
+      <OrderSkeleton label="Loading the menu…" />
     </OrderShell>
   );
 }

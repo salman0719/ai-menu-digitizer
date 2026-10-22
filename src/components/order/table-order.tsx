@@ -28,7 +28,12 @@ import { formatPreviewPrice } from "@/features/menu/preview-utils";
 import { getMenu, StorageError } from "@/features/menu/storage";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 
-import { OrderMenuSection as MenuSection, OrderShell as Shell, formatOrderTotal as formatTotal } from "./order-menu";
+import {
+  OrderMenuSection as MenuSection,
+  OrderShell as Shell,
+  OrderSkeleton,
+  formatOrderTotal as formatTotal,
+} from "./order-menu";
 
 type LoadState = "idle" | "loading" | "ready" | "missing" | "error" | "invalid_link";
 
@@ -155,9 +160,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
   if (state === "loading" || state === "idle") {
     return (
       <Shell>
-        <div className={`${frame} p-8 text-center`} role="status">
-          <p className="text-sm text-stone-600">Loading the menu…</p>
-        </div>
+        <OrderSkeleton label="Loading the menu…" />
       </Shell>
     );
   }

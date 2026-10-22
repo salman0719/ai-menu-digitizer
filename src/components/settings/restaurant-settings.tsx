@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { CommitInput } from "@/components/menu-editor/fields";
 import { TeamActivity } from "@/components/settings/team-activity";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   addMember,
   deleteRestaurant,
@@ -130,9 +131,18 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
       {signedIn && restaurants === null && !loadError && (
-        <p role="status" className="text-xs text-stone-400">
-          Loading your restaurants…
-        </p>
+        <div role="status" aria-busy="true" className="flex flex-col gap-4">
+          <span className="sr-only">Loading your restaurants…</span>
+          <div className="rounded-2xl border border-stone-200 bg-white p-5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-3 h-9 w-full max-w-sm" />
+            <Skeleton className="mt-3 h-3 w-2/5" />
+            <div className="mt-4 flex gap-2">
+              <Skeleton className="h-8 w-28 rounded-full" />
+              <Skeleton className="h-8 w-20 rounded-full" />
+            </div>
+          </div>
+        </div>
       )}
 
       {staffOnly && (
@@ -448,9 +458,21 @@ function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }
       {notice && !error && <p className="mt-2 text-xs text-emerald-800">{notice}</p>}
 
       {members === null && !error && (
-        <p role="status" className="mt-3 text-xs text-stone-400">
-          Loading the team…
-        </p>
+        <div role="status" aria-busy="true" className="mt-3 flex flex-col gap-2">
+          <span className="sr-only">Loading the team…</span>
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="flex items-center gap-3 rounded-xl border border-stone-200 px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="mt-1.5 h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-7 w-24 rounded-full" />
+            </div>
+          ))}
+        </div>
       )}
 
       {members !== null && (
