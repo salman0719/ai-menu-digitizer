@@ -53,7 +53,7 @@ export class TableRepoError extends Error {
 /** One open menu on the table landing: snapshot plus its address. */
 export interface OpenMenuEntry {
   menuId: string;
-  /** The menu's own `/m/<slug>` address (ordering still POSTs per menu). */
+  /** The menu's own address segment inside the restaurant. */
   menuSlug: string;
   title: string;
   doc: MenuDocument;

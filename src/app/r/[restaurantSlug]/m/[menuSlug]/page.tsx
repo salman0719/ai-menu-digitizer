@@ -12,9 +12,8 @@ import { getDb } from "@/lib/db";
  * Public menu page (Step 9, `/r/<restaurant>/m/<menu>`).
  *
  * The address is scoped to the café that publishes it: menu slugs are only
- * unique inside one restaurant, so two cafés can both publish `/m/lunch`
- * under their own `/r/` address. The old global `/m/<slug>` links redirect
- * here (see `src/proxy.ts`).
+ * unique inside one restaurant, so two cafés can both publish `lunch`
+ * under their own `/r/` address.
  *
  * Renders the stored revision snapshot — never the live menu document — so an
  * owner's later edits cannot change what a diner sees until "Publish changes"
