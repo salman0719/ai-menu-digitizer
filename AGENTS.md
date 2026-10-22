@@ -118,15 +118,20 @@ errors, or add lint/type suppressions just to make checks pass.
   `tests/menus-sync.test.ts`, `tests/move-to-account.test.ts` — Step 8
   (PGlite + stubbed fetch; conflict, tenancy, import fidelity)
 - `src/features/publishing/` — Step 9 publish: `schema.ts` (slug rules +
-  publication status), `slug.ts` (deterministic slug generation and
-  collision candidates), `repo.ts` (snapshot revisions, publish/unpublish,
-  slug changes, public read path, view counter), `client.ts` (typed browser
-  client). Routes: `src/app/api/menus/[menuId]/publication/` and
-  `src/app/api/m/[slug]/view/`. Public page `src/app/m/[slug]/page.tsx`
-  (partial prerender; snapshot only) + `not-found.tsx`; editor UI
-  `src/components/menu-editor/publish-panel.tsx`, view beacon
-  `view-counter.tsx`. Tests: `tests/publishing-slug.test.ts`,
-  `tests/publishing-repo.test.ts`, `tests/publishing-api.test.ts`.
+  publication status + `publicationPath`), `slug.ts` (deterministic slug
+  generation and collision candidates), `repo.ts` (snapshot revisions,
+  publish/unpublish, slug changes, scoped public read path, view counter),
+  `client.ts` (typed browser client). Menu slugs are scoped per restaurant:
+  the canonical address is `/r/<restaurant>/m/<menu>`, and the old global
+  `/m/<slug>` links 308-redirect from `src/proxy.ts`. Routes:
+  `src/app/api/menus/[menuId]/publication/`,
+  `src/app/api/r/[restaurantSlug]/m/[menuSlug]/view/`, public page
+  `src/app/r/[restaurantSlug]/m/[menuSlug]/page.tsx` (partial prerender;
+  snapshot only); `src/app/m/[slug]/` keeps only the honest 404 fallback +
+  `not-found.tsx`. Editor UI `src/components/menu-editor/publish-panel.tsx`,
+  view beacon `view-counter.tsx`. Tests: `tests/publishing-slug.test.ts`,
+  `tests/publishing-repo.test.ts`, `tests/publishing-api.test.ts`,
+  `tests/legacy-redirect.test.ts` (proxy).
   Invariant: the public page renders `menu_revision`, never `menu.doc`, so
   edits stay private until "Publish changes".
 - `src/features/orders/` — Step 10 table orders: `schema.ts` (canonical
@@ -136,7 +141,8 @@ errors, or add lint/type suppressions just to make checks pass.
   `storage.ts` + `table-links.ts` (Phase 1 local queue + link helpers).
   Routes: `src/app/api/orders/` (public POST, staff GET) and
   `src/app/api/orders/[orderId]/` (PATCH). Diner page
-  `src/app/m/[slug]/order/page.tsx` (snapshot only, noindex) with
+  `src/app/r/[restaurantSlug]/m/[menuSlug]/order/page.tsx` (snapshot only,
+  noindex; `/m/<slug>/order` redirects there) with
   `src/components/order/` (`order-menu.tsx` shared UI, `server-table-order.tsx`,
   `table-order.tsx` for local mode); staff board
   `src/components/orders/server-orders-board.tsx` (5 s polling with backoff

@@ -14,7 +14,7 @@
  * Fallbacks preserve the older flows: a browser-only menu keeps the Phase 1
  * `{origin}/order?menu=<menuId>&table=<label>` codes (this device's storage
  * only), and an account menu the panel cannot resolve right now keeps its
- * own public `/m/<slug>/order` code.
+ * own public `/r/<restaurant>/m/<menu>/order` code.
  *
  * Claiming is one tap for the owner; staff see cards but never the claim
  * button. Codes are generated in the browser (no third-party image API);
@@ -52,7 +52,8 @@ type TableQrPanelProps =
       /** Menu editor: codes fall back to this menu when no restaurant link is live. */
       context: "menu";
       doc: MenuDocument;
-      /** This menu's own public slug; the fallback code target when no table link is live. */
+      /** This menu's own public address; the fallback code target when no table link is live. */
+      publicRestaurantSlug?: string | null;
       publicSlug?: string | null;
       menuId: string;
       syncMode: "local" | "account";
@@ -104,6 +105,8 @@ export function TableQrPanel(props: TableQrPanelProps) {
   const doc = props.context === "menu" ? props.doc : null;
   const menuId = props.context === "menu" ? props.menuId : null;
   const publicSlug = props.context === "menu" ? (props.publicSlug ?? null) : null;
+  const publicRestaurantSlug =
+    props.context === "menu" ? (props.publicRestaurantSlug ?? null) : null;
   const syncMode: "local" | "account" = props.context === "menu" ? props.syncMode : "account";
   const canManage = props.context === "menu" ? (props.canManage ?? true) : props.isOwner;
   const restaurantId = props.context === "restaurant" ? props.restaurantId : null;
@@ -251,8 +254,8 @@ export function TableQrPanel(props: TableQrPanelProps) {
       labels.map(async (label) => {
         const url = tableSlug
           ? restaurantTableUrl(origin, tableSlug, label)
-          : publicSlug
-            ? publicTableOrderUrl(origin, publicSlug, label)
+          : publicSlug && publicRestaurantSlug
+            ? publicTableOrderUrl(origin, publicRestaurantSlug, publicSlug, label)
             : menuId
               ? tableOrderUrl(origin, menuId, label)
               : null;
@@ -275,7 +278,7 @@ export function TableQrPanel(props: TableQrPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [origin, count, prefix, custom, menuId, publicSlug, tableSlug, restaurantId]);
+  }, [origin, count, prefix, custom, menuId, publicSlug, publicRestaurantSlug, tableSlug, restaurantId]);
 
   useEffect(() => {
     if (custom) {

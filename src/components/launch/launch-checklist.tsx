@@ -38,7 +38,7 @@ function stepHref(step: LaunchStep, status: LaunchStatus): string {
   // Table cards belong to the restaurant, not to a menu: the Tables tab is
   // the only place that can print them for every open menu at once.
   if (step.id === "cards") return "/tables";
-  if (step.id === "order" && status.liveSlug) return `/m/${status.liveSlug}`;
+  if (step.id === "order" && status.livePath) return status.livePath;
   return "/";
 }
 

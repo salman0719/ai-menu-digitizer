@@ -99,14 +99,25 @@ export function restaurantTableUrl(origin: string, restaurantSlug: string, table
 /**
  * Server-backed table link (Step 10): the published menu's own address, so a
  * QR code works on any phone instead of only the browser holding the menu.
+ * The address is scoped to the café (`/r/<restaurant>/m/<menu>`), the same
+ * shape the publish panel shares.
  */
-export function publicTableOrderPath(slug: string, tableLabel: string): string {
+export function publicTableOrderPath(
+  restaurantSlug: string,
+  menuSlug: string,
+  tableLabel: string
+): string {
   const params = new URLSearchParams({ table: tableLabel });
-  return `/m/${encodeURIComponent(slug)}/order?${params.toString()}`;
+  return `/r/${encodeURIComponent(restaurantSlug)}/m/${encodeURIComponent(menuSlug)}/order?${params.toString()}`;
 }
 
-export function publicTableOrderUrl(origin: string, slug: string, tableLabel: string): string {
-  return `${origin.replace(/\/+$/, "")}${publicTableOrderPath(slug, tableLabel)}`;
+export function publicTableOrderUrl(
+  origin: string,
+  restaurantSlug: string,
+  menuSlug: string,
+  tableLabel: string
+): string {
+  return `${origin.replace(/\/+$/, "")}${publicTableOrderPath(restaurantSlug, menuSlug, tableLabel)}`;
 }
 
 /** Read `menu`/`table` from a query object or URLSearchParams. */

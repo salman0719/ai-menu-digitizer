@@ -10,8 +10,10 @@
 import { and, count, desc, eq, isNotNull } from "drizzle-orm";
 
 import { menuDocumentSchema } from "@/features/menu/schema";
+import { publicationPath } from "@/features/publishing/schema";
+import { ensureRestaurantSlug } from "@/features/tables/repo";
 import type { TenancyDb } from "@/features/tenancy/repo";
-import { menu, order, publishedMenu, restaurantMembership } from "@/lib/db/schema";
+import { menu, order, publishedMenu, restaurant, restaurantMembership } from "@/lib/db/schema";
 
 import type { LaunchSnapshot } from "./schema";
 
@@ -26,12 +28,18 @@ export async function getLaunchSnapshot(
     .where(eq(restaurantMembership.userId, userId));
 
   const publications = await db
-    .select({ slug: publishedMenu.slug, publishedAt: publishedMenu.publishedAt })
+    .select({
+      restaurantId: publishedMenu.restaurantId,
+      restaurantSlug: restaurant.slug,
+      slug: publishedMenu.slug,
+      publishedAt: publishedMenu.publishedAt,
+    })
     .from(publishedMenu)
     .innerJoin(
       restaurantMembership,
       eq(restaurantMembership.restaurantId, publishedMenu.restaurantId)
     )
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
     .where(and(eq(restaurantMembership.userId, userId), isNotNull(publishedMenu.publishedAt)))
     .orderBy(desc(publishedMenu.publishedAt));
 
@@ -58,10 +66,21 @@ export async function getLaunchSnapshot(
     }
   }
 
+  // The most recently published live menu, addressed the way a visitor opens
+  // it. A café that published before claiming its `/r/` address claims it
+  // here — the checklist link has to point somewhere real.
+  const live = publications[0] ?? null;
+  let livePath: string | null = null;
+  if (live) {
+    const restaurantSlug =
+      live.restaurantSlug ?? (await ensureRestaurantSlug(db, live.restaurantId)).slug;
+    livePath = publicationPath(restaurantSlug, live.slug);
+  }
+
   return {
     menuCount: menus.length,
     publishedCount: publications.length,
-    liveSlug: publications[0]?.slug ?? null,
+    livePath,
     orderCount: Number(orders[0]?.value ?? 0),
     unpricedItems,
     reviewNotes,

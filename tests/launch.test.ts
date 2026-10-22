@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => ({
 const emptySnapshot: LaunchSnapshot = {
   menuCount: 0,
   publishedCount: 0,
-  liveSlug: null,
+  livePath: null,
   orderCount: 0,
   unpricedItems: 0,
   reviewNotes: 0,
@@ -68,12 +68,12 @@ describe("launch steps", () => {
       ...emptySnapshot,
       menuCount: 2,
       publishedCount: 1,
-      liveSlug: "cafe-a",
+      livePath: "/r/cafe-a/m/cafe-a",
       orderCount: 3,
     });
     expect(steps.find((step) => step.id === "publish")).toMatchObject({
       done: true,
-      detail: "Live at /m/cafe-a",
+      detail: "Live at /r/cafe-a/m/cafe-a",
     });
     expect(steps.find((step) => step.id === "order")).toMatchObject({
       done: true,
@@ -133,7 +133,7 @@ describe("launch snapshot", () => {
     expect(snapshot).toMatchObject({
       menuCount: 1,
       publishedCount: 1,
-      liveSlug: publication.slug,
+      livePath: publication.urlPath,
       orderCount: 1,
       unpricedItems: 1,
       reviewNotes: 2,

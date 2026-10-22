@@ -315,7 +315,9 @@ export function PublishPanel({
           <label className="block text-xs font-semibold text-stone-600">
             Link address
             <span className="mt-1 flex items-center gap-2">
-              <span className="text-xs font-normal text-stone-400">{origin}/m/</span>
+              <span className="text-xs font-normal text-stone-400">
+                {origin}/r/{status.restaurantSlug}/m/
+              </span>
               <input
                 type="text"
                 value={slugValue}

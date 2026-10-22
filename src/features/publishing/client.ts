@@ -143,10 +143,15 @@ export async function unpublishMenu(menuId: string): Promise<PublicationStatus> 
 /**
  * Count one view of a published page. Deliberately silent: a missed count is
  * not worth surfacing to a diner, and the fetch must never block rendering.
+ * The beacon address mirrors the page's own path, so the pair
+ * (restaurant, menu) is always spelled out.
  */
-export async function recordMenuView(slug: string): Promise<void> {
+export async function recordMenuView(restaurantSlug: string, slug: string): Promise<void> {
   try {
-    await fetch(`/api/m/${encodeURIComponent(slug)}/view`, { method: "POST" });
+    await fetch(
+      `/api/r/${encodeURIComponent(restaurantSlug)}/m/${encodeURIComponent(slug)}/view`,
+      { method: "POST" }
+    );
   } catch {
     // Ignored — see above.
   }

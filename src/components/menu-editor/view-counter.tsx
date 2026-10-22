@@ -12,12 +12,13 @@ import { recordMenuView } from "@/features/publishing/client";
  */
 const counted = new Set<string>();
 
-export function ViewCounter({ slug }: { slug: string }) {
+export function ViewCounter({ restaurantSlug, slug }: { restaurantSlug: string; slug: string }) {
   useEffect(() => {
-    if (counted.has(slug)) return;
-    counted.add(slug);
-    void recordMenuView(slug);
-  }, [slug]);
+    const key = `${restaurantSlug}/${slug}`;
+    if (counted.has(key)) return;
+    counted.add(key);
+    void recordMenuView(restaurantSlug, slug);
+  }, [restaurantSlug, slug]);
 
   return null;
 }

@@ -149,18 +149,20 @@ describe("table links", () => {
   });
 
   it("prints a URL without its scheme or encoded spaces", () => {
-    expect(displayTableUrl("https://example.test/m/cafe/order?table=Table+3")).toBe(
-      "example.test/m/cafe/order?table=Table 3"
+    expect(displayTableUrl("https://example.test/r/cafe/m/lunch/order?table=Table+3")).toBe(
+      "example.test/r/cafe/m/lunch/order?table=Table 3"
     );
     expect(displayTableUrl("http://localhost:3200/order?menu=m1&table=Patio%202")).toBe(
       "localhost:3200/order?menu=m1&table=Patio 2"
     );
   });
 
-  it("builds public table links from a published slug", () => {
-    expect(publicTableOrderPath("my-cafe", "Patio 2")).toBe("/m/my-cafe/order?table=Patio+2");
-    expect(publicTableOrderUrl("https://example.test/", "my-cafe", "3")).toBe(
-      "https://example.test/m/my-cafe/order?table=3"
+  it("builds public table links from a published address", () => {
+    expect(publicTableOrderPath("my-cafe", "lunch", "Patio 2")).toBe(
+      "/r/my-cafe/m/lunch/order?table=Patio+2"
+    );
+    expect(publicTableOrderUrl("https://example.test/", "my-cafe", "lunch", "3")).toBe(
+      "https://example.test/r/my-cafe/m/lunch/order?table=3"
     );
   });
 });

@@ -165,20 +165,21 @@ export async function setRestaurantSlugForUser(
 }
 
 /**
- * Owner-only: claim a public address derived from the restaurant's name when
- * it has none yet (first free candidate wins, same as menu publishing).
- * Returns the existing slug untouched when one is already set.
+ * Claim the restaurant's public `/r/<slug>` address from its name when it
+ * has none yet (first free candidate wins, same as menu publishing).
+ *
+ * No role check — callers must have already established the right to touch
+ * this restaurant (the owner-only wrapper below, or a publishing call that
+ * already verified membership). Idempotent: an existing slug is returned
+ * untouched, and a concurrent claim loses the race on the unique index and
+ * retries the next candidate. Publishing needs the address to build menu
+ * links, so the invariant "a restaurant with a publication has a slug" is
+ * restored through this function.
  */
-export async function ensureRestaurantSlugForUser(
+export async function ensureRestaurantSlug(
   db: TenancyDb,
-  userId: string,
   restaurantId: string
 ): Promise<{ id: string; name: string; slug: string }> {
-  const role = await roleOf(db, userId, restaurantId);
-  if (role === null) throw new TableRepoError("not_found", "That restaurant does not exist.");
-  if (role !== "owner") {
-    throw new TableRepoError("forbidden", "Only the restaurant owner can change its link.");
-  }
   const current = await db
     .select({ id: restaurant.id, name: restaurant.name, slug: restaurant.slug })
     .from(restaurant)
@@ -202,6 +203,24 @@ export async function ensureRestaurantSlugForUser(
     }
   }
   throw new TableRepoError("slug_taken", "Could not find a free link for this restaurant.");
+}
+
+/**
+ * Owner-only: claim a public address derived from the restaurant's name when
+ * it has none yet (first free candidate wins, same as menu publishing).
+ * Returns the existing slug untouched when one is already set.
+ */
+export async function ensureRestaurantSlugForUser(
+  db: TenancyDb,
+  userId: string,
+  restaurantId: string
+): Promise<{ id: string; name: string; slug: string }> {
+  const role = await roleOf(db, userId, restaurantId);
+  if (role === null) throw new TableRepoError("not_found", "That restaurant does not exist.");
+  if (role !== "owner") {
+    throw new TableRepoError("forbidden", "Only the restaurant owner can change its link.");
+  }
+  return ensureRestaurantSlug(db, restaurantId);
 }
 
 async function restaurantSlugTakenByAnother(

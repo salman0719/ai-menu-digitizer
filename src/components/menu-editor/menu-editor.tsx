@@ -528,6 +528,9 @@ export function MenuEditor({
           doc={doc}
           // Only a live publication can serve a stranger's phone; an
           // unpublished menu keeps the browser-scoped Phase 1 codes.
+          publicRestaurantSlug={
+            publishing?.status?.isLive ? publishing.status.restaurantSlug : null
+          }
           publicSlug={publishing?.status?.isLive ? publishing.status.slug : null}
           menuId={doc.id}
           syncMode={syncMode}

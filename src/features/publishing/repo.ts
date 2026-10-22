@@ -16,6 +16,7 @@ import {
   type PreviewLayoutId,
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
+import { ensureRestaurantSlug } from "@/features/tables/repo";
 
 import {
   MENU_SLUG_PATTERN,
@@ -39,6 +40,12 @@ import { slugCandidates, slugifyMenuTitle } from "./slug";
  * `hasUnpublishedChanges` is a timestamp comparison — the live revision's
  * `sourceUpdatedAt` against the menu row's `updated_at` — not a re-diff of
  * two documents.
+ *
+ * Public addresses live under the café: `/r/<restaurant>/m/<menu>`, built
+ * from the restaurant's own `/r/<slug>` address plus the menu's slug (see
+ * `publicationPath`). The old global `/m/<slug>` namespace is kept working
+ * as a redirect (the proxy resolves it through `getPublishedMenuBySlug`),
+ * so links printed before this change still open.
  *
  * Unpublishing keeps the row (and its slug) reserved with `published_at`
  * cleared, so the address stays with the same café and the page stops
@@ -72,6 +79,8 @@ export interface PublishInput {
 /** A live published page, prepared for the public route and ordering. */
 export interface PublishedMenuPage {
   slug: string;
+  /** The restaurant's `/r/<slug>` address — part of the canonical path. */
+  restaurantSlug: string;
   /** The menu and tenant this snapshot belongs to (orders are scoped by them). */
   menuId: string;
   restaurantId: string;
@@ -111,6 +120,23 @@ async function loadMenuWithRole(
 }
 
 /**
+ * The restaurant's public `/r/<slug>` address, claimed from its name when a
+ * publication exists but the café never claimed one (it published before
+ * table links existed, or simply never opened the Tables tab). Menu links
+ * cannot be built without it, so the claim is restored here — idempotent,
+ * derived from the restaurant's own name, and never user-supplied.
+ */
+async function ensureRestaurantSlugValue(
+  db: TenancyDb,
+  restaurantId: string,
+  slug: string | null
+): Promise<string> {
+  if (slug) return slug;
+  const ensured = await ensureRestaurantSlug(db, restaurantId);
+  return ensured.slug;
+}
+
+/**
  * Read a menu's publication state without a user scope. Callers must have
  * already established membership (the exported functions below do).
  */
@@ -122,6 +148,7 @@ async function readStatus(db: TenancyDb, menuId: string): Promise<PublicationSta
       liveRevisionId: publishedMenu.liveRevisionId,
       viewCount: publishedMenu.viewCount,
       restaurantId: publishedMenu.restaurantId,
+      restaurantSlug: restaurant.slug,
       menuUpdatedAt: menu.updatedAt,
       theme: menuRevision.theme,
       layout: menuRevision.layout,
@@ -129,19 +156,22 @@ async function readStatus(db: TenancyDb, menuId: string): Promise<PublicationSta
     })
     .from(publishedMenu)
     .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
     .leftJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
     .where(eq(publishedMenu.menuId, menuId));
 
   const row = rows[0];
   if (!row) return null;
 
+  const restaurantSlug = await ensureRestaurantSlugValue(db, row.restaurantId, row.restaurantSlug);
   const isLive = row.publishedAt !== null && row.liveRevisionId !== null;
   const sourceUpdatedAt = isLive && row.sourceUpdatedAt ? row.sourceUpdatedAt : null;
   return {
     menuId,
     restaurantId: row.restaurantId,
+    restaurantSlug,
     slug: row.slug,
-    urlPath: publicationPath(row.slug),
+    urlPath: publicationPath(restaurantSlug, row.slug),
     isLive,
     publishedAt: row.publishedAt?.toISOString() ?? null,
     liveRevisionId: isLive ? row.liveRevisionId : null,
@@ -375,9 +405,70 @@ export async function changeMenuSlugForUser(
 }
 
 /**
- * The public read path: a live page by slug, with the snapshot's document
- * re-validated against the canonical schema. Null means "not found or not
- * serving" — callers must render a 404, never a partial page.
+ * The public read path: a live page by its canonical address — the
+ * restaurant's `/r/<slug>` plus the menu's own slug — with the snapshot's
+ * document re-validated against the canonical schema. Null means "not found
+ * or not serving" — callers must render a 404, never a partial page.
+ */
+export async function getPublishedMenuByPath(
+  db: TenancyDb,
+  restaurantSlug: string,
+  slug: string
+): Promise<PublishedMenuPage | null> {
+  const rows = await db
+    .select({
+      slug: publishedMenu.slug,
+      restaurantId: publishedMenu.restaurantId,
+      menuId: publishedMenu.menuId,
+      publishedAt: publishedMenu.publishedAt,
+      viewCount: publishedMenu.viewCount,
+      restaurantName: restaurant.name,
+      doc: menuRevision.doc,
+      theme: menuRevision.theme,
+      layout: menuRevision.layout,
+    })
+    .from(publishedMenu)
+    .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
+    .innerJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
+    .where(
+      and(
+        eq(restaurant.slug, restaurantSlug),
+        eq(publishedMenu.slug, slug),
+        isNotNull(publishedMenu.publishedAt)
+      )
+    );
+
+  const row = rows[0];
+  if (!row || row.publishedAt === null) return null;
+
+  const parsedDoc = menuDocumentSchema.safeParse(row.doc);
+  if (!parsedDoc.success) {
+    throw new Error(`published menu ${slug} failed canonical schema validation`);
+  }
+  if (!isPreviewThemeId(row.theme) || !isPreviewLayoutId(row.layout)) {
+    throw new Error(`published menu ${slug} has an unknown theme or layout`);
+  }
+
+  return {
+    slug: row.slug,
+    restaurantSlug,
+    menuId: row.menuId,
+    restaurantId: row.restaurantId,
+    restaurantName: row.restaurantName,
+    doc: parsedDoc.data,
+    theme: row.theme,
+    layout: row.layout,
+    publishedAt: row.publishedAt.toISOString(),
+    viewCount: row.viewCount,
+  };
+}
+
+/**
+ * The old global `/m/<slug>` namespace, kept alive as a redirect: resolve a
+ * bare menu slug to the café that holds it, so links printed before the
+ * address moved under `/r/<restaurant>/m/<menu>` still open. Null means
+ * "unknown or not serving" — the caller renders a 404, never a guess.
  */
 export async function getPublishedMenuBySlug(
   db: TenancyDb,
@@ -388,6 +479,7 @@ export async function getPublishedMenuBySlug(
       slug: publishedMenu.slug,
       menuId: publishedMenu.menuId,
       restaurantId: publishedMenu.restaurantId,
+      restaurantSlug: restaurant.slug,
       publishedAt: publishedMenu.publishedAt,
       viewCount: publishedMenu.viewCount,
       restaurantName: restaurant.name,
@@ -414,6 +506,7 @@ export async function getPublishedMenuBySlug(
 
   return {
     slug: row.slug,
+    restaurantSlug: await ensureRestaurantSlugValue(db, row.restaurantId, row.restaurantSlug),
     menuId: row.menuId,
     restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
@@ -427,14 +520,32 @@ export async function getPublishedMenuBySlug(
 
 /**
  * Count one page view. Cookie-free and server-side: a single atomic
- * increment, only while the page is live. Returns false when nothing was
- * counted (unknown slug or unpublished), so the beacon stays honest.
+ * increment, only for the live page at this exact address. Returns false
+ * when nothing was counted (unknown address or unpublished), so the beacon
+ * stays honest.
  */
-export async function recordPublishedView(db: TenancyDb, slug: string): Promise<boolean> {
+export async function recordPublishedMenuView(
+  db: TenancyDb,
+  restaurantSlug: string,
+  slug: string
+): Promise<boolean> {
+  const pages = await db
+    .select({ id: publishedMenu.id })
+    .from(publishedMenu)
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
+    .where(
+      and(
+        eq(restaurant.slug, restaurantSlug),
+        eq(publishedMenu.slug, slug),
+        isNotNull(publishedMenu.publishedAt)
+      )
+    );
+  const id = pages[0]?.id;
+  if (!id) return false;
   const updated = await db
     .update(publishedMenu)
     .set({ viewCount: sql`${publishedMenu.viewCount} + 1` })
-    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)))
+    .where(and(eq(publishedMenu.id, id), isNotNull(publishedMenu.publishedAt)))
     .returning({ id: publishedMenu.id });
   return updated.length > 0;
 }

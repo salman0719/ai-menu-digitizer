@@ -71,7 +71,7 @@ server DB, tenancy) and on the café side ship as one thing:
 ```text
 M0  Foundation        decided stack: Neon+Drizzle, Better Auth magic link    (I1/I2/I3 shared)
                       (Resend), tenancy, migrations, staging
-M1  Publish first     one-click publish -> public /m/<slug>, themes, QR      (I3 core, free)
+M1  Publish first     one-click publish -> public /r/<r>/m/<menu>, themes, QR (I3 core, free)
 M2  Live ordering     orders API, live staff board, public table links       (I1 done, free)
 M3  Free launch       "free while it lasts": checklist, terms, observability,  (launch)
                       retention, per-account cost caps
@@ -182,7 +182,7 @@ not:
 - **Where it never appears:** diners ordering at a table (anonymous — no
   account, ever), API clients (Bearer API keys from Better Auth's API-key
   plugin, a completely separate mechanism used by I2), and visitors of the
-  public `/m/<slug>` page.
+  public `/r/<restaurant>/m/<menu>` page.
 - **Staying signed in:** sessions default to **7 days**, rolling (refreshed
   roughly daily). There is no documented `remember-me` option on magic-link
   sign-in, so session lifetime is the knob: plan for `session.expiresIn` of
@@ -381,7 +381,7 @@ while the promotion lasts**. This is the first user-facing feature of Phase 2.
   **Publish changes** button. Live page = a stored `menu_revision` snapshot;
   the editor shows "draft changes not published" until it is clicked, so the
   owner is never guessing what the public sees.
-- **Public page `/m/[slug]`:** read-only render of the existing preview
+- **Public page `/r/[restaurantSlug]/m/[menuSlug]`:** read-only render of the existing preview
   components, honest empty/null handling, print stylesheet already built in
   Phase 1, `og:`/Twitter meta tags, and a QR code for the page itself (the
   `qrcode` dependency is already in the project).
@@ -476,7 +476,7 @@ backlog below Phase 2 revenue work.
 | Billing provider     | **Stripe — parked.** Billing is the last thing built, riding with the parked B2B step.                                          |
 | Charge anything now  | **No.** Free launch promotion: no checkout or payment links anywhere; pricing revisited after measurement, early users in mind. |
 | Pilot price          | Deferred by design: suggest pricing only after real cost-per-extraction and effort are measured.                                |
-| Public URL shape     | **`/m/<slug>`** on the current domain — approved; custom domains stay out of scope.                                             |
+| Public URL shape     | **`/r/<restaurant>/m/<menu>`** on the current domain (decided 2026-10-22: menu slugs are scoped to their café, so two restaurants can both publish `lunch`); the pre-scope `/m/<slug>` links 308-redirect. Custom domains stay out of scope. |
 | Local vs server mode | **Keep both** — signed-out = local prototype, signed-in = server.                                                               |
 | Error tracking       | **Approved:** Sentry (free tier) plus cookie-free view counts only.                                                             |
 

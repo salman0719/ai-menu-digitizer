@@ -87,7 +87,7 @@ export function launchSteps(snapshot: LaunchSnapshot): LaunchStep[] {
       guidance: "Publishing gives you a public link and a QR code anyone can scan.",
       done: published,
       manual: false,
-      detail: snapshot.liveSlug ? `Live at /m/${snapshot.liveSlug}` : "Not published yet",
+      detail: snapshot.livePath ? `Live at ${snapshot.livePath}` : "Not published yet",
     },
     {
       id: "order",

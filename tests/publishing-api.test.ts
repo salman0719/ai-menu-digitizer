@@ -6,13 +6,13 @@ import {
   PATCH as patchPublication,
   POST as publish,
 } from "@/app/api/menus/[menuId]/publication/route";
-import { POST as countView } from "@/app/api/m/[slug]/view/route";
+import { POST as countView } from "@/app/api/r/[restaurantSlug]/m/[menuSlug]/view/route";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
 import { createMenuForUser, getMenuForUser, updateMenuForUser } from "@/features/menus/repo";
 import {
   getPublicationStatus,
-  getPublishedMenuBySlug,
+  getPublishedMenuByPath,
 } from "@/features/publishing/repo";
 import { createRestaurant } from "@/features/tenancy/repo";
 import { restaurantMembership } from "@/lib/db/schema";
@@ -60,8 +60,11 @@ function menuParams(menuId: string): { params: Promise<{ menuId: string }> } {
   return { params: Promise.resolve({ menuId }) };
 }
 
-function slugParams(slug: string): { params: Promise<{ slug: string }> } {
-  return { params: Promise.resolve({ slug }) };
+function viewParams(
+  restaurantSlug: string,
+  menuSlug: string
+): { params: Promise<{ restaurantSlug: string; menuSlug: string }> } {
+  return { params: Promise.resolve({ restaurantSlug, menuSlug }) };
 }
 
 const PUBLISH_BODY = { theme: "bistro", layout: "columns" };
@@ -115,8 +118,9 @@ describe("POST /api/menus/[menuId]/publication", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.publication).toMatchObject({
+      restaurantSlug: "cafe-api",
       slug: "cafe-api-menu",
-      urlPath: "/m/cafe-api-menu",
+      urlPath: "/r/cafe-api/m/cafe-api-menu",
       isLive: true,
       theme: "bistro",
       layout: "columns",
@@ -147,15 +151,15 @@ describe("POST /api/menus/[menuId]/publication", () => {
       menuParams(menuId)
     ).then((r) => r.json());
     expect(stale.publication.hasUnpublishedChanges).toBe(true);
-    expect((await getPublishedMenuBySlug(holder.db!, "cafe-api-menu"))!.doc.title).toBe(
-      "Café API Menu"
-    );
+    expect(
+      (await getPublishedMenuByPath(holder.db!, "cafe-api", "cafe-api-menu"))!.doc.title
+    ).toBe("Café API Menu");
 
     const res = await publish(jsonRequest("POST", PUBLISH_BODY), menuParams(menuId));
     expect((await res.json()).publication.hasUnpublishedChanges).toBe(false);
-    expect((await getPublishedMenuBySlug(holder.db!, "cafe-api-menu"))!.doc.title).toBe(
-      "Edited after publish"
-    );
+    expect(
+      (await getPublishedMenuByPath(holder.db!, "cafe-api", "cafe-api-menu"))!.doc.title
+    ).toBe("Edited after publish");
   });
 
   it("rejects bad input and a taken slug", async () => {
@@ -207,9 +211,9 @@ describe("PATCH /api/menus/[menuId]/publication", () => {
     const res = await patchPublication(jsonRequest("PATCH", { slug: "chez-api" }), menuParams(menuId));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.publication.urlPath).toBe("/m/chez-api");
-    expect(await getPublishedMenuBySlug(holder.db!, "cafe-api-menu")).toBeNull();
-    expect(await getPublishedMenuBySlug(holder.db!, "chez-api")).not.toBeNull();
+    expect(body.publication.urlPath).toBe("/r/cafe-api/m/chez-api");
+    expect(await getPublishedMenuByPath(holder.db!, "cafe-api", "cafe-api-menu")).toBeNull();
+    expect(await getPublishedMenuByPath(holder.db!, "cafe-api", "chez-api")).not.toBeNull();
   });
 });
 
@@ -223,7 +227,7 @@ describe("DELETE /api/menus/[menuId]/publication", () => {
       isLive: false,
       slug: "cafe-api-menu",
     });
-    expect(await getPublishedMenuBySlug(holder.db!, "cafe-api-menu")).toBeNull();
+    expect(await getPublishedMenuByPath(holder.db!, "cafe-api", "cafe-api-menu")).toBeNull();
 
     // Deleting twice is safe: the second call reports the same unpublished
     // state instead of failing a retry.
@@ -233,15 +237,24 @@ describe("DELETE /api/menus/[menuId]/publication", () => {
   });
 });
 
-describe("POST /api/m/[slug]/view", () => {
-  it("counts only live pages", async () => {
-    const missing = await countView(new Request("http://test.local"), slugParams("nope"));
+describe("POST /api/r/[restaurantSlug]/m/[menuSlug]/view", () => {
+  it("counts only live pages at that exact address", async () => {
+    const missing = await countView(
+      new Request("http://test.local"),
+      viewParams("cafe-api", "nope")
+    );
     expect(missing.status).toBe(404);
 
     await publish(jsonRequest("POST", PUBLISH_BODY), menuParams(menuId));
+    const wrongRestaurant = await countView(
+      new Request("http://test.local"),
+      viewParams("another-cafe", "cafe-api-menu")
+    );
+    expect(wrongRestaurant.status).toBe(404);
+
     const counted = await countView(
       new Request("http://test.local"),
-      slugParams("cafe-api-menu")
+      viewParams("cafe-api", "cafe-api-menu")
     );
     expect(counted.status).toBe(204);
     expect((await getPublicationStatus(holder.db!, ownerId, menuId))!.viewCount).toBe(1);
@@ -249,7 +262,7 @@ describe("POST /api/m/[slug]/view", () => {
     await unpublish(new Request("http://test.local"), menuParams(menuId));
     const dead = await countView(
       new Request("http://test.local"),
-      slugParams("cafe-api-menu")
+      viewParams("cafe-api", "cafe-api-menu")
     );
     expect(dead.status).toBe(404);
   });
@@ -257,7 +270,10 @@ describe("POST /api/m/[slug]/view", () => {
   it("needs no session (a diner has no account)", async () => {
     await publish(jsonRequest("POST", PUBLISH_BODY), menuParams(menuId));
     holder.userId = null;
-    const res = await countView(new Request("http://test.local"), slugParams("cafe-api-menu"));
+    const res = await countView(
+      new Request("http://test.local"),
+      viewParams("cafe-api", "cafe-api-menu")
+    );
     expect(res.status).toBe(204);
   });
 });
