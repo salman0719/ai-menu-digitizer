@@ -768,8 +768,21 @@ export function MenuEditor({
   return (
     <div className="flex flex-col gap-4">
       {headerRow}
-      {/* Publishing is the one step owners look for by name, so it stays on
-          the edit screen — not only inside the preview. */}
+      {/* The public link panel now lives in Preview only, so the edit screen
+          stays compact and food items show sooner. Kept below (commented out)
+          in case it needs to come back. */}
+      <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs leading-5 text-stone-600">
+        Once your menu is set,{" "}
+        <button
+          type="button"
+          onClick={() => changeMode("preview")}
+          className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+        >
+          go to Preview
+        </button>{" "}
+        to publish it and get your public link.
+      </p>
+      {/*
       {publishing && canManage && (
         <PublishPanel
           signedIn={syncMode === "account"}
