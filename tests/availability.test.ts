@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { formatAvailability, formatWallClock } from "@/features/availability/format";
 import { isMenuOpenAt } from "@/features/availability/open-at";
 import { menuAvailabilitySchema } from "@/features/availability/schema";
 
@@ -102,5 +103,50 @@ describe("isMenuOpenAt", () => {
   it("falls back to UTC for an unknown time zone instead of throwing", () => {
     const lunch = [{ days: [1], start: "09:00", end: "17:00" }];
     expect(isMenuOpenAt(lunch, MON_NOON_UTC, "Not/AZone")).toBe(true);
+  });
+});
+
+describe("formatAvailability", () => {
+  it("renders wall times in 12-hour form", () => {
+    expect(formatWallClock("00:15")).toBe("12:15 am");
+    expect(formatWallClock("09:05")).toBe("9:05 am");
+    expect(formatWallClock("12:00")).toBe("12:00 pm");
+    expect(formatWallClock("23:30")).toBe("11:30 pm");
+  });
+
+  it("compresses consecutive weekdays into ranges", () => {
+    expect(
+      formatAvailability([{ days: [1, 2, 3, 4, 5], start: "11:30", end: "14:30" }])
+    ).toEqual(["Mon–Fri 11:30 am – 2:30 pm"]);
+    expect(formatAvailability([{ days: [0, 6], start: "18:00", end: "22:00" }])).toEqual([
+      "Sun, Sat 6:00 pm – 10:00 pm",
+    ]);
+    expect(formatAvailability([{ days: [0, 1, 2, 3, 4, 5, 6], start: "08:00", end: "18:00" }])).toEqual([
+      "Every day 8:00 am – 6:00 pm",
+    ]);
+  });
+
+  it("keeps overnight windows exactly as written", () => {
+    expect(formatAvailability([{ days: [5, 6], start: "22:00", end: "02:00" }])).toEqual([
+      "Fri–Sat 10:00 pm – 2:00 am",
+    ]);
+  });
+
+  it("caps a long schedule with a remainder line", () => {
+    const windows = [
+      { days: [1], start: "09:00", end: "11:00" },
+      { days: [2], start: "09:00", end: "11:00" },
+      { days: [3], start: "09:00", end: "11:00" },
+      { days: [4], start: "09:00", end: "11:00" },
+      { days: [5], start: "09:00", end: "11:00" },
+      { days: [6], start: "10:00", end: "12:00" },
+    ];
+    expect(formatAvailability(windows, 4)).toHaveLength(5);
+    expect(formatAvailability(windows, 4)[4]).toBe("+2 more");
+    expect(formatAvailability(windows, 6)).toHaveLength(6);
+  });
+
+  it("returns no lines for an always-open schedule", () => {
+    expect(formatAvailability([])).toEqual([]);
   });
 });
