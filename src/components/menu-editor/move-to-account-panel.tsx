@@ -202,30 +202,35 @@ export function MoveToAccountPanel({
       )}
 
       {restaurants !== null && owned.length === 0 && !staffOnly && (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-stone-600">
-            Name your restaurant
-            <input
-              type="text"
-              value={newName}
-              onChange={(event) => setNameDraft(event.target.value)}
-              placeholder="e.g. Sunny Side Café"
-              className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-            />
-            {suggestedName && nameDraft === null && (
-              <span className="font-normal text-stone-400">
-                Suggested from your menu titles — change it if you like.
-              </span>
-            )}
-          </label>
-          <button
-            type="button"
-            onClick={() => void handleCreate()}
-            disabled={creating || newName.trim().length === 0}
-            className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            {creating ? "Creating…" : "Create restaurant"}
-          </button>
+        <div className="mt-3">
+          {/* The hint sits below the row (not inside the label): with
+              `items-end` an extra label line would drag the button down
+              past the input's bottom edge and out of alignment. */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-stone-600">
+              Name your restaurant
+              <input
+                type="text"
+                value={newName}
+                onChange={(event) => setNameDraft(event.target.value)}
+                placeholder="e.g. Sunny Side Café"
+                className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleCreate()}
+              disabled={creating || newName.trim().length === 0}
+              className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              {creating ? "Creating…" : "Create restaurant"}
+            </button>
+          </div>
+          {suggestedName && nameDraft === null && (
+            <p className="mt-1 text-xs font-normal text-stone-400">
+              Suggested from your menu titles — change it if you like.
+            </p>
+          )}
         </div>
       )}
 
