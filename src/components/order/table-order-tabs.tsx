@@ -13,7 +13,8 @@
  * `searchMenu` matching so filtering behaves identically everywhere.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { MenuAvailability } from "@/features/availability/schema";
 import { formatAvailability } from "@/features/availability/format";
@@ -53,6 +54,14 @@ export interface ClosedTableOrderMenu {
   availability: MenuAvailability;
 }
 
+/** Where a closed menu's tooltip sits: viewport coords measured on reveal. */
+interface ClosedInfo {
+  menuId: string;
+  x: number;
+  y: number;
+  above: boolean;
+}
+
 const ALL_TAB = "all";
 
 interface TableOrderTabsProps {
@@ -76,7 +85,7 @@ export function TableOrderTabs({
 }: TableOrderTabsProps) {
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
   const [query, setQuery] = useState("");
-  const [infoMenuId, setInfoMenuId] = useState<string | null>(null);
+  const [closedInfo, setClosedInfo] = useState<ClosedInfo | null>(null);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [note, setNote] = useState("");
   const [variantChoice, setVariantChoice] = useState<Record<string, string>>({});
@@ -88,7 +97,62 @@ export function TableOrderTabs({
   const searching = query.trim().length > 0;
 
   /** The closed menu whose opening times are currently revealed, if any. */
-  const infoMenu = closedMenus.find((menu) => menu.menuId === infoMenuId) ?? null;
+  const infoMenu =
+    closedInfo === null ? null : closedMenus.find((menu) => menu.menuId === closedInfo.menuId) ?? null;
+
+  /**
+   * Reveal a closed menu's opening times as a fixed-position tooltip: it
+   * floats over the page, so revealing never shifts the layout, and it
+   * cannot be clipped by the horizontally scrolling tab row. Anchored to
+   * the tab, flipped above when there is no room below, and clamped to the
+   * viewport edges.
+   */
+  function showClosedInfo(menu: ClosedTableOrderMenu, anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect();
+    // Half of the 16rem tooltip plus breathing room, used to clamp x.
+    const half = 136;
+    const x = Math.min(
+      Math.max(rect.left + rect.width / 2, half),
+      Math.max(window.innerWidth - half, half)
+    );
+    const belowY = rect.bottom + 8;
+    const roomBelow = belowY + 76 <= window.innerHeight;
+    setClosedInfo({
+      menuId: menu.menuId,
+      x,
+      y: roomBelow ? belowY : rect.top - 8,
+      above: !roomBelow,
+    });
+  }
+
+  function hideClosedInfo() {
+    setClosedInfo(null);
+  }
+
+  // While the tooltip is up: dismiss on Escape, on any press outside the
+  // closed tabs, and on any scroll (the anchor would move under it).
+  const tooltipVisible = closedInfo !== null;
+  useEffect(() => {
+    if (!tooltipVisible) return;
+    const hide = () => setClosedInfo(null);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-closed-tab]")) return;
+      hide();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    const onScroll = () => hide();
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [tooltipVisible]);
 
   /** Menus in scope for the visible list: the tab, or every menu on All. */
   const scopedMenus = useMemo(
@@ -223,7 +287,7 @@ export function TableOrderTabs({
               <TabButton
                 active={activeTab === ALL_TAB}
                 onClick={() => {
-                  setInfoMenuId(null);
+                  hideClosedInfo();
                   setActiveTab(ALL_TAB);
                 }}
                 label="All"
@@ -234,7 +298,7 @@ export function TableOrderTabs({
                 key={menu.menuId}
                 active={activeTab === menu.menuId}
                 onClick={() => {
-                  setInfoMenuId(null);
+                  hideClosedInfo();
                   setActiveTab(menu.menuId);
                 }}
                 label={menuLabel(menu)}
@@ -243,21 +307,13 @@ export function TableOrderTabs({
             {closedMenus.map((menu) => (
               <ClosedTabButton
                 key={menu.menuId}
-                label={menuLabel(menu)}
-                onShow={() => setInfoMenuId(menu.menuId)}
-                onHide={() => setInfoMenuId(null)}
+                menu={menu}
+                show={closedInfo?.menuId === menu.menuId}
+                onShow={(anchor) => showClosedInfo(menu, anchor)}
+                onHide={hideClosedInfo}
               />
             ))}
           </div>
-          {infoMenu && (
-            <p
-              role="status"
-              className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"
-            >
-              <span className="font-semibold">{menuLabel(infoMenu)}</span> is closed right now.
-              Open {formatAvailability(infoMenu.availability).join("; ")}.
-            </p>
-          )}
           {menus.length > 0 ? (
             <>
               <label className="mt-2 block">
@@ -458,6 +514,29 @@ export function TableOrderTabs({
           {submitting ? "Sending…" : "Send order to the kitchen"}
         </button>
       </aside>
+
+      {closedInfo &&
+        infoMenu &&
+        createPortal(
+          <div
+            role="status"
+            className="pointer-events-none fixed z-50"
+            style={{
+              left: closedInfo.x,
+              top: closedInfo.y,
+              transform: closedInfo.above ? "translate(-50%, -100%)" : "translateX(-50%)",
+            }}
+          >
+            <div
+              role="tooltip"
+              className="w-max max-w-[16rem] rounded-xl bg-stone-900 px-3 py-2 text-left text-xs leading-5 text-white shadow-lg"
+            >
+              <span className="font-semibold">{menuLabel(infoMenu)}</span> is closed right now.
+              Open {formatAvailability(infoMenu.availability).join("; ")}.
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -498,32 +577,48 @@ function TabButton({
  * A published menu that is not being served now: listed in the tab row
  * but inert — pressing it never selects a tab, so it stays out of the
  * search scope and the cart by construction. Hovering with a mouse or
- * pressing it (touch/keyboard) reveals when it opens, shown in the strip
- * below the tab row. Pointer events are filtered by pointer type so a
- * touch tap does not reveal and then immediately hide the strip again.
+ * pressing it (touch or keyboard) reveals when it opens, as a floating
+ * tooltip anchored to the tab. Pointer type decides the press behaviour:
+ * a tap toggles the tooltip, while a mouse click only keeps it shown, so
+ * hover-then-click never flickers it away.
  */
 function ClosedTabButton({
-  label,
+  menu,
+  show,
   onShow,
   onHide,
 }: {
-  label: string;
-  onShow: () => void;
+  menu: ClosedTableOrderMenu;
+  show: boolean;
+  onShow: (anchor: HTMLElement) => void;
   onHide: () => void;
 }) {
+  const lastPointerType = useRef<string | null>(null);
+  const label = menuLabel(menu);
   return (
     <button
       type="button"
+      data-closed-tab=""
       aria-disabled="true"
       aria-label={`${label}, closed right now`}
       onPointerEnter={(event) => {
-        if (event.pointerType === "mouse") onShow();
+        if (event.pointerType === "mouse") onShow(event.currentTarget);
       }}
       onPointerLeave={(event) => {
         if (event.pointerType === "mouse") onHide();
       }}
-      onClick={onShow}
-      className="shrink-0 cursor-not-allowed rounded-full border border-dashed border-stone-300 bg-stone-50 px-4 py-1.5 text-sm font-semibold whitespace-nowrap text-stone-400"
+      onPointerDown={(event) => {
+        lastPointerType.current = event.pointerType;
+      }}
+      onClick={(event) => {
+        if (lastPointerType.current === "mouse" || !show) onShow(event.currentTarget);
+        else onHide();
+      }}
+      className={`shrink-0 cursor-not-allowed rounded-full border border-dashed px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${
+        show
+          ? "border-stone-400 bg-white text-stone-600"
+          : "border-stone-300 bg-stone-50 text-stone-400"
+      }`}
     >
       {label}
     </button>
