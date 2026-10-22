@@ -6,6 +6,7 @@ import { createRestaurant } from "@/features/tenancy/repo";
 import {
   ensureRestaurantSlugForUser,
   getRestaurantBySlug,
+  getRestaurantTimeZoneForMenu,
   listOpenMenusForRestaurantSlug,
   setMenuAvailabilityForUser,
   setRestaurantSlugForUser,
@@ -53,12 +54,33 @@ describe("table landing repo", () => {
   }
 
   describe("menu availability writes", () => {
-    it("stores windows for the owner and reads them back empty by default", async () => {
+    it("stores windows with the restaurant's zone, and only replaces the zone when told", async () => {
       await createMenuForUser(db, ownerA, restaurantA, sampleDoc("menu-avail-1"));
-      const stored = await setMenuAvailabilityForUser(db, ownerA, "menu-avail-1", [
-        { days: [1, 2, 3, 4, 5], start: "11:00", end: "15:00" },
-      ]);
-      expect(stored).toEqual([{ days: [1, 2, 3, 4, 5], start: "11:00", end: "15:00" }]);
+      const stored = await setMenuAvailabilityForUser(
+        db,
+        ownerA,
+        "menu-avail-1",
+        [{ days: [1, 2, 3, 4, 5], start: "11:00", end: "15:00" }],
+        "Australia/Sydney"
+      );
+      expect(stored).toEqual({
+        availability: [{ days: [1, 2, 3, 4, 5], start: "11:00", end: "15:00" }],
+        timeZone: "Australia/Sydney",
+      });
+      expect(await getRestaurantTimeZoneForMenu(db, "menu-avail-1")).toBe("Australia/Sydney");
+
+      // Omitting the zone leaves the stored one alone; null clears it (UTC).
+      const kept = await setMenuAvailabilityForUser(db, ownerA, "menu-avail-1", []);
+      expect(kept.timeZone).toBe("Australia/Sydney");
+      const cleared = await setMenuAvailabilityForUser(db, ownerA, "menu-avail-1", [], null);
+      expect(cleared.timeZone).toBeNull();
+    });
+
+    it("rejects a time zone the runtime does not recognise", async () => {
+      await createMenuForUser(db, ownerA, restaurantA, sampleDoc("menu-avail-4"));
+      await expect(
+        setMenuAvailabilityForUser(db, ownerA, "menu-avail-4", [], "Mars/Olympus")
+      ).rejects.toMatchObject({ code: "invalid" });
     });
 
     it("rejects invalid windows without touching the row", async () => {
@@ -185,6 +207,33 @@ describe("table landing repo", () => {
       await unpublishMenuForUser(db, ownerA, "menu-unpub-2");
       landing = await listOpenMenusForRestaurantSlug(db, "cafe-a", MON_NOON);
       expect(landing?.closedMenus).toEqual([]);
+    });
+
+    it("judges the windows in the restaurant's zone, not UTC", async () => {
+      await publishOpenMenu("menu-zone-1", "To Go Menu");
+      await setMenuAvailabilityForUser(
+        db,
+        ownerA,
+        "menu-zone-1",
+        [{ days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" }],
+        "Australia/Sydney"
+      );
+      await setRestaurantSlugForUser(db, ownerA, restaurantA, "cafe-a");
+      // Thursday 2026-10-22 10:41 UTC is 21:41 Thursday in Sydney: past 5pm,
+      // so the menu must not be listed even though 10:41 UTC is inside 9–5.
+      const evening = await listOpenMenusForRestaurantSlug(
+        db,
+        "cafe-a",
+        new Date("2026-10-22T10:41:00.000Z")
+      );
+      expect(evening?.menus).toEqual([]);
+      // The same windows are wide open at Sydney lunchtime (02:00 UTC = 13:00).
+      const lunchtime = await listOpenMenusForRestaurantSlug(
+        db,
+        "cafe-a",
+        new Date("2026-10-22T02:00:00.000Z")
+      );
+      expect(lunchtime?.menus.map((m) => m.menuId)).toEqual(["menu-zone-1"]);
     });
 
     it("stops listing a menu after it is unpublished", async () => {

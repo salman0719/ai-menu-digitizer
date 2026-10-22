@@ -111,6 +111,14 @@ export const restaurant = pgTable(
       .$defaultFn(() => crypto.randomUUID()),
     name: text("name").notNull(),
     slug: text("slug"),
+    /**
+     * IANA time zone the menus' opening windows are written in
+     * (`src/features/availability/schema.ts` stores wall-clock times).
+     * Captured from the owner's browser when opening times are saved and
+     * used to decide open/closed for diners; null means UTC (the fallback
+     * for restaurants that have never saved hours).
+     */
+    timeZone: text("time_zone"),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),

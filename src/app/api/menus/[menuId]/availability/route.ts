@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { menuAvailabilitySchema } from "@/features/availability/schema";
 import {
+  getRestaurantTimeZoneForMenu,
   setMenuAvailabilityForUser,
   TableRepoError,
 } from "@/features/tables/repo";
@@ -13,16 +14,23 @@ import { rejectCrossOrigin } from "@/lib/http/origin";
 
 /**
  * GET /api/menus/[menuId]/availability — the menu's opening windows
- *   (`{ availability: [] }` when unrestricted: always open).
+ *   (`{ availability: [] }` when unrestricted: always open) plus the
+ *   restaurant's time zone, the zone the wall-clock times are written in
+ *   (null = UTC).
  * PUT /api/menus/[menuId]/availability — replace the windows (owner-only).
- *   Body: `{ windows: [{ days, start, end }] }`.
+ *   Body: `{ windows: [{ days, start, end }], timeZone? }`; a `timeZone`
+ *   replaces the restaurant's zone after an IANA check, `null` clears it
+ *   (UTC), and omitting it leaves the stored zone untouched.
  *
  * Reading is open to any member of the restaurant; writes are owner-only.
  * Menus of other tenants are 404, never 403. Error shape is the shared
  * `{ error: { code, message } }`.
  */
 
-const putBodySchema = z.object({ windows: menuAvailabilitySchema });
+const putBodySchema = z.object({
+  windows: menuAvailabilitySchema,
+  timeZone: z.string().max(64).nullable().optional(),
+});
 
 function errorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
@@ -58,7 +66,8 @@ export async function GET(_request: Request, { params }: MenuParams) {
   try {
     // Membership-scoped read: other tenants' menus are not_found, never leaked.
     const menu = await getMenuForUser(getDb(), userId, menuId);
-    return noStore(NextResponse.json({ availability: menu.availability }));
+    const timeZone = await getRestaurantTimeZoneForMenu(getDb(), menuId);
+    return noStore(NextResponse.json({ availability: menu.availability, timeZone }));
   } catch (error) {
     if (error instanceof MenuRepoError) {
       if (error.code === "not_found") {
@@ -90,8 +99,14 @@ export async function PUT(request: Request, { params }: MenuParams) {
   }
 
   try {
-    const availability = await setMenuAvailabilityForUser(getDb(), userId, menuId, parsed.data.windows);
-    return noStore(NextResponse.json({ availability }));
+    const saved = await setMenuAvailabilityForUser(
+      getDb(),
+      userId,
+      menuId,
+      parsed.data.windows,
+      parsed.data.timeZone
+    );
+    return noStore(NextResponse.json(saved));
   } catch (error) {
     if (error instanceof TableRepoError) {
       switch (error.code) {

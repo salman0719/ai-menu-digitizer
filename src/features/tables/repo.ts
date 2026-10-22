@@ -18,6 +18,7 @@ import {
 import { menuSlugSchema } from "@/features/publishing/schema";
 import { isSlug, slugCandidates, slugifyMenuTitle } from "@/features/publishing/slug";
 import {
+  isTimeZone,
   menuAvailabilitySchema,
   type MenuAvailability,
 } from "@/features/availability/schema";
@@ -93,16 +94,37 @@ function parseAvailability(menuId: string, value: unknown): MenuAvailability {
   return parsed.data;
 }
 
-/** Owner-only: replace a menu's opening windows (empty = always open). */
+/** The zone a restaurant's opening windows are written in (null = UTC). */
+export async function getRestaurantTimeZoneForMenu(
+  db: TenancyDb,
+  menuId: string
+): Promise<string | null> {
+  const rows = await db
+    .select({ timeZone: restaurant.timeZone })
+    .from(menu)
+    .innerJoin(restaurant, eq(restaurant.id, menu.restaurantId))
+    .where(eq(menu.id, menuId));
+  return rows[0]?.timeZone ?? null;
+}
+
+/**
+ * Owner-only: replace a menu's opening windows (empty = always open), and
+ * optionally the zone those wall-clock times are written in. `timeZone`
+ * of `undefined` leaves the stored zone untouched, `null` clears it (the
+ * UTC fallback), and a string replaces it after an IANA check, so a
+ * client cannot poison the restaurant's hours.
+ */
 export async function setMenuAvailabilityForUser(
   db: TenancyDb,
   userId: string,
   menuId: string,
-  windows: unknown
-): Promise<MenuAvailability> {
+  windows: unknown,
+  timeZone?: string | null
+): Promise<{ availability: MenuAvailability; timeZone: string | null }> {
   const rows = await db
     .select({
       id: menu.id,
+      restaurantId: menu.restaurantId,
       role: restaurantMembership.role,
     })
     .from(menu)
@@ -120,11 +142,23 @@ export async function setMenuAvailabilityForUser(
       parsed.error.issues[0]?.message ?? "Those opening times are not valid."
     );
   }
+  if (timeZone !== undefined && timeZone !== null && !isTimeZone(timeZone)) {
+    throw new TableRepoError("invalid", "That time zone is not recognised.");
+  }
   // Availability lives outside `doc` and `updatedAt` on purpose: a time
   // change takes effect on the landing immediately, without republishing,
   // and never shows up as "unpublished changes".
   await db.update(menu).set({ availability: parsed.data }).where(eq(menu.id, menuId));
-  return parsed.data;
+  if (timeZone !== undefined) {
+    await db
+      .update(restaurant)
+      .set({ timeZone })
+      .where(eq(restaurant.id, row.restaurantId));
+  }
+  return {
+    availability: parsed.data,
+    timeZone: await getRestaurantTimeZoneForMenu(db, menuId),
+  };
 }
 
 /** Postgres unique-violation detection (Neon and PGlite both report 23505). */
@@ -284,10 +318,13 @@ export async function getRestaurantBySlug(
 /**
  * Public: the table landing for a restaurant slug — every *live* published
  * menu, split into those whose availability covers `now` (`menus`, the
- * orderable ones) and those it does not (`closedMenus`, display only).
- * Null when the slug names no restaurant (callers render a 404); a known
- * restaurant with nothing open returns empty lists so the page can say so
- * honestly.
+ * orderable ones) and those it does not (`closedMenus`, display only),
+ * judged in the restaurant's own zone (`restaurant.time_zone`, null = UTC)
+ * so "9 to 5" means the café's 9 to 5 rather than UTC's; the `timeZone`
+ * argument is only the fallback for a restaurant that has never saved
+ * hours. Null when the slug names no restaurant (callers render a 404);
+ * a known restaurant with nothing open returns empty lists so the page
+ * can say so honestly.
  */
 export async function listOpenMenusForRestaurantSlug(
   db: TenancyDb,
@@ -308,10 +345,12 @@ export async function listOpenMenusForRestaurantSlug(
       layout: menuRevision.layout,
       publishedAt: publishedMenu.publishedAt,
       availability: menu.availability,
+      timeZone: restaurant.timeZone,
     })
     .from(publishedMenu)
     .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
     .innerJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
     .where(
       and(
         eq(publishedMenu.restaurantId, found.id),
@@ -333,7 +372,9 @@ export async function listOpenMenusForRestaurantSlug(
       throw new Error(`published menu ${row.menuSlug} has an unknown theme or layout`);
     }
     const availability = parseAvailability(row.menuId, row.availability);
-    if (!isMenuOpenAt(availability, now, timeZone)) {
+    // Wall-clock windows only mean something in the restaurant's zone;
+    // a restaurant that has never saved hours keeps the UTC fallback.
+    if (!isMenuOpenAt(availability, now, row.timeZone ?? timeZone)) {
       // Still published, just not being served: the landing shows it as a
       // disabled menu with its opening times rather than hiding it.
       closedMenus.push({ menuId: row.menuId, title: row.title, availability });
