@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Table ordering from a public link (Step 10): `/m/<slug>/order?table=<label>`.
+ * Table ordering from a public link (Step 10):
+ * `/r/<restaurant>/m/<menu>/order?table=<label>`.
  *
  * The menu arrives from the server (the published snapshot), so this works on
  * a phone that has never opened the app. The diner sends only item ids,
@@ -32,13 +33,22 @@ import { formatTableLabel } from "@/features/orders/table-links";
 import { OrderMenuSection, OrderShell, formatOrderTotal } from "./order-menu";
 
 interface ServerTableOrderProps {
+  /** The café's public slug — the order is resolved inside it. */
+  restaurantSlug: string;
+  /** The menu's own address segment under that café. */
   slug: string;
   doc: MenuDocument;
   tableLabel: string;
   restaurantName: string;
 }
 
-export function ServerTableOrder({ slug, doc, tableLabel, restaurantName }: ServerTableOrderProps) {
+export function ServerTableOrder({
+  restaurantSlug,
+  slug,
+  doc,
+  tableLabel,
+  restaurantName,
+}: ServerTableOrderProps) {
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [note, setNote] = useState("");
   const [variantChoice, setVariantChoice] = useState<Record<string, string>>({});
@@ -78,6 +88,7 @@ export function ServerTableOrder({ slug, doc, tableLabel, restaurantName }: Serv
     setError(null);
     try {
       const order = await placeOrder({
+        restaurantSlug,
         slug,
         tableLabel,
         note: note.trim() ? note : null,

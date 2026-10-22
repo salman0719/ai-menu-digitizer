@@ -46,11 +46,13 @@ import {
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
 
+import { TableQrPanel } from "@/components/tables/table-qr-panel";
+
+import { AvailabilityPanel } from "./availability-panel";
 import { CommitInput } from "./fields";
 import { ItemEditor } from "./item-editor";
 import { MenuPreview } from "./menu-preview";
 import { PublishPanel, type PublishingControls } from "./publish-panel";
-import { TableQrPanel } from "./table-qr-panel";
 
 export interface SaveState {
   kind: "saved" | "saving" | "error";
@@ -87,6 +89,12 @@ interface MenuEditorProps {
    * modes, publishing) are hidden entirely, not just disabled.
    */
   canManage?: boolean;
+  /**
+   * True when this menu lives on the server. Table cards are restaurant-wide,
+   * so account menus print them from the Tables tab; only a browser-only menu
+   * keeps the in-editor QR mode (its codes really are per menu).
+   */
+  onServer?: boolean;
   /**
    * Publishing state and actions (Step 9). Absent when nothing can publish
    * in this context, in which case the preview simply omits the panel.
@@ -152,6 +160,7 @@ export function MenuEditor({
   saveState,
   syncMode,
   canManage = true,
+  onServer = false,
   imageUrl,
   onExportJson,
   onExportCsv,
@@ -390,7 +399,7 @@ export function MenuEditor({
     | { status: "added"; items: number; categories: number }
     | { status: "error"; message: string };
   const [addPages, setAddPages] = useState<AddPagesState>({ status: "idle" });
-  /** The hidden "Add pages" input in the menu toolbar; the header button reuses it. */
+  /** The hidden "Add pages" input, carried by the plus box beside the source image. */
   const addPagesInputRef = useRef<HTMLInputElement>(null);
 
   async function handleAddPages(files: File[]) {
@@ -469,7 +478,7 @@ export function MenuEditor({
       <span className="flex-1" />
       {!canManage ? (
         <>
-          {mode !== "qr" && (
+          {!onServer && mode !== "qr" && (
             <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
               Table QR
             </button>
@@ -482,20 +491,14 @@ export function MenuEditor({
         </>
       ) : mode === "edit" ? (
         <>
-          <button
-            type="button"
-            onClick={() => addPagesInputRef.current?.click()}
-            disabled={addPages.status === "working"}
-            className={smallButton}
-          >
-            {addPages.status === "working" ? "Reading pages…" : "+ Add pages"}
-          </button>
           <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
             ↕ Reorder
           </button>
-          <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
-            Table QR
-          </button>
+          {!onServer && (
+            <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
+              Table QR
+            </button>
+          )}
           <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
             Preview menu
           </button>
@@ -513,10 +516,17 @@ export function MenuEditor({
       <div className="flex flex-col gap-4">
         {headerRow}
         <TableQrPanel
+          context="menu"
           doc={doc}
           // Only a live publication can serve a stranger's phone; an
           // unpublished menu keeps the browser-scoped Phase 1 codes.
+          publicRestaurantSlug={
+            publishing?.status?.isLive ? publishing.status.restaurantSlug : null
+          }
           publicSlug={publishing?.status?.isLive ? publishing.status.slug : null}
+          menuId={doc.id}
+          syncMode={syncMode}
+          canManage={canManage}
         />
       </div>
     );
@@ -750,51 +760,114 @@ export function MenuEditor({
   return (
     <div className="flex flex-col gap-4">
       {headerRow}
-      <div className="rounded-2xl border border-stone-200 bg-white p-5">
-        <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-          <CommitInput
-            label="Menu title"
-            value={doc.title}
-            onCommit={(title) => onChange({ ...doc, title: title.trim() })}
-          />
-          <CommitInput
-            label="Currency"
-            value={doc.currency ?? ""}
-            validate={() => null}
-            placeholder="e.g. USD"
-            onCommit={(currency) =>
-              onChange({ ...doc, currency: currency.trim() ? currency.trim() : null })
-            }
-          />
-        </div>
-        {sourceLabel &&
-          (doc.source?.provider === "demo" ? (
-            <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
-              Demo data
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-stone-500">
-              {sourceLabel}
-              {doc.source?.originalFileName && (
-                <span className="text-stone-400"> · {doc.source.originalFileName}</span>
-              )}
-            </p>
-          ))}
-        {imageUrl && (
-          <div className="mt-3">
-            <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>
-            <img
-              src={imageUrl}
-              alt="Original uploaded menu"
-              className="max-h-28 w-auto rounded-lg border border-stone-200 object-contain"
+      {/* The public link panel now lives in Preview only, so the edit screen
+          stays compact and food items show sooner. Kept below (commented out)
+          in case it needs to come back. */}
+      <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs leading-5 text-stone-600">
+        Once your menu is set,{" "}
+        <button
+          type="button"
+          onClick={() => changeMode("preview")}
+          className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+        >
+          go to Preview
+        </button>{" "}
+        to publish it and get your public link.
+      </p>
+      {/*
+      {publishing && canManage && (
+        <PublishPanel
+          signedIn={syncMode === "account"}
+          themeId={previewThemeId}
+          layout={previewLayout}
+          controls={publishing}
+          onOpenPreview={() => changeMode("preview")}
+        />
+      )}
+      */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-stone-200 bg-white p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+            <CommitInput
+              label="Menu title"
+              value={doc.title}
+              onCommit={(title) => onChange({ ...doc, title: title.trim() })}
+            />
+            <CommitInput
+              label="Currency"
+              value={doc.currency ?? ""}
+              validate={() => null}
+              placeholder="e.g. USD"
+              onCommit={(currency) =>
+                onChange({ ...doc, currency: currency.trim() ? currency.trim() : null })
+              }
             />
           </div>
-        )}
-        {reviewCount > 0 && (
-          <p className="mt-2 text-xs font-medium text-amber-800">
-            {reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review.
-          </p>
-        )}
+          {sourceLabel &&
+            (doc.source?.provider === "demo" ? (
+              <p className="mt-2 inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
+                Demo data
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-stone-500">
+                {sourceLabel}
+                {doc.source?.originalFileName && (
+                  <span className="text-stone-400"> · {doc.source.originalFileName}</span>
+                )}
+              </p>
+            ))}
+          {(imageUrl || canManage) && (
+            <div className="mt-3">
+              {imageUrl && <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>}
+              <div className="flex items-stretch gap-3">
+                {imageUrl && (
+                  <img
+                    src={imageUrl}
+                    alt="Original uploaded menu"
+                    className="max-h-28 w-auto self-center rounded-lg border border-stone-200 object-contain"
+                  />
+                )}
+                {canManage && (
+                  <label
+                    className={`flex min-w-36 flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-4 py-2 text-center transition-colors hover:border-amber-700 hover:bg-amber-50 focus-within:border-amber-700 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber-700 ${addPages.status === "working" ? "pointer-events-none opacity-60" : ""}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="text-xl leading-none font-bold text-stone-500"
+                    >
+                      +
+                    </span>
+                    <span className="text-xs font-semibold text-stone-700">
+                      {addPages.status === "working" ? "Reading pages…" : "Add pages"}
+                    </span>
+                    <span className="text-[11px] leading-4 text-stone-500">
+                      Photograph more pages of this menu to add their items
+                    </span>
+                    <input
+                      ref={addPagesInputRef}
+                      type="file"
+                      multiple
+                      accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
+                      className="sr-only"
+                      disabled={addPages.status === "working"}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (files.length > 0) void handleAddPages(files);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+          {reviewCount > 0 && (
+            <p className="mt-2 text-xs font-medium text-amber-800">
+              {reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review.
+            </p>
+          )}
+        </div>
+        <AvailabilityPanel key={doc.id} menuId={doc.id} syncMode={syncMode} canManage={canManage} />
       </div>
       {duplicateGroups.length > 0 && (
         <section
@@ -1099,22 +1172,6 @@ export function MenuEditor({
               const file = event.target.files?.[0];
               if (file) onImportFile(file);
               event.target.value = "";
-            }}
-          />
-        </label>
-        <label className={`${smallButton} cursor-pointer`}>
-          {addPages.status === "working" ? "Reading pages…" : "Add pages"}
-          <input
-            ref={addPagesInputRef}
-            type="file"
-            multiple
-            accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
-            className="sr-only"
-            disabled={addPages.status === "working"}
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              event.target.value = "";
-              if (files.length > 0) void handleAddPages(files);
             }}
           />
         </label>

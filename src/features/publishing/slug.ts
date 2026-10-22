@@ -8,7 +8,9 @@ import { MENU_SLUG_PATTERN, SLUG_MAX_LENGTH } from "./schema";
  * falls back to "menu" when a title has no usable characters (e.g. "🍜").
  *
  * Collisions are resolved by suffixing "-2", "-3", … — the owner can always
- * change the address afterwards, and the first free candidate wins.
+ * change the address afterwards, and the first free candidate wins. Uniqueness
+ * is per restaurant: two cafés publishing the same title get the same base
+ * slug, each under its own `/r/<slug>` address.
  */
 
 /** Characters that NFKD leaves behind as combining marks. */

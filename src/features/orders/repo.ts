@@ -1,13 +1,20 @@
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import {
+  menu as menuTable,
   order as orderTable,
   orderLine as orderLineTable,
   orderRateLimit,
   restaurantMembership,
 } from "@/lib/db/schema";
+import { menuAvailabilitySchema } from "@/features/availability/schema";
+import { isMenuOpenAt } from "@/features/availability/open-at";
 import type { TenancyDb } from "@/features/tenancy/repo";
-import { getPublishedMenuBySlug } from "@/features/publishing/repo";
+import {
+  getPublishedMenuByPath,
+  type PublishedMenuPage,
+} from "@/features/publishing/repo";
+import { getRestaurantBySlug } from "@/features/tables/repo";
 import { menuDocumentSchema, type MenuDocument, type MenuItem } from "@/features/menu/schema";
 
 import {
@@ -74,9 +81,24 @@ export interface OrderLineRequest {
 export interface PlaceOrderInput {
   /** Public menu slug the diner ordered from. */
   slug: string;
+  /** The café's public slug — the menu is resolved inside it. */
+  restaurantSlug: string;
   tableLabel: string;
   note?: string | null;
   lines: OrderLineRequest[];
+}
+
+export interface TableOrderLineRequest extends OrderLineRequest {
+  /** Public slug of the menu this line comes from. */
+  menuSlug: string;
+}
+
+export interface PlaceTableOrderInput {
+  /** Public restaurant slug from the table QR (`/r/<slug>/t/<table>`). */
+  restaurantSlug: string;
+  tableLabel: string;
+  note?: string | null;
+  lines: TableOrderLineRequest[];
 }
 
 export interface StaffOrderQuery {
@@ -109,6 +131,8 @@ function toOrder(row: OrderRow, lines: OrderLineRow[]): Order {
       variantName: line.variantName,
       unitPrice: line.unitPriceCents === null ? null : line.unitPriceCents / 100,
       quantity: line.quantity,
+      menuId: line.menuId,
+      menuTitle: line.menuTitle,
     })),
     status: row.status,
     createdAt: iso(row.createdAt),
@@ -150,6 +174,96 @@ function collectItems(doc: MenuDocument): Map<string, MenuItem> {
   return items;
 }
 
+/** Shared envelope checks: table label, note length, line-count caps. */
+function validateOrderEnvelope(
+  tableLabel: string,
+  note: string | null | undefined,
+  lineCount: number
+): { tableLabel: string; note: string | null } {
+  const label = normalizeTableLabel(tableLabel);
+  if (!label) {
+    throw new OrderRepoError("invalid", "A table label is required.");
+  }
+  const trimmed = note?.trim() ? note.trim() : null;
+  if (trimmed && trimmed.length > MAX_ORDER_NOTE_LENGTH) {
+    throw new OrderRepoError(
+      "invalid",
+      `Keep the note to ${MAX_ORDER_NOTE_LENGTH} characters or fewer.`
+    );
+  }
+  if (lineCount === 0) {
+    throw new OrderRepoError("invalid", "An order needs at least one line.");
+  }
+  if (lineCount > MAX_ORDER_LINES) {
+    throw new OrderRepoError("invalid", `An order can have at most ${MAX_ORDER_LINES} lines.`);
+  }
+  return { tableLabel: label, note: trimmed };
+}
+
+interface ResolvedLine {
+  menuItemId: string;
+  name: string;
+  variantName: string | null;
+  unitPriceCents: number | null;
+  quantity: number;
+}
+
+/** Resolve one client line against a published snapshot (never trust names/prices). */
+function resolveOrderLine(items: Map<string, MenuItem>, request: OrderLineRequest): ResolvedLine {
+  if (!Number.isInteger(request.quantity) || request.quantity < 1) {
+    throw new OrderRepoError("invalid", "Every line needs a whole quantity of at least 1.");
+  }
+  if (request.quantity > MAX_LINE_QUANTITY) {
+    throw new OrderRepoError(
+      "invalid",
+      `A single line is limited to ${MAX_LINE_QUANTITY} items.`
+    );
+  }
+  const item = items.get(request.menuItemId);
+  if (!item) {
+    throw new OrderRepoError("unknown_item", "That item is not on the published menu.");
+  }
+  if (item.available === false) {
+    throw new OrderRepoError("item_unavailable", `“${item.name}” is sold out.`);
+  }
+
+  const variantName = request.variantName?.trim() || null;
+  if (item.variants.length > 0) {
+    if (!variantName || !item.variants.some((variant) => variant.name === variantName)) {
+      throw new OrderRepoError("invalid", `Choose a size for “${item.name}”.`);
+    }
+  } else if (variantName !== null) {
+    throw new OrderRepoError("invalid", `“${item.name}” has no sizes to choose from.`);
+  }
+  const variant = variantName
+    ? item.variants.find((candidate) => candidate.name === variantName) ?? null
+    : null;
+  const price = variant ? variant.price : item.price;
+
+  return {
+    menuItemId: item.id,
+    name: item.name,
+    variantName,
+    unitPriceCents: price === null ? null : Math.round(price * 100),
+    quantity: request.quantity,
+  };
+}
+
+/** Refuse orders for a menu whose time windows do not cover `now`. */
+async function assertMenuOpen(db: TenancyDb, menuId: string, now: Date): Promise<void> {
+  const rows = await db
+    .select({ availability: menuTable.availability })
+    .from(menuTable)
+    .where(eq(menuTable.id, menuId));
+  const availability = menuAvailabilitySchema.safeParse(rows[0]?.availability ?? []);
+  if (!availability.success) {
+    throw new Error(`stored menu ${menuId} has invalid availability`);
+  }
+  if (!isMenuOpenAt(availability.data, now)) {
+    throw new OrderRepoError("menu_not_live", "That menu is not being served right now.");
+  }
+}
+
 /**
  * Place an order from a public table link. Anonymous by design — the diner
  * never signs in, and nothing about them is stored.
@@ -162,71 +276,21 @@ export async function placeOrderFromSlug(
   db: TenancyDb,
   input: PlaceOrderInput
 ): Promise<Order> {
-  const page = await getPublishedMenuBySlug(db, input.slug);
+  const page = await getPublishedMenuByPath(db, input.restaurantSlug, input.slug);
   if (!page) {
     throw new OrderRepoError("menu_not_live", "This menu is not published.");
   }
-
-  const tableLabel = normalizeTableLabel(input.tableLabel);
-  if (!tableLabel) {
-    throw new OrderRepoError("invalid", "A table label is required.");
-  }
-  const note = input.note?.trim() ? input.note.trim() : null;
-  if (note && note.length > MAX_ORDER_NOTE_LENGTH) {
-    throw new OrderRepoError(
-      "invalid",
-      `Keep the note to ${MAX_ORDER_NOTE_LENGTH} characters or fewer.`
-    );
-  }
-  if (input.lines.length === 0) {
-    throw new OrderRepoError("invalid", "An order needs at least one line.");
-  }
-  if (input.lines.length > MAX_ORDER_LINES) {
-    throw new OrderRepoError("invalid", `An order can have at most ${MAX_ORDER_LINES} lines.`);
-  }
+  const { tableLabel, note } = validateOrderEnvelope(input.tableLabel, input.note, input.lines.length);
+  await assertMenuOpen(db, page.menuId, new Date());
 
   const doc = menuDocumentSchema.parse(page.doc);
   const items = collectItems(doc);
 
-  const lines = input.lines.map((request) => {
-    if (!Number.isInteger(request.quantity) || request.quantity < 1) {
-      throw new OrderRepoError("invalid", "Every line needs a whole quantity of at least 1.");
-    }
-    if (request.quantity > MAX_LINE_QUANTITY) {
-      throw new OrderRepoError(
-        "invalid",
-        `A single line is limited to ${MAX_LINE_QUANTITY} items.`
-      );
-    }
-    const item = items.get(request.menuItemId);
-    if (!item) {
-      throw new OrderRepoError("unknown_item", "That item is not on the published menu.");
-    }
-    if (item.available === false) {
-      throw new OrderRepoError("item_unavailable", `“${item.name}” is sold out.`);
-    }
-
-    const variantName = request.variantName?.trim() || null;
-    if (item.variants.length > 0) {
-      if (!variantName || !item.variants.some((variant) => variant.name === variantName)) {
-        throw new OrderRepoError("invalid", `Choose a size for “${item.name}”.`);
-      }
-    } else if (variantName !== null) {
-      throw new OrderRepoError("invalid", `“${item.name}” has no sizes to choose from.`);
-    }
-    const variant = variantName
-      ? item.variants.find((candidate) => candidate.name === variantName) ?? null
-      : null;
-    const price = variant ? variant.price : item.price;
-
-    return {
-      menuItemId: item.id,
-      name: item.name,
-      variantName,
-      unitPriceCents: price === null ? null : Math.round(price * 100),
-      quantity: request.quantity,
-    };
-  });
+  const lines = input.lines.map((request) => ({
+    ...resolveOrderLine(items, request),
+    menuId: page.menuId,
+    menuTitle: doc.title,
+  }));
 
   const totalCents = lines.some((line) => line.unitPriceCents === null)
     ? null
@@ -265,6 +329,116 @@ export async function placeOrderFromSlug(
     throw error;
   }
 }
+
+/**
+ * Place one combined order across several menus from a table QR
+ * (`/r/<restaurant>/t/<table>`). Each line names its menu, and the server
+ * resolves every line against that menu's own published snapshot — a diner
+ * still sends ids, variants, and quantities only.
+ *
+ * Every menu must be live, belong to the same restaurant the QR names, and
+ * be open right now; otherwise the whole order is refused (no partial
+ * ticket). The order row carries no single menu id — each line remembers
+ * its own — and the display title joins the distinct menu titles.
+ */
+export async function placeTableOrder(
+  db: TenancyDb,
+  input: PlaceTableOrderInput
+): Promise<Order> {
+  const { tableLabel, note } = validateOrderEnvelope(
+    input.tableLabel,
+    input.note,
+    input.lines.length
+  );
+  const restaurant = await getRestaurantBySlug(db, input.restaurantSlug);
+  if (!restaurant) {
+    throw new OrderRepoError("menu_not_live", "This restaurant link is not live.");
+  }
+
+  const now = new Date();
+  const pages = new Map<string, PublishedMenuPage>();
+  for (const request of input.lines) {
+    if (!pages.has(request.menuSlug)) {
+      // Resolved inside this restaurant only: a menu slug that names
+      // another café's menu answers exactly like an unpublished one, so the
+      // slug gives away nothing about other tenants.
+      const page = await getPublishedMenuByPath(db, input.restaurantSlug, request.menuSlug);
+      if (!page) {
+        throw new OrderRepoError("menu_not_live", "One of these menus is no longer published.");
+      }
+      pages.set(request.menuSlug, page);
+    }
+  }
+  for (const page of pages.values()) {
+    await assertMenuOpen(db, page.menuId, now);
+  }
+
+  const snapshots = new Map<string, { items: Map<string, MenuItem>; title: string }>();
+  for (const page of pages.values()) {
+    const doc = menuDocumentSchema.parse(page.doc);
+    snapshots.set(page.menuId, { items: collectItems(doc), title: doc.title });
+  }
+
+  const lines = input.lines.map((request) => {
+    const page = pages.get(request.menuSlug);
+    if (!page) throw new Error(`unresolved menu slug ${request.menuSlug}`);
+    const snapshot = snapshots.get(page.menuId);
+    if (!snapshot) throw new Error(`unresolved menu ${page.menuId}`);
+    return {
+      ...resolveOrderLine(snapshot.items, request),
+      menuId: page.menuId,
+      menuTitle: snapshot.title,
+    };
+  });
+
+  const totalCents = lines.some((line) => line.unitPriceCents === null)
+    ? null
+    : lines.reduce((sum, line) => sum + (line.unitPriceCents ?? 0) * line.quantity, 0);
+
+  const titles: string[] = [];
+  for (const page of pages.values()) {
+    const title = snapshots.get(page.menuId)?.title ?? "";
+    if (title && !titles.includes(title)) titles.push(title);
+  }
+
+  const inserted = await db
+    .insert(orderTable)
+    .values({
+      restaurantId: restaurant.id,
+      menuId: null,
+      menuTitle: titles.length > 0 ? titles.join(" + ") : restaurant.name,
+      tableLabel,
+      currency: orderCurrency([...pages.values()].map((page) => page.doc)),
+      note,
+      status: "new",
+      totalCents,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+
+  const row = inserted[0];
+  if (!row) throw new Error("order creation did not produce a row");
+
+  try {
+    const insertedLines = await db
+      .insert(orderLineTable)
+      .values(lines.map((line) => ({ ...line, orderId: row.id })))
+      .returning();
+    return toOrder(row, insertedLines);
+  } catch (error) {
+    await db.delete(orderTable).where(eq(orderTable.id, row.id)).catch(() => undefined);
+    throw error;
+  }
+}
+
+/** One currency for the ticket when every menu agrees, else null (honest). */
+function orderCurrency(docs: MenuDocument[]): string | null {
+  const distinct = new Set(docs.map((doc) => doc.currency));
+  if (distinct.size !== 1) return null;
+  return docs[0]?.currency ?? null;
+}
+
 
 /**
  * Board query (owner or staff). Without `since` it returns the newest orders;

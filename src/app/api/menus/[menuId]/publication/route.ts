@@ -18,7 +18,9 @@ import { rejectCrossOrigin } from "@/lib/http/origin";
  * POST   /api/menus/[menuId]/publication — publish the current document, or
  *   publish changes: stores a revision snapshot and points the live page at
  *   it. Body: `{ theme, layout, slug? }`. Optional `slug` names the link on
- *   first publish (409 `slug_taken` if used) or renames it afterwards.
+ *   first publish (409 `slug_taken` if another menu at the same restaurant
+ *   already uses it — slugs are scoped per café, not global) or renames it
+ *   afterwards.
  * PATCH  /api/menus/[menuId]/publication — change only the address.
  * DELETE /api/menus/[menuId]/publication — stop serving; the slug stays
  *   reserved for this menu (republishing reuses it).

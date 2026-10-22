@@ -76,7 +76,7 @@ export function launchSteps(snapshot: LaunchSnapshot): LaunchStep[] {
     {
       id: "cards",
       title: "Print the table cards",
-      guidance: "Open Table QR in the editor and print one card per table.",
+      guidance: "Open the Tables tab and print one card per table; each card covers every open menu.",
       done: false,
       manual: true,
       detail: "Tick this on the device you printed from — we can't see your printer",
@@ -87,7 +87,7 @@ export function launchSteps(snapshot: LaunchSnapshot): LaunchStep[] {
       guidance: "Publishing gives you a public link and a QR code anyone can scan.",
       done: published,
       manual: false,
-      detail: snapshot.liveSlug ? `Live at /m/${snapshot.liveSlug}` : "Not published yet",
+      detail: snapshot.livePath ? `Live at ${snapshot.livePath}` : "Not published yet",
     },
     {
       id: "order",

@@ -84,16 +84,40 @@ export function tableOrderUrl(origin: string, menuId: string, tableLabel: string
 }
 
 /**
- * Server-backed table link (Step 10): the published menu's own address, so a
- * QR code works on any phone instead of only the browser holding the menu.
+ * Multi-menu table landing (Steps 1–2): one QR per table resolves to the
+ * restaurant, and the diner sees every currently-open menu there. The table
+ * label is path-encoded so names like "Patio 2" survive the QR payload.
  */
-export function publicTableOrderPath(slug: string, tableLabel: string): string {
-  const params = new URLSearchParams({ table: tableLabel });
-  return `/m/${encodeURIComponent(slug)}/order?${params.toString()}`;
+export function restaurantTablePath(restaurantSlug: string, tableLabel: string): string {
+  return `/r/${restaurantSlug}/t/${encodeURIComponent(tableLabel)}`;
 }
 
-export function publicTableOrderUrl(origin: string, slug: string, tableLabel: string): string {
-  return `${origin.replace(/\/+$/, "")}${publicTableOrderPath(slug, tableLabel)}`;
+export function restaurantTableUrl(origin: string, restaurantSlug: string, tableLabel: string): string {
+  return `${origin.replace(/\/+$/, "")}${restaurantTablePath(restaurantSlug, tableLabel)}`;
+}
+
+/**
+ * Server-backed table link (Step 10): the published menu's own address, so a
+ * QR code works on any phone instead of only the browser holding the menu.
+ * The address is scoped to the café (`/r/<restaurant>/m/<menu>`), the same
+ * shape the publish panel shares.
+ */
+export function publicTableOrderPath(
+  restaurantSlug: string,
+  menuSlug: string,
+  tableLabel: string
+): string {
+  const params = new URLSearchParams({ table: tableLabel });
+  return `/r/${encodeURIComponent(restaurantSlug)}/m/${encodeURIComponent(menuSlug)}/order?${params.toString()}`;
+}
+
+export function publicTableOrderUrl(
+  origin: string,
+  restaurantSlug: string,
+  menuSlug: string,
+  tableLabel: string
+): string {
+  return `${origin.replace(/\/+$/, "")}${publicTableOrderPath(restaurantSlug, menuSlug, tableLabel)}`;
 }
 
 /** Read `menu`/`table` from a query object or URLSearchParams. */

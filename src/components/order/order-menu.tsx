@@ -1,8 +1,9 @@
 /**
  * Shared diner-facing pieces of the table ordering screen: the page frame,
  * the add-to-order menu list, and total formatting. Used by both the local
- * (`/order`, IndexedDB) and server (`/m/<slug>/order`, published snapshot)
- * flows so a diner sees the same menu whichever path the café uses.
+ * (`/order`, IndexedDB) and server (`/r/<restaurant>/m/<menu>/order`,
+ * published snapshot) flows so a diner sees the same menu whichever path
+ * the café uses.
  *
  * Deliberately free of editing chrome and of any storage import: the server
  * page must not pull IndexedDB code into its bundle just to render a menu.

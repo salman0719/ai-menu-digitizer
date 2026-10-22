@@ -75,6 +75,7 @@ function orderRequest(
 }
 
 const validBody = {
+  restaurantSlug: "cafe-api",
   slug: "cafe-api-orders",
   tableLabel: "4",
   note: "Allergy: nuts",
@@ -145,7 +146,9 @@ describe("POST /api/orders", () => {
   });
 
   it("refuses an unpublished menu and unknown items", async () => {
-    const missing = await placeOrderRoute(orderRequest(bodyWithLine({ slug: "not-live" })));
+    const missing = await placeOrderRoute(
+      orderRequest(bodyWithLine({ slug: "not-live" }))
+    );
     expect(missing.status).toBe(404);
     expect((await missing.json()).error.code).toBe("menu_not_live");
 
@@ -154,6 +157,61 @@ describe("POST /api/orders", () => {
     );
     expect(unknown.status).toBe(409);
     expect((await unknown.json()).error.code).toBe("unknown_item");
+  });
+
+  it("refuses a single-menu order that omits the café", async () => {
+    holder.userId = null;
+    const { slug, tableLabel, note } = validBody;
+    const res = await placeOrderRoute(
+      orderRequest({ slug, tableLabel, note, lines: [sampleLine()] })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("prices an order from the café in the link when two cafés share a slug", async () => {
+    // A second restaurant publishes a menu with the identical title, so both
+    // cafés hold the slug "cafe-api-orders" under their own address.
+    const dosRestaurantId = (await createRestaurant(holder.db!, ownerId, "Café Dos")).id;
+    const dosDoc = menuDocumentSchema.parse({
+      ...createSampleMenuDocument(),
+      id: "menu-api-dos",
+      title: "Café API — Orders",
+      currency: "USD",
+    });
+    await createMenuForUser(holder.db!, ownerId, dosRestaurantId, dosDoc);
+    const published = await publishMenuForUser(holder.db!, ownerId, "menu-api-dos", {
+      theme: "classic",
+      layout: "list",
+    });
+    expect(published.slug).toBe("cafe-api-orders");
+    expect(published.restaurantSlug).toBe("cafe-dos");
+
+    const dosItem = dosDoc.categories
+      .flatMap((category) => category.items)
+      .find((candidate) => candidate.available !== false)!;
+    holder.userId = null;
+    const res = await placeOrderRoute(
+      orderRequest({
+        restaurantSlug: "cafe-dos",
+        slug: "cafe-api-orders",
+        tableLabel: "4",
+        note: null,
+        lines: [
+          {
+            menuItemId: dosItem.id,
+            ...(dosItem.variants.length > 0 ? { variantName: dosItem.variants[0].name } : {}),
+            quantity: 1,
+          },
+        ],
+      })
+    );
+    expect(res.status).toBe(201);
+    // The order lands on the café the diner's link names — never the one
+    // that happened to publish the slug first.
+    const rows = await holder.db!
+      .select({ restaurantId: orderTable.restaurantId })
+      .from(orderTable);
+    expect(rows[0].restaurantId).toBe(dosRestaurantId);
   });
 
   it("silently refuses the honeypot and never stores an order", async () => {
@@ -263,6 +321,92 @@ describe("GET /api/orders", () => {
     holder.userId = staffId;
     const staffBoard = await (await getOrders(new Request("http://test.local/api/orders"))).json();
     expect(staffBoard.orders).toHaveLength(1);
+  });
+});
+
+describe("POST /api/orders from a table QR", () => {
+  const barMenuId = "menu-api-bar";
+
+  async function setupTableMenus() {
+    const { setRestaurantSlugForUser } = await import("@/features/tables/repo");
+    await setRestaurantSlugForUser(holder.db!, ownerId, restaurantId, "cafe-api");
+    const barDoc = menuDocumentSchema.parse({
+      ...createSampleMenuDocument(),
+      id: barMenuId,
+      title: "Caf\u00e9 API Bar",
+      currency: "USD",
+    });
+    await createMenuForUser(holder.db!, ownerId, restaurantId, barDoc);
+    await publishMenuForUser(holder.db!, ownerId, barMenuId, { theme: "bistro", layout: "list" });
+    const barItem = barDoc.categories
+      .flatMap((category) => category.items)
+      .find((candidate) => candidate.available !== false)!;
+    return {
+      barItem: {
+        menuItemId: barItem.id,
+        ...(barItem.variants.length > 0 ? { variantName: barItem.variants[0].name } : {}),
+        quantity: 2,
+        menuSlug: "cafe-api-bar",
+      },
+    };
+  }
+
+  function tableBody(lines: unknown[]) {
+    return { restaurantSlug: "cafe-api", tableLabel: "3", note: null, lines };
+  }
+
+  it("places one combined ticket across two menus", async () => {
+    const { barItem } = await setupTableMenus();
+    const res = await placeOrderRoute(
+      orderRequest(
+        tableBody([{ ...sampleLine(), menuSlug: "cafe-api-orders" }, barItem])
+      )
+    );
+    expect(res.status).toBe(201);
+    const { order } = await res.json();
+    expect(order.menuId).toBeNull();
+    expect(order.tableLabel).toBe("3");
+    expect(order.lines).toHaveLength(2);
+    expect(order.lines.map((line: { menuTitle: string }) => line.menuTitle).sort()).toEqual([
+      "Caf\u00e9 API Bar",
+      "Caf\u00e9 API \u2014 Orders",
+    ]);
+  });
+
+  it("refuses mixed or half-table bodies", async () => {
+    await setupTableMenus();
+    const line = { ...sampleLine(), menuSlug: "cafe-api-orders" };
+    const both = await placeOrderRoute(
+      orderRequest({ ...tableBody([line]), slug: "cafe-api-orders" })
+    );
+    expect(both.status).toBe(400);
+
+    const missingMenu = await placeOrderRoute(orderRequest(tableBody([sampleLine()])));
+    expect(missingMenu.status).toBe(400);
+    expect((await missingMenu.json()).error.code).toBe("invalid_body");
+
+    const strayMenu = await placeOrderRoute(
+      orderRequest(bodyWithLine({ lines: [line] }))
+    );
+    expect(strayMenu.status).toBe(400);
+
+    const neither = await placeOrderRoute(
+      orderRequest({ tableLabel: "3", lines: [sampleLine()] })
+    );
+    expect(neither.status).toBe(400);
+  });
+
+  it("answers 404 for an unknown restaurant link", async () => {
+    const res = await placeOrderRoute(
+      orderRequest({
+        restaurantSlug: "no-such-cafe",
+        tableLabel: "3",
+        note: null,
+        lines: [{ ...sampleLine(), menuSlug: "cafe-api-orders" }],
+      })
+    );
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe("menu_not_live");
   });
 });
 

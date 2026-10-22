@@ -27,10 +27,22 @@ const errorEnvelope = z.object({
 });
 
 export interface PlaceOrderRequest {
-  slug: string;
+  /** Single-menu path: the menu's own address segment. Omit on the table path. */
+  slug?: string;
+  /**
+   * The restaurant's public slug. Required on both paths: alongside `slug`
+   * on the single-menu path so the server resolves the menu inside that
+   * café, and on its own on the table path (where every line names its menu).
+   */
+  restaurantSlug: string;
   tableLabel: string;
   note: string | null;
-  lines: { menuItemId: string; variantName: string | null; quantity: number }[];
+  lines: {
+    menuSlug?: string;
+    menuItemId: string;
+    variantName: string | null;
+    quantity: number;
+  }[];
   /** Honeypot — always empty for a human; the server refuses filled values. */
   website: string;
 }

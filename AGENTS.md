@@ -83,6 +83,11 @@ errors, or add lint/type suppressions just to make checks pass.
 - `src/app/api/extract-menu/` — API route (Agent C owns)
 - `src/components/menu-editor/`, `src/features/menu/indexeddb.ts`,
   `storage.ts`, `import-export.ts` — editor + persistence (Agent D owns)
+- `src/components/tables/restaurant-tables.tsx` — the signed-in Tables tab:
+  restaurant picker for owners and staff; one QR per table, scoped to the
+  restaurant (`/r/<slug>/t/<label>`), never to one menu.
+  `table-qr-panel.tsx` is shared with the menu editor, where it survives only
+  as the browser-only menu fallback.
 - `src/components/upload/`, layout — shell + upload (Agent B owns)
 - `tests/` — schema, utils, import-export, route tests
 - `src/lib/db/`, `drizzle/` — Drizzle schema + lazy Neon client; generated
@@ -113,14 +118,17 @@ errors, or add lint/type suppressions just to make checks pass.
   `tests/menus-sync.test.ts`, `tests/move-to-account.test.ts` — Step 8
   (PGlite + stubbed fetch; conflict, tenancy, import fidelity)
 - `src/features/publishing/` — Step 9 publish: `schema.ts` (slug rules +
-  publication status), `slug.ts` (deterministic slug generation and
-  collision candidates), `repo.ts` (snapshot revisions, publish/unpublish,
-  slug changes, public read path, view counter), `client.ts` (typed browser
-  client). Routes: `src/app/api/menus/[menuId]/publication/` and
-  `src/app/api/m/[slug]/view/`. Public page `src/app/m/[slug]/page.tsx`
-  (partial prerender; snapshot only) + `not-found.tsx`; editor UI
-  `src/components/menu-editor/publish-panel.tsx`, view beacon
-  `view-counter.tsx`. Tests: `tests/publishing-slug.test.ts`,
+  publication status + `publicationPath`), `slug.ts` (deterministic slug
+  generation and collision candidates), `repo.ts` (snapshot revisions,
+  publish/unpublish, slug changes, scoped public read path, view counter),
+  `client.ts` (typed browser client). Menu slugs are unique per restaurant
+  (`published_menu_restaurant_slug_unique`), never globally: the canonical
+  address is `/r/<restaurant>/m/<menu>` and two cafés may both hold `lunch`.
+  Routes: `src/app/api/menus/[menuId]/publication/`,
+  `src/app/api/r/[restaurantSlug]/m/[menuSlug]/view/`, public page
+  `src/app/r/[restaurantSlug]/m/[menuSlug]/page.tsx` (partial prerender;
+  snapshot only). Editor UI `src/components/menu-editor/publish-panel.tsx`,
+  view beacon `view-counter.tsx`. Tests: `tests/publishing-slug.test.ts`,
   `tests/publishing-repo.test.ts`, `tests/publishing-api.test.ts`.
   Invariant: the public page renders `menu_revision`, never `menu.doc`, so
   edits stay private until "Publish changes".
@@ -131,7 +139,8 @@ errors, or add lint/type suppressions just to make checks pass.
   `storage.ts` + `table-links.ts` (Phase 1 local queue + link helpers).
   Routes: `src/app/api/orders/` (public POST, staff GET) and
   `src/app/api/orders/[orderId]/` (PATCH). Diner page
-  `src/app/m/[slug]/order/page.tsx` (snapshot only, noindex) with
+  `src/app/r/[restaurantSlug]/m/[menuSlug]/order/page.tsx` (snapshot only,
+  noindex) with
   `src/components/order/` (`order-menu.tsx` shared UI, `server-table-order.tsx`,
   `table-order.tsx` for local mode); staff board
   `src/components/orders/server-orders-board.tsx` (5 s polling with backoff

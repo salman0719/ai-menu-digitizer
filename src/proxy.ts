@@ -3,18 +3,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sanitizeRequestId } from "@/lib/observability/log";
 
 /**
- * Proxy (Next 16's renamed middleware) — one job for now: attach a request id.
+ * Proxy (Next 16's renamed middleware) — one job:
  *
- * Every server log line for this request carries it, and it is echoed on the
- * response, so a user can screenshot `x-request-id` from the network tab and
- * we can find the exact failure. An inbound id is reused only when it looks
- * like an id (see `sanitizeRequestId`) — otherwise a hostile header could
- * inject arbitrary text into our logs.
+ * Attach a request id. Every server log line for this request carries it,
+ * and it is echoed on the response, so a user can screenshot `x-request-id`
+ * from the network tab and we can find the exact failure. An inbound id is
+ * reused only when it looks like an id (see `sanitizeRequestId`) —
+ * otherwise a hostile header could inject arbitrary text into our logs.
  *
- * Nothing else runs here: session checks stay in the routes that own them
- * (the docs are explicit that proxy is not an authorization layer).
+ * Session checks stay in the routes that own them (the docs are explicit that
+ * proxy is not an authorization layer).
  */
-export function proxy(request: NextRequest): NextResponse {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestId =
     sanitizeRequestId(request.headers.get("x-request-id")) ?? crypto.randomUUID();
 

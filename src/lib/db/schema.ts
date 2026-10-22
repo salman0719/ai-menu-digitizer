@@ -98,8 +98,10 @@ export const verification = pgTable("verification", {
 });
 
 /**
- * A restaurant (café) tenant. `slug` is reserved for the public `/m/<slug>`
- * menu page in Step 9 — nullable until publishing exists.
+ * A restaurant (café) tenant. `slug` is the café's public `/r/<slug>`
+ * address — the prefix of every table QR code and every published menu link
+ * (`/r/<restaurant>/<menu>`) — claimed from the name when it is first
+ * needed, so it is nullable until then.
  */
 export const restaurant = pgTable(
   "restaurant",
@@ -255,6 +257,13 @@ export const menu = pgTable(
     title: text("title").notNull(),
     currency: text("currency"),
     doc: jsonb("doc").$type<unknown>().notNull(),
+    /**
+     * Opening windows (`src/features/availability/schema.ts`): an empty
+     * array means always open. Stored on the menu row — not in `doc` — so
+     * a time change takes effect without republishing, and the table
+     * landing can filter live menus without reading every snapshot.
+     */
+    availability: jsonb("availability").$type<unknown>().notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -300,13 +309,17 @@ export const menuRevision = pgTable(
 );
 
 /**
- * The public pointer for a menu (Step 9): its `/m/<slug>` address, the live
- * revision, and a cookie-free view count.
+ * The public pointer for a menu (Step 9): its address segment under the
+ * café's `/r/<slug>` — `/r/<restaurant>/<slug>` — the live revision, and a
+ * cookie-free view count.
  *
- * Unpublishing keeps this row and its slug (`publishedAt` and
+ * The slug is unique **inside one restaurant**, not globally: two cafés can
+ * both publish `/m/lunch` under their own addresses, so no one gets an
+ * unpredictable "-2" suffix for a title somebody else happened to publish
+ * first. Unpublishing keeps this row and its slug (`publishedAt` and
  * `liveRevisionId` become null), so the address stays reserved for the same
  * café instead of being recycled by whoever grabs it next. Publishing again
- * reuses it. 
+ * reuses it.
  */
 export const publishedMenu = pgTable(
   "published_menu",
@@ -332,7 +345,10 @@ export const publishedMenu = pgTable(
   },
   (t) => ({
     menuUnique: uniqueIndex("published_menu_menu_unique").on(t.menuId),
-    slugUnique: uniqueIndex("published_menu_slug_unique").on(t.slug),
+    restaurantSlugUnique: uniqueIndex("published_menu_restaurant_slug_unique").on(
+      t.restaurantId,
+      t.slug
+    ),
   })
 );
 
@@ -391,6 +407,14 @@ export const orderLine = pgTable(
     /** Integer cents, or null when the menu showed no price. */
     unitPriceCents: integer("unit_price_cents"),
     quantity: integer("quantity").notNull(),
+    /**
+     * Which menu this line came from (multi-menu table orders). Nullable
+     * like `order.menu_id`: clears when the menu is deleted, and stays
+     * null on rows written before per-line provenance existed.
+     */
+    menuId: text("menu_id").references(() => menu.id, { onDelete: "set null" }),
+    /** Menu title snapshot, so history reads without loading the menu. */
+    menuTitle: text("menu_title"),
   },
   (t) => ({
     orderIdx: index("order_line_order_idx").on(t.orderId),

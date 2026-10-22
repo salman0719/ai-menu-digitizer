@@ -38,8 +38,7 @@ resurrect purged orders.
    `npm run dev`.
 4. Verify, in this order:
    - `/launch` loads the checklist and shows the expected menu count.
-   - The editor opens a menu and its categories/items match what you expect.
-   - `/m/<slug>` serves the published menu.
+   - The editor opens a menu and its categories/items match what you expect.    - `/r/<restaurant>/m/<menu>` serves the published menu.
    - The Orders tab lists the order you used as the reference point.
    - An extraction still succeeds (the cap and usage ledger are readable).
 5. Restore your local `DATABASE_URL`, stop the dev server, and delete the

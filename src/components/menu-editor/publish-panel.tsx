@@ -7,9 +7,10 @@ import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-th
 import { menuSlugSchema, type PublicationStatus } from "@/features/publishing/schema";
 
 /**
- * The publish surface (Step 9), shown above the customer preview because that
- * is exactly what it acts on: the preview's theme and layout are what get
- * snapshotted.
+ * The publish surface (Step 9). It appears on the edit screen and above the
+ * customer preview, because the preview's theme and layout are what get
+ * snapshotted. On the edit screen the style controls are not visible, so the
+ * panel offers a shortcut to Preview instead of pointing "above".
  *
  * It never overstates the state of things — "Live" only when the page is
  * actually serving, an explicit warning when draft edits (or a style change)
@@ -36,6 +37,11 @@ interface PublishPanelProps {
   themeId: PreviewThemeId;
   layout: PreviewLayoutId;
   controls: PublishingControls;
+  /**
+   * Set on the edit screen, where the theme/layout controls live in Preview.
+   * The panel then links there instead of telling owners to look "above".
+   */
+  onOpenPreview?: () => void;
 }
 
 const pill = "rounded-full px-2.5 py-0.5 text-[11px] font-semibold";
@@ -61,7 +67,13 @@ function formatDate(iso: string | null): string {
   });
 }
 
-export function PublishPanel({ signedIn, themeId, layout, controls }: PublishPanelProps) {
+export function PublishPanel({
+  signedIn,
+  themeId,
+  layout,
+  controls,
+  onOpenPreview,
+}: PublishPanelProps) {
   const { status, loaded, busy, error, inAccount, onPublish, onUnpublish, onChangeSlug } = controls;
   // The panel only mounts client-side (the editor opens after interaction), so
   // reading the origin in an initializer is hydration-safe — same pattern as
@@ -194,17 +206,29 @@ export function PublishPanel({ signedIn, themeId, layout, controls }: PublishPan
       {loaded && !status && (
         <div className="mt-2 flex flex-col gap-2">
           <p className="text-xs leading-5 text-stone-600">
-            This menu has never been published. Publishing creates a link from the menu title —
-            check the theme and layout above first, since those are what visitors see.
+            {onOpenPreview
+              ? "This menu has never been published. Publishing creates a link from the menu title, using the theme and layout chosen in Preview menu."
+              : "This menu has never been published. Publishing creates a link from the menu title — check the theme and layout above first, since those are what visitors see."}
           </p>
-          <button
-            type="button"
-            onClick={() => onPublish(themeId, layout)}
-            disabled={busy || !inAccount}
-            className="self-start rounded-full bg-amber-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            {busy ? "Publishing…" : "Publish menu"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onPublish(themeId, layout)}
+              disabled={busy || !inAccount}
+              className="rounded-full bg-amber-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              {busy ? "Publishing…" : "Publish menu"}
+            </button>
+            {onOpenPreview && (
+              <button
+                type="button"
+                onClick={onOpenPreview}
+                className="text-xs font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              >
+                Choose theme and layout
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -254,7 +278,9 @@ export function PublishPanel({ signedIn, themeId, layout, controls }: PublishPan
             <p className="text-xs text-stone-500">
               Published {formatDate(status.publishedAt)}
               {styleDiffers && !status.hasUnpublishedChanges
-                ? " · the style above differs from the live page"
+                ? onOpenPreview
+                  ? " · the style chosen in Preview differs from the live page"
+                  : " · the style above differs from the live page"
                 : ""}
             </p>
           )}
@@ -289,7 +315,9 @@ export function PublishPanel({ signedIn, themeId, layout, controls }: PublishPan
           <label className="block text-xs font-semibold text-stone-600">
             Link address
             <span className="mt-1 flex items-center gap-2">
-              <span className="text-xs font-normal text-stone-400">{origin}/m/</span>
+              <span className="text-xs font-normal text-stone-400">
+                {origin}/r/{status.restaurantSlug}/m/
+              </span>
               <input
                 type="text"
                 value={slugValue}

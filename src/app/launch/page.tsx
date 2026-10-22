@@ -19,7 +19,7 @@ const WHAT_YOU_GET = [
   },
   {
     title: "Your own public address",
-    body: "Publish to a link like /m/your-cafe. It opens on any phone with no login, shows your menu with your chosen theme, and only changes when you press Publish.",
+    body: "Publish to a link like /r/your-cafe/m/lunch. It opens on any phone with no login, shows your menu with your chosen theme, and only changes when you press Publish.",
   },
   {
     title: "QR codes for every table",

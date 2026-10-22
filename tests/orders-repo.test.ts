@@ -86,6 +86,7 @@ describe("orders repo", () => {
 
   function place(lines: { menuItemId: string; variantName?: string | null; quantity: number }[]) {
     return placeOrderFromSlug(db, {
+      restaurantSlug: "cafe-a",
       slug: "cafe-a-orders",
       tableLabel: "7",
       note: "No onions",
@@ -114,13 +115,23 @@ describe("orders repo", () => {
       note: "No onions",
     });
     expect(placed.lines).toEqual([
-      { menuItemId: "item-flat", name: "Espresso", variantName: null, unitPrice: 3.5, quantity: 2 },
+      {
+        menuItemId: "item-flat",
+        name: "Espresso",
+        variantName: null,
+        unitPrice: 3.5,
+        quantity: 2,
+        menuId,
+        menuTitle: "Café A — Orders",
+      },
       {
         menuItemId: "item-variant",
         name: "Latte",
         variantName: "Large",
         unitPrice: 5,
         quantity: 1,
+        menuId,
+        menuTitle: "Café A — Orders",
       },
     ]);
 
@@ -165,6 +176,7 @@ describe("orders repo", () => {
   it("refuses to order from an unpublished menu", async () => {
     await expect(
       placeOrderFromSlug(db, {
+        restaurantSlug: "cafe-a",
         slug: "not-live",
         tableLabel: "1",
         lines: [{ menuItemId: "item-flat", quantity: 1 }],

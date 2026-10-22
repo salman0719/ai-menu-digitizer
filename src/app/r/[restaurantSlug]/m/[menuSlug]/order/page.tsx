@@ -5,36 +5,40 @@ import { notFound } from "next/navigation";
 import { OrderShell } from "@/components/order/order-menu";
 import { ServerTableOrder } from "@/components/order/server-table-order";
 import { normalizeTableLabel } from "@/features/orders/table-links";
-import { getPublishedMenuBySlug } from "@/features/publishing/repo";
+import { getPublishedMenuByPath } from "@/features/publishing/repo";
 import { isSlug } from "@/features/publishing/slug";
 import { getDb } from "@/lib/db";
 
 /**
- * `/m/<slug>/order?table=<label>` — the destination printed on table cards for
- * a published menu (Step 10).
+ * `/r/<restaurant>/m/<menu>/order?table=<label>` — the destination printed on
+ * a menu's own table card (Step 10).
  *
  * Unlike the Phase 1 `/order?menu=<id>` link, this one carries no local id:
  * the menu comes from the server's published snapshot, so a stranger's phone
- * sees the real menu and can order. The page never serves an unpublished slug
- * (404 through the segment's not-found page), and a link without a table says
- * so instead of guessing which table the diner is at.
+ * sees the real menu and can order. The address is the same one the public
+ * menu page serves, scoped to the café, so two cafés with a "Lunch" menu keep
+ * separate links. The page never serves an unpublished address (404 through
+ * the segment's not-found page), and a link without a table says so instead
+ * of guessing which table the diner is at.
  *
- * Like the public menu page, the slug and the DB read are request-time data,
- * so the route is a shell plus streamed content.
+ * Like the public menu page, the address and the DB read are request-time
+ * data, so the route is a shell plus streamed content.
  */
 
-const loadPublishedMenu = cache(async (slug: string) => {
-  if (!isSlug(slug)) return null;
-  return getPublishedMenuBySlug(getDb(), slug);
-});
+const loadPublishedMenu = cache(
+  async (restaurantSlug: string, menuSlug: string) => {
+    if (!isSlug(restaurantSlug) || !isSlug(menuSlug)) return null;
+    return getPublishedMenuByPath(getDb(), restaurantSlug, menuSlug);
+  }
+);
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
-  const page = await loadPublishedMenu(slug);
+  const { restaurantSlug, menuSlug } = await params;
+  const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) {
     return {
       title: "Menu not published · Tablepass",
@@ -51,7 +55,7 @@ export default function TableOrderPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   return (
@@ -65,12 +69,12 @@ async function TableOrderLink({
   params,
   searchParams,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const { slug } = await params;
+  const { restaurantSlug, menuSlug } = await params;
   const query = await searchParams;
-  const page = await loadPublishedMenu(slug);
+  const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) notFound();
 
   const tableParam = typeof query.table === "string" ? query.table : null;
@@ -84,7 +88,7 @@ async function TableOrderLink({
           <p className="mt-2 text-sm leading-6 text-stone-600">
             A table link includes the table number, like{" "}
             <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">
-              /m/{page.slug}/order?table=3
+              /r/{page.restaurantSlug}/m/{page.slug}/order?table=3
             </code>
             . Ask staff for a fresh QR code.
           </p>
@@ -95,6 +99,7 @@ async function TableOrderLink({
 
   return (
     <ServerTableOrder
+      restaurantSlug={page.restaurantSlug}
       slug={page.slug}
       doc={page.doc}
       tableLabel={tableLabel}

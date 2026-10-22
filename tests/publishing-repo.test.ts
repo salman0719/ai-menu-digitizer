@@ -4,11 +4,11 @@ import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
 import {
   changeMenuSlugForUser,
-  getPublishedMenuBySlug,
+  getPublishedMenuByPath,
   getPublicationStatus,
   publishMenuForUser,
   PublicationRepoError,
-  recordPublishedView,
+  recordPublishedMenuView,
   unpublishMenuForUser,
 } from "@/features/publishing/repo";
 import { createMenuForUser, getMenuForUser, updateMenuForUser } from "@/features/menus/repo";
@@ -24,7 +24,9 @@ import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
  *   what visitors see, and the status honestly reports unpublished changes;
  * - publishing again updates the page and reuses the slug (and view count);
  * - unpublishing stops serving while keeping the slug reserved;
- * - slugs collide safely (suffix on derived names, refusal for a changed one);
+ * - public addresses live under the café (`/r/<restaurant>/m/<menu>`);
+ * - slugs are scoped to one restaurant (same title elsewhere = same slug,
+ *   no suffix), with suffixes and refusals inside a single café;
  * - tenancy and roles: staff read only, outsiders see nothing and learn nothing.
  */
 describe("publishing repo", () => {
@@ -59,14 +61,15 @@ describe("publishing repo", () => {
     const stored = await getMenuForUser(db, ownerA, menuId);
     const status = await publish();
     expect(status.isLive).toBe(true);
+    expect(status.restaurantSlug).toBe("cafe-a");
     expect(status.slug).toBe("cafe-a-menu");
-    expect(status.urlPath).toBe("/m/cafe-a-menu");
+    expect(status.urlPath).toBe("/r/cafe-a/m/cafe-a-menu");
     expect(status.theme).toBe("bistro");
     expect(status.layout).toBe("columns");
     expect(status.viewCount).toBe(0);
     expect(status.hasUnpublishedChanges).toBe(false);
 
-    const page = await getPublishedMenuBySlug(db, "cafe-a-menu");
+    const page = await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu");
     expect(page).not.toBeNull();
     expect(page!.restaurantName).toBe("Café A");
     expect(page!.theme).toBe("bistro");
@@ -76,18 +79,21 @@ describe("publishing repo", () => {
     expect(page!.doc.categories.map((c) => c.id)).toEqual(
       stored.doc.categories.map((c) => c.id)
     );
+    // The address is scoped: the same menu slug under another restaurant is
+    // a different page.
+    expect(await getPublishedMenuByPath(db, "cafe-b", "cafe-a-menu")).toBeNull();
   });
 
   it("keeps the public page frozen while the menu keeps being edited", async () => {
     await publish();
-    const before = await getPublishedMenuBySlug(db, "cafe-a-menu");
+    const before = await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu");
 
     const current = await getMenuForUser(db, ownerA, menuId);
     const edited = { ...current.doc, title: "Renamed after publishing" };
     await updateMenuForUser(db, ownerA, menuId, edited, current.updatedAt);
 
     // Visitor view is unchanged…
-    const after = await getPublishedMenuBySlug(db, "cafe-a-menu");
+    const after = await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu");
     expect(after!.doc.title).toBe(before!.doc.title);
     // …and the owner is told there are unpublished changes.
     const status = await getPublicationStatus(db, ownerA, menuId);
@@ -98,7 +104,7 @@ describe("publishing repo", () => {
     expect(republished.hasUnpublishedChanges).toBe(false);
     expect(republished.slug).toBe("cafe-a-menu");
     expect(republished.viewCount).toBe(0);
-    expect((await getPublishedMenuBySlug(db, "cafe-a-menu"))!.doc.title).toBe(
+    expect((await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu"))!.doc.title).toBe(
       "Renamed after publishing"
     );
 
@@ -107,7 +113,7 @@ describe("publishing repo", () => {
     expect(revisions).toHaveLength(2);
   });
 
-  it("suffixes a derived slug on collision instead of failing", async () => {
+  it("suffixes a derived slug on collision inside one restaurant instead of failing", async () => {
     await publish();
     const secondId = "menu-pub-2";
     await createMenuForUser(db, ownerA, restaurantA, sampleDoc(secondId, "Café A — Menu"));
@@ -116,10 +122,41 @@ describe("publishing repo", () => {
       layout: "list",
     });
     expect(second.slug).toBe("cafe-a-menu-2");
-    expect(second.urlPath).toBe("/m/cafe-a-menu-2");
+    expect(second.urlPath).toBe("/r/cafe-a/m/cafe-a-menu-2");
   });
 
-  it("refuses a slug the owner explicitly asked for when it is taken", async () => {
+  it("lets another restaurant publish the same slug — slugs are scoped, not global", async () => {
+    await publish();
+    const restaurantB = (await createRestaurant(db, ownerB, "Café B")).id;
+    const otherId = "menu-pub-b1";
+    await createMenuForUser(db, ownerB, restaurantB, sampleDoc(otherId, "Café A — Menu"));
+
+    const other = await publishMenuForUser(db, ownerB, otherId, {
+      theme: "classic",
+      layout: "list",
+    });
+    // No "-2" suffix: the same title at another café is a different address.
+    expect(other.slug).toBe("cafe-a-menu");
+    expect(other.urlPath).toBe("/r/cafe-b/m/cafe-a-menu");
+
+    // Both pages resolve, each under its own café, and neither can be read
+    // through the other's address.
+    expect((await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu"))!.menuId).toBe(menuId);
+    expect((await getPublishedMenuByPath(db, "cafe-b", "cafe-a-menu"))!.menuId).toBe(otherId);
+    expect(await getPublishedMenuByPath(db, "cafe-c", "cafe-a-menu")).toBeNull();
+
+    // An explicitly chosen slug is only taken *within* one restaurant.
+    const explicitId = "menu-pub-b2";
+    await createMenuForUser(db, ownerB, restaurantB, sampleDoc(explicitId, "Other"));
+    const explicit = await publishMenuForUser(db, ownerB, explicitId, {
+      theme: "bistro",
+      layout: "columns",
+      slug: "taken-link",
+    });
+    expect(explicit.urlPath).toBe("/r/cafe-b/m/taken-link");
+  });
+
+  it("refuses a slug the owner explicitly asked for when it is taken at this restaurant", async () => {
     await publish("taken-link");
     const secondId = "menu-pub-3";
     await createMenuForUser(db, ownerA, restaurantA, sampleDoc(secondId, "Other"));
@@ -136,10 +173,10 @@ describe("publishing repo", () => {
     await publish();
     const changed = await changeMenuSlugForUser(db, ownerA, menuId, "chez-a");
     expect(changed.slug).toBe("chez-a");
-    expect(changed.urlPath).toBe("/m/chez-a");
+    expect(changed.urlPath).toBe("/r/cafe-a/m/chez-a");
     expect(changed.isLive).toBe(true);
-    expect(await getPublishedMenuBySlug(db, "cafe-a-menu")).toBeNull();
-    expect(await getPublishedMenuBySlug(db, "chez-a")).not.toBeNull();
+    expect(await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu")).toBeNull();
+    expect(await getPublishedMenuByPath(db, "cafe-a", "chez-a")).not.toBeNull();
 
     await expect(changeMenuSlugForUser(db, ownerA, menuId, "Two Words")).rejects.toMatchObject({
       code: "invalid",
@@ -148,8 +185,8 @@ describe("publishing repo", () => {
 
   it("unpublishes without releasing the slug, and reuses it on republish", async () => {
     await publish();
-    await recordPublishedView(db, "cafe-a-menu");
-    await recordPublishedView(db, "cafe-a-menu");
+    await recordPublishedMenuView(db, "cafe-a", "cafe-a-menu");
+    await recordPublishedMenuView(db, "cafe-a", "cafe-a-menu");
 
     const unpublished = await unpublishMenuForUser(db, ownerA, menuId);
     expect(unpublished.isLive).toBe(false);
@@ -158,8 +195,8 @@ describe("publishing repo", () => {
     expect(unpublished.slug).toBe("cafe-a-menu");
     expect(unpublished.viewCount).toBe(2);
     // The address is reserved but stops serving.
-    expect(await getPublishedMenuBySlug(db, "cafe-a-menu")).toBeNull();
-    expect(await recordPublishedView(db, "cafe-a-menu")).toBe(false);
+    expect(await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu")).toBeNull();
+    expect(await recordPublishedMenuView(db, "cafe-a", "cafe-a-menu")).toBe(false);
 
     const republished = await publish();
     expect(republished.isLive).toBe(true);
@@ -168,10 +205,10 @@ describe("publishing repo", () => {
   });
 
   it("counts views atomically and only while live", async () => {
-    expect(await recordPublishedView(db, "never-published")).toBe(false);
+    expect(await recordPublishedMenuView(db, "cafe-a", "never-published")).toBe(false);
     await publish();
-    expect(await recordPublishedView(db, "cafe-a-menu")).toBe(true);
-    expect(await recordPublishedView(db, "cafe-a-menu")).toBe(true);
+    expect(await recordPublishedMenuView(db, "cafe-a", "cafe-a-menu")).toBe(true);
+    expect(await recordPublishedMenuView(db, "cafe-a", "cafe-a-menu")).toBe(true);
     expect((await getPublicationStatus(db, ownerA, menuId))!.viewCount).toBe(2);
   });
 

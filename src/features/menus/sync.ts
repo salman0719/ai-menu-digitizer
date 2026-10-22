@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 
+import { menuAvailabilitySchema } from "@/features/availability/schema";
 import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
 
 /** Summary shape returned by list endpoints (mirrors the server repo). */
@@ -28,6 +29,7 @@ export const serverMenuSummarySchema = z.object({
   restaurantName: z.string(),
   title: z.string(),
   currency: z.string().nullable(),
+  availability: menuAvailabilitySchema,
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });

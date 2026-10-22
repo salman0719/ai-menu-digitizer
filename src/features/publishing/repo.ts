@@ -16,6 +16,7 @@ import {
   type PreviewLayoutId,
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
+import { ensureRestaurantSlug } from "@/features/tables/repo";
 
 import {
   MENU_SLUG_PATTERN,
@@ -39,6 +40,10 @@ import { slugCandidates, slugifyMenuTitle } from "./slug";
  * `hasUnpublishedChanges` is a timestamp comparison — the live revision's
  * `sourceUpdatedAt` against the menu row's `updated_at` — not a re-diff of
  * two documents.
+ *
+ * Public addresses live under the café: `/r/<restaurant>/m/<menu>`, built
+ * from the restaurant's own `/r/<slug>` address plus the menu's slug (see
+ * `publicationPath`).
  *
  * Unpublishing keeps the row (and its slug) reserved with `published_at`
  * cleared, so the address stays with the same café and the page stops
@@ -72,6 +77,8 @@ export interface PublishInput {
 /** A live published page, prepared for the public route and ordering. */
 export interface PublishedMenuPage {
   slug: string;
+  /** The restaurant's `/r/<slug>` address — part of the canonical path. */
+  restaurantSlug: string;
   /** The menu and tenant this snapshot belongs to (orders are scoped by them). */
   menuId: string;
   restaurantId: string;
@@ -111,6 +118,23 @@ async function loadMenuWithRole(
 }
 
 /**
+ * The restaurant's public `/r/<slug>` address, claimed from its name when a
+ * publication exists but the café never claimed one (it published before
+ * table links existed, or simply never opened the Tables tab). Menu links
+ * cannot be built without it, so the claim is restored here — idempotent,
+ * derived from the restaurant's own name, and never user-supplied.
+ */
+async function ensureRestaurantSlugValue(
+  db: TenancyDb,
+  restaurantId: string,
+  slug: string | null
+): Promise<string> {
+  if (slug) return slug;
+  const ensured = await ensureRestaurantSlug(db, restaurantId);
+  return ensured.slug;
+}
+
+/**
  * Read a menu's publication state without a user scope. Callers must have
  * already established membership (the exported functions below do).
  */
@@ -122,6 +146,7 @@ async function readStatus(db: TenancyDb, menuId: string): Promise<PublicationSta
       liveRevisionId: publishedMenu.liveRevisionId,
       viewCount: publishedMenu.viewCount,
       restaurantId: publishedMenu.restaurantId,
+      restaurantSlug: restaurant.slug,
       menuUpdatedAt: menu.updatedAt,
       theme: menuRevision.theme,
       layout: menuRevision.layout,
@@ -129,19 +154,22 @@ async function readStatus(db: TenancyDb, menuId: string): Promise<PublicationSta
     })
     .from(publishedMenu)
     .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
     .leftJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
     .where(eq(publishedMenu.menuId, menuId));
 
   const row = rows[0];
   if (!row) return null;
 
+  const restaurantSlug = await ensureRestaurantSlugValue(db, row.restaurantId, row.restaurantSlug);
   const isLive = row.publishedAt !== null && row.liveRevisionId !== null;
   const sourceUpdatedAt = isLive && row.sourceUpdatedAt ? row.sourceUpdatedAt : null;
   return {
     menuId,
     restaurantId: row.restaurantId,
+    restaurantSlug,
     slug: row.slug,
-    urlPath: publicationPath(row.slug),
+    urlPath: publicationPath(restaurantSlug, row.slug),
     isLive,
     publishedAt: row.publishedAt?.toISOString() ?? null,
     liveRevisionId: isLive ? row.liveRevisionId : null,
@@ -167,16 +195,17 @@ export async function getPublicationStatus(
   return readStatus(db, menuId);
 }
 
-/** True when the slug already belongs to a different menu. */
+/** True when the slug already belongs to a different menu of this restaurant. */
 async function slugTakenByAnother(
   db: TenancyDb,
+  restaurantId: string,
   slug: string,
   menuId: string
 ): Promise<boolean> {
   const rows = await db
     .select({ menuId: publishedMenu.menuId })
     .from(publishedMenu)
-    .where(eq(publishedMenu.slug, slug));
+    .where(and(eq(publishedMenu.restaurantId, restaurantId), eq(publishedMenu.slug, slug)));
   return rows.some((row) => row.menuId !== menuId);
 }
 
@@ -192,9 +221,9 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * Reserve a new publication row, deriving a free slug from `base`. Races are
- * resolved by retrying the next candidate on a unique violation instead of
- * failing the publish.
+ * Reserve a new publication row, deriving a free slug from `base` **inside
+ * this restaurant**. Races are resolved by retrying the next candidate on a
+ * unique violation instead of failing the publish.
  */
 async function reservePublication(
   db: TenancyDb,
@@ -222,11 +251,15 @@ async function reservePublication(
 
 async function changeSlug(
   db: TenancyDb,
+  restaurantId: string,
   menuId: string,
   slug: string
 ): Promise<void> {
-  if (await slugTakenByAnother(db, slug, menuId)) {
-    throw new PublicationRepoError("slug_taken", "That link is already used by another menu.");
+  if (await slugTakenByAnother(db, restaurantId, slug, menuId)) {
+    throw new PublicationRepoError(
+      "slug_taken",
+      "That link is already used by another menu at this restaurant."
+    );
   }
   try {
     await db.update(publishedMenu).set({ slug }).where(eq(publishedMenu.menuId, menuId));
@@ -277,8 +310,11 @@ export async function publishMenuForUser(
   let publication = existing[0];
   if (!publication) {
     if (body.data.slug) {
-      if (await slugTakenByAnother(db, body.data.slug, menuId)) {
-        throw new PublicationRepoError("slug_taken", "That link is already used by another menu.");
+      if (await slugTakenByAnother(db, menuRow.restaurantId, body.data.slug, menuId)) {
+        throw new PublicationRepoError(
+          "slug_taken",
+          "That link is already used by another menu at this restaurant."
+        );
       }
       publication = await reservePublication(db, menuId, menuRow.restaurantId, body.data.slug);
     } else {
@@ -290,7 +326,7 @@ export async function publishMenuForUser(
       );
     }
   } else if (body.data.slug && body.data.slug !== publication.slug) {
-    await changeSlug(db, menuId, body.data.slug);
+    await changeSlug(db, menuRow.restaurantId, menuId, body.data.slug);
   }
 
   const revisionId = crypto.randomUUID();
@@ -367,7 +403,7 @@ export async function changeMenuSlugForUser(
   if (existing.length === 0) {
     throw new PublicationRepoError("not_published", "Publish this menu before naming its link.");
   }
-  if (existing[0].slug !== slug) await changeSlug(db, menuId, slug);
+  if (existing[0].slug !== slug) await changeSlug(db, menuRow.restaurantId, menuId, slug);
 
   const status = await readStatus(db, menuId);
   if (!status) throw new Error("changing the slug did not produce a readable publication row");
@@ -375,19 +411,21 @@ export async function changeMenuSlugForUser(
 }
 
 /**
- * The public read path: a live page by slug, with the snapshot's document
- * re-validated against the canonical schema. Null means "not found or not
- * serving" — callers must render a 404, never a partial page.
+ * The public read path: a live page by its canonical address — the
+ * restaurant's `/r/<slug>` plus the menu's own slug — with the snapshot's
+ * document re-validated against the canonical schema. Null means "not found
+ * or not serving" — callers must render a 404, never a partial page.
  */
-export async function getPublishedMenuBySlug(
+export async function getPublishedMenuByPath(
   db: TenancyDb,
+  restaurantSlug: string,
   slug: string
 ): Promise<PublishedMenuPage | null> {
   const rows = await db
     .select({
       slug: publishedMenu.slug,
-      menuId: publishedMenu.menuId,
       restaurantId: publishedMenu.restaurantId,
+      menuId: publishedMenu.menuId,
       publishedAt: publishedMenu.publishedAt,
       viewCount: publishedMenu.viewCount,
       restaurantName: restaurant.name,
@@ -399,7 +437,13 @@ export async function getPublishedMenuBySlug(
     .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
     .innerJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
     .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
-    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)));
+    .where(
+      and(
+        eq(restaurant.slug, restaurantSlug),
+        eq(publishedMenu.slug, slug),
+        isNotNull(publishedMenu.publishedAt)
+      )
+    );
 
   const row = rows[0];
   if (!row || row.publishedAt === null) return null;
@@ -414,6 +458,7 @@ export async function getPublishedMenuBySlug(
 
   return {
     slug: row.slug,
+    restaurantSlug,
     menuId: row.menuId,
     restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
@@ -427,14 +472,32 @@ export async function getPublishedMenuBySlug(
 
 /**
  * Count one page view. Cookie-free and server-side: a single atomic
- * increment, only while the page is live. Returns false when nothing was
- * counted (unknown slug or unpublished), so the beacon stays honest.
+ * increment, only for the live page at this exact address. Returns false
+ * when nothing was counted (unknown address or unpublished), so the beacon
+ * stays honest.
  */
-export async function recordPublishedView(db: TenancyDb, slug: string): Promise<boolean> {
+export async function recordPublishedMenuView(
+  db: TenancyDb,
+  restaurantSlug: string,
+  slug: string
+): Promise<boolean> {
+  const pages = await db
+    .select({ id: publishedMenu.id })
+    .from(publishedMenu)
+    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
+    .where(
+      and(
+        eq(restaurant.slug, restaurantSlug),
+        eq(publishedMenu.slug, slug),
+        isNotNull(publishedMenu.publishedAt)
+      )
+    );
+  const id = pages[0]?.id;
+  if (!id) return false;
   const updated = await db
     .update(publishedMenu)
     .set({ viewCount: sql`${publishedMenu.viewCount} + 1` })
-    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)))
+    .where(and(eq(publishedMenu.id, id), isNotNull(publishedMenu.publishedAt)))
     .returning({ id: publishedMenu.id });
   return updated.length > 0;
 }

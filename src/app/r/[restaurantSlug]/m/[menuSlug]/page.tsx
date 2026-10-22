@@ -4,17 +4,21 @@ import { notFound } from "next/navigation";
 
 import { MenuPreview } from "@/components/menu-editor/menu-preview";
 import { ViewCounter } from "@/components/menu-editor/view-counter";
-import { getPublishedMenuBySlug } from "@/features/publishing/repo";
+import { getPublishedMenuByPath } from "@/features/publishing/repo";
 import { isSlug } from "@/features/publishing/slug";
 import { getDb } from "@/lib/db";
 
 /**
- * Public menu page (Step 9, `/m/<slug>`).
+ * Public menu page (Step 9, `/r/<restaurant>/m/<menu>`).
+ *
+ * The address is scoped to the café that publishes it: menu slugs are only
+ * unique inside one restaurant, so two cafés can both publish `lunch`
+ * under their own `/r/` address.
  *
  * Renders the stored revision snapshot — never the live menu document — so an
  * owner's later edits cannot change what a diner sees until "Publish changes"
- * is pressed. Only live publications exist here: unpublished or unknown slugs
- * get a 404, and the café's slug stays reserved either way.
+ * is pressed. Only live publications exist here: unpublished or unknown
+ * addresses get a 404, and the café's slug stays reserved either way.
  *
  * No account, no cookie, and no client data is required: a stranger's phone
  * sees exactly the themed menu. Review notes and AI review badges never
@@ -22,10 +26,12 @@ import { getDb } from "@/lib/db";
  */
 
 /** De-duplicates the slug lookup between metadata and the page render. */
-const loadPublishedMenu = cache(async (slug: string) => {
-  if (!isSlug(slug)) return null;
-  return getPublishedMenuBySlug(getDb(), slug);
-});
+const loadPublishedMenu = cache(
+  async (restaurantSlug: string, slug: string) => {
+    if (!isSlug(restaurantSlug) || !isSlug(slug)) return null;
+    return getPublishedMenuByPath(getDb(), restaurantSlug, slug);
+  }
+);
 
 function itemCount(doc: { categories: { items: unknown[] }[] }): number {
   return doc.categories.reduce((sum, category) => sum + category.items.length, 0);
@@ -42,10 +48,10 @@ function describe(doc: { categories: { items: unknown[] }[] }, restaurant: strin
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
-  const page = await loadPublishedMenu(slug);
+  const { restaurantSlug, menuSlug } = await params;
+  const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) {
     return {
       title: "Menu not published · Tablepass",
@@ -66,13 +72,17 @@ export async function generateMetadata({
 }
 
 /**
- * Under Cache Components the slug and the database read are request-time
+ * Under Cache Components the address and the database read are request-time
  * data, so the page is a static shell plus a streamed menu: the visitor sees
  * the page frame immediately and the menu fills in as soon as the query
  * returns. Reading the DB at the top level of the page would block the whole
  * response, which the build rejects.
  */
-export default function PublishedMenuPage({ params }: { params: Promise<{ slug: string }> }) {
+export default function PublishedMenuPage({
+  params,
+}: {
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
+}) {
   return (
     <Suspense fallback={<MenuSkeleton />}>
       <PublishedMenu params={params} />
@@ -93,9 +103,13 @@ function MenuSkeleton() {
   );
 }
 
-async function PublishedMenu({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const page = await loadPublishedMenu(slug);
+async function PublishedMenu({
+  params,
+}: {
+  params: Promise<{ restaurantSlug: string; menuSlug: string }>;
+}) {
+  const { restaurantSlug, menuSlug } = await params;
+  const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) notFound();
 
   const title = page.doc.title.trim() || "Untitled menu";
@@ -106,13 +120,8 @@ async function PublishedMenu({ params }: { params: Promise<{ slug: string }> }) 
         <p className="mb-3 text-center text-[11px] font-semibold tracking-[0.25em] text-stone-400 uppercase">
           {page.restaurantName}
         </p>
-        <MenuPreview
-          doc={page.doc}
-          themeId={page.theme}
-          layout={page.layout}
-          eyebrow="Menu"
-        />
-        <ViewCounter slug={page.slug} />
+        <MenuPreview doc={page.doc} themeId={page.theme} layout={page.layout} eyebrow="Menu" />
+        <ViewCounter restaurantSlug={page.restaurantSlug} slug={page.slug} />
         <footer className="mt-8 border-t border-stone-200 pt-4 text-center text-xs text-stone-500">
           <p>
             {title} · menu updated{" "}

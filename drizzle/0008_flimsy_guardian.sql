@@ -1,0 +1,1 @@
+ALTER TABLE "menu" ADD COLUMN "availability" jsonb DEFAULT '[]'::jsonb NOT NULL;

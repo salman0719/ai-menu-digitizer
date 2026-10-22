@@ -166,7 +166,7 @@ back to its 7 menus). 161 tests green.
 This is the flagship feature of the phase (user decision 2026-10-18), built
 right after the foundation and always free — no checkout anywhere.
 Publish button with slug rules and `menu_revision` snapshots, public
-`/m/[slug]` page built on the existing preview components and themes, og/Twitter
+`/r/<restaurant>/m/<menu>` page built on the existing preview components and themes, og/Twitter
 meta, QR code for the page (dependency already present), unpublish,
 "unpublished changes" indicator, cookie-free view count.
 **Done when:** the I3 acceptance list in PHASE-2.md passes on a phone that has
@@ -177,14 +177,14 @@ snapshots that record the theme/layout and the menu `updated_at` they came
 from) and `published_menu` (one reserved slug per menu, a live revision
 pointer, a view count). `/api/menus/[menuId]/publication` reads status for any
 member and publishes, renames the address, or unpublishes for the owner only;
-`/api/m/[slug]/view` counts a visit server-side with no cookie or identifier.
+`/api/r/[restaurantSlug]/m/[menuSlug]/view` counts a visit server-side with no cookie or identifier.
 The editor's preview screen carries the publish panel (link, copy/open/QR,
 views, editable slug, unpublish); the public page is a Cache-Components route
 (shell + streamed menu) with og/Twitter meta, `noindex,nofollow` by default,
 and a plain not-found page for unknown or unpublished slugs.
 
 **Verified 2026-10-18:** migration applied explicitly to Neon; published
-"Bistro Four" through the API and loaded `/m/bistro-four` in a second browser
+"Bistro Four" through the API and loaded `/r/<restaurant>/m/bistro-four` in a second browser
 tab (bistro theme, 2 categories/2 items, em dashes for unset prices, og title +
 description, `noindex`, view count 0 → 1). Editing the currency then reopening
 the preview showed *Draft changes are not on the public page yet* and the
@@ -221,12 +221,12 @@ is anonymous and resolves every line against the *published snapshot*;
 changed after `since`; `PATCH /api/orders/[orderId]` moves status forward
 (new → preparing → served, cancel while working) and is conditional on the
 `updatedAt` the caller saw. The diner page
-`/m/[slug]/order?table=<n>` is server-rendered from the snapshot; the Orders
+`/r/<restaurant>/m/<menu>/order?table=<n>` is server-rendered from the snapshot; the Orders
 tab picks the server board when signed in and the Phase 1 IndexedDB queue
 when signed out; table QR cards encode the public link once the menu is live.
 
 **Verified 2026-10-18 (live, two browser tabs against Neon):** an order
-placed on the diner page (`/m/bistro-four/order?table=3`, receipt #41F563)
+placed on the diner page (`/r/<restaurant>/m/bistro-four/order?table=3`, receipt #41F563)
 appeared on the signed-in board **3.8 s after the POST committed**, with no
 manual refresh; a status change made in a second board tab reached the first
 tab **1.8 s after the PATCH** through the incremental cursor. Killing the dev
@@ -374,7 +374,7 @@ it live.
       sign-in, and its extent is documented in PHASE-2.md §3.6.
 - [x] **Dependency exception sign-off** — granted for the DB driver/ORM and
       the auth library.
-- [x] **Public URL shape** — `/m/<slug>` on the current domain; custom
+- [x] **Public URL shape** — `/r/<restaurant>/m/<menu>` on the current domain; custom
       domains deferred.
 - [x] **Local vs server mode** — keep both (signed-out = local,
       signed-in = server).

@@ -64,8 +64,11 @@ export const changeSlugBodySchema = z.object({
 export const publicationStatusSchema = z.object({
   menuId: z.string().min(1),
   restaurantId: z.string().min(1),
+  /** The restaurant's public `/r/<slug>` address — always set while published. */
+  restaurantSlug: z.string().min(1),
+  /** The menu's own address segment inside the restaurant. */
   slug: z.string().min(1),
-  /** Path on this site, e.g. /m/my-cafe. */
+  /** Path on this site, e.g. /r/my-cafe/m/lunch. */
   urlPath: z.string().min(1),
   /** True only while the page actually serves. */
   isLive: z.boolean(),
@@ -92,7 +95,13 @@ export const publishedMenuViewSchema = z.object({
   viewCount: z.number().int().nonnegative(),
 });
 
-/** Public page path for a slug — one place that defines the URL shape. */
-export function publicationPath(slug: string): string {
-  return `/m/${slug}`;
+/**
+ * Public page path for a published menu — one place that defines the URL
+ * shape: `/r/<restaurant>/<menu>`, i.e. scoped to the café that publishes it.
+ * Menu slugs are only unique inside one restaurant, so the restaurant's own
+ * `/r/<slug>` address is part of every public link (and of every table card,
+ * which already encodes that address).
+ */
+export function publicationPath(restaurantSlug: string, slug: string): string {
+  return `/r/${restaurantSlug}/m/${slug}`;
 }
