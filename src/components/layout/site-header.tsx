@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 
 /**
@@ -33,7 +34,13 @@ export function SiteHeader() {
           >
             Get started
           </a>
-          {isPending ? null : user ? (
+          {isPending ? (
+            <div role="status" aria-busy="true" className="flex items-center gap-3">
+              <span className="sr-only">Checking your session…</span>
+              <Skeleton className="hidden h-3 w-16 sm:inline" />
+              <Skeleton className="h-7 w-16 rounded-lg" />
+            </div>
+          ) : user ? (
             <>
               <span className="hidden text-[11px] text-stone-500 sm:inline" title={user.email}>
                 Syncing to {user.email}
