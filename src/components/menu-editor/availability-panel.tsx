@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { browserTimeZone, fetchAvailability, saveAvailability } from "@/features/availability/client";
 import {
   menuAvailabilitySchema,
@@ -131,7 +132,11 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
         className="rounded-2xl border border-stone-200 bg-white p-4"
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
-        <p className="mt-1 text-xs text-stone-500">Loading…</p>
+        <div role="status" className="mt-2 flex flex-col gap-2">
+          <span className="sr-only">Loading opening times…</span>
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-4/5" />
+        </div>
       </section>
     );
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-themes";
 import { menuSlugSchema, type PublicationStatus } from "@/features/publishing/schema";
 
@@ -198,9 +199,14 @@ export function PublishPanel({
       )}
 
       {!loaded && (
-        <p role="status" className="mt-2 text-xs text-stone-500">
-          Checking the public link…
-        </p>
+        <div role="status" aria-busy="true" className="mt-2 flex flex-col gap-2">
+          <span className="sr-only">Checking the public link…</span>
+          <Skeleton className="h-3 w-2/3" />
+          <div className="flex gap-2">
+            <Skeleton className="h-7 w-24 rounded-full" />
+            <Skeleton className="h-7 w-28 rounded-full" />
+          </div>
+        </div>
       )}
 
       {loaded && !status && (
