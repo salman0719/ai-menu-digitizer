@@ -41,12 +41,12 @@ export async function generateMetadata({
   const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) {
     return {
-      title: "Menu not published · Tablepass",
+      title: "Menu not published · Eateryo",
       robots: { index: false, follow: false },
     };
   }
   return {
-    title: `Order · ${page.doc.title.trim() || "Menu"} · Tablepass`,
+    title: `Order · ${page.doc.title.trim() || "Menu"} · Eateryo`,
     robots: { index: false, follow: false },
   };
 }

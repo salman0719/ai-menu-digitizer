@@ -12,7 +12,7 @@ public path, and they hide network and cookie problems that a real guest hits.
 ## Before you start
 
 - A signed-in owner account with one menu that has at least two priced items.
-- The menu published (Tablepass → Preview → Publish).
+- The menu published (Eateryo → Preview → Publish).
 - The phone signed out of the app entirely (use a private/incognito tab).
 - A second email address whose inbox you can open on the phone — the invitee
   account. It must be different from the owner's address.

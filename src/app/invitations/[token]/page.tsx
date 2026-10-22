@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { InvitationClient } from "./invitation-client";
 
 export const metadata = {
-  title: "Team invitation — Tablepass",
+  title: "Team invitation — Eateryo",
 };
 
 /**

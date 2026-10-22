@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tablepass",
+  title: "Eateryo",
   description:
     "Turn a menu photo into structured, editable menu data, preview themed menus, and take table orders.",
 };

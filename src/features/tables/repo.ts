@@ -63,12 +63,26 @@ export interface OpenMenuEntry {
   availability: MenuAvailability;
 }
 
-/** A restaurant's table landing: identity plus zero or more open menus. */
+/**
+ * A live published menu that is *not* being served at `now`: shown for
+ * context, but never orderable. Carries the windows so a diner can see
+ * when it opens instead of wondering why it is missing.
+ */
+export interface ClosedMenuEntry {
+  menuId: string;
+  title: string;
+  availability: MenuAvailability;
+}
+
+/** A restaurant's table landing: identity plus open and closed menus. */
 export interface TableLanding {
   restaurantId: string;
   restaurantName: string;
   restaurantSlug: string;
+  /** Live menus whose windows cover `now` — the only orderable ones. */
   menus: OpenMenuEntry[];
+  /** Live menus whose windows do *not* cover `now`, for display only. */
+  closedMenus: ClosedMenuEntry[];
 }
 
 function parseAvailability(menuId: string, value: unknown): MenuAvailability {
@@ -269,9 +283,11 @@ export async function getRestaurantBySlug(
 
 /**
  * Public: the table landing for a restaurant slug — every *live* published
- * menu whose availability covers `now`. Null when the slug names no
- * restaurant (callers render a 404); a known restaurant with nothing open
- * returns an empty `menus` list so the page can say so honestly.
+ * menu, split into those whose availability covers `now` (`menus`, the
+ * orderable ones) and those it does not (`closedMenus`, display only).
+ * Null when the slug names no restaurant (callers render a 404); a known
+ * restaurant with nothing open returns empty lists so the page can say so
+ * honestly.
  */
 export async function listOpenMenusForRestaurantSlug(
   db: TenancyDb,
@@ -306,6 +322,7 @@ export async function listOpenMenusForRestaurantSlug(
     .orderBy(asc(menu.title), asc(menu.id));
 
   const menus: OpenMenuEntry[] = [];
+  const closedMenus: ClosedMenuEntry[] = [];
   for (const row of rows) {
     if (row.publishedAt === null) continue;
     const parsedDoc = menuDocumentSchema.safeParse(row.doc);
@@ -316,7 +333,12 @@ export async function listOpenMenusForRestaurantSlug(
       throw new Error(`published menu ${row.menuSlug} has an unknown theme or layout`);
     }
     const availability = parseAvailability(row.menuId, row.availability);
-    if (!isMenuOpenAt(availability, now, timeZone)) continue;
+    if (!isMenuOpenAt(availability, now, timeZone)) {
+      // Still published, just not being served: the landing shows it as a
+      // disabled menu with its opening times rather than hiding it.
+      closedMenus.push({ menuId: row.menuId, title: row.title, availability });
+      continue;
+    }
     menus.push({
       menuId: row.menuId,
       menuSlug: row.menuSlug,
@@ -334,6 +356,7 @@ export async function listOpenMenusForRestaurantSlug(
     restaurantName: found.name,
     restaurantSlug: found.slug,
     menus,
+    closedMenus,
   };
 }
 

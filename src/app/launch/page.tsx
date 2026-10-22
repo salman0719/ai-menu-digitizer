@@ -7,9 +7,9 @@ import { DataControls } from "@/components/launch/data-controls";
 import { LaunchChecklist } from "@/components/launch/launch-checklist";
 
 export const metadata: Metadata = {
-  title: "Free while it lasts — Tablepass",
+  title: "Free while it lasts — Eateryo",
   description:
-    "Turn a menu photo into a public menu link with QR table ordering. Free during the Tablepass launch promotion — no card, no checkout.",
+    "Turn a menu photo into a public menu link with QR table ordering. Free during the Eateryo launch promotion — no card, no checkout.",
 };
 
 const WHAT_YOU_GET = [

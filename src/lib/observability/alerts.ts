@@ -71,7 +71,7 @@ export function buildAlertEmail(
   alert: OpsAlert,
   now: Date = new Date()
 ): { subject: string; text: string; html: string } {
-  const subject = `[Tablepass] ${scrubText(alert.subject)}`;
+  const subject = `[Eateryo] ${scrubText(alert.subject)}`;
   const detail = scrubText(alert.details);
   const text = [
     subject,

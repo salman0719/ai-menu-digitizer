@@ -8,7 +8,7 @@ import { contactEmail, LEGAL_UPDATED, SITE_NAME } from "@/lib/site";
 export const metadata: Metadata = {
   title: `Terms — ${SITE_NAME}`,
   description:
-    "The plain terms for using Tablepass during the free launch: what the service does, what it does not do, and what we each owe each other.",
+    "The plain terms for using Eateryo during the free launch: what the service does, what it does not do, and what we each owe each other.",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

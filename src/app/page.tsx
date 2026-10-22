@@ -1345,7 +1345,7 @@ export default function Home() {
           <>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
-                Turn a menu photo into structured data
+                Turn your photo into a menu
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600 sm:text-base">
                 Upload a photo or scan of a menu, extract it into categories and items with AI, then

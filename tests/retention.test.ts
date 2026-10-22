@@ -210,7 +210,7 @@ describe("account routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("content-disposition")).toBe(
-      `attachment; filename="tablepass-export-${new Date().toISOString().slice(0, 10)}.json"`
+      `attachment; filename="eateryo-export-${new Date().toISOString().slice(0, 10)}.json"`
     );
     const body = (await response.json()) as { account: { email: string } };
     expect(body.account.email).toBe("routes@cafe.test");

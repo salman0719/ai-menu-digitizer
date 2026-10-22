@@ -48,7 +48,7 @@ export async function downloadAccountExport(): Promise<void> {
 
   const header = response.headers.get("content-disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(header);
-  const filename = match?.[1] ?? "tablepass-export.json";
+  const filename = match?.[1] ?? "eateryo-export.json";
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

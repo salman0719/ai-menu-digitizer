@@ -138,10 +138,10 @@ export function ExtractionResult({
                 return (
                   <li key={`${category.name}-${item.name}`} className="px-5 py-3">
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="font-medium text-stone-900">
-                        {item.name}
+                      <p className="flex items-center gap-2 font-medium text-stone-900">
+                        <span>{item.name}</span>
                         {item.available === false && (
-                          <span className="ml-2 rounded-full bg-stone-200 px-2 py-0.5 align-middle text-[11px] font-semibold text-stone-700">
+                          <span className="shrink-0 rounded-full bg-stone-200 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
                             Unavailable
                           </span>
                         )}

@@ -1,11 +1,11 @@
 /**
  * Site-wide constants that appear in user-facing copy.
  *
- * The product name is temporary (AGENTS.md). Keeping it here means a rename
+ * The product name lives in AGENTS.md. Keeping it here means a rename
  * is one edit, not a hunt through pages.
  */
 
-export const SITE_NAME = "Tablepass";
+export const SITE_NAME = "Eateryo";
 
 /** Shown as "last updated" on both legal pages. */
 export const LEGAL_UPDATED = "18 October 2026";

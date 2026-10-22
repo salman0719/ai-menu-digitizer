@@ -141,7 +141,7 @@ describe("table landing repo", () => {
       });
     });
 
-    it("hides a live menu whose windows do not cover now", async () => {
+    it("reports a live menu outside its hours as closed instead of hiding it", async () => {
       await publishOpenMenu("menu-closed-1", "Sunday Roast");
       await setMenuAvailabilityForUser(db, ownerA, "menu-closed-1", [
         { days: [0], start: "11:00", end: "15:00" },
@@ -149,9 +149,16 @@ describe("table landing repo", () => {
       await setRestaurantSlugForUser(db, ownerA, restaurantA, "cafe-a");
       const landing = await listOpenMenusForRestaurantSlug(db, "cafe-a", MON_NOON);
       expect(landing?.menus).toEqual([]);
+      expect(landing?.closedMenus).toEqual([
+        {
+          menuId: "menu-closed-1",
+          title: "Sunday Roast",
+          availability: [{ days: [0], start: "11:00", end: "15:00" }],
+        },
+      ]);
     });
 
-    it("shows the open menus and hides the closed ones in one landing", async () => {
+    it("splits one landing into open and closed menus", async () => {
       await publishOpenMenu("menu-mixed-open", "Lunch");
       await publishOpenMenu("menu-mixed-closed", "Sunday Roast");
       await setMenuAvailabilityForUser(db, ownerA, "menu-mixed-closed", [
@@ -160,6 +167,24 @@ describe("table landing repo", () => {
       await setRestaurantSlugForUser(db, ownerA, restaurantA, "cafe-a");
       const landing = await listOpenMenusForRestaurantSlug(db, "cafe-a", MON_NOON);
       expect(landing?.menus.map((m) => m.menuId)).toEqual(["menu-mixed-open"]);
+      expect(landing?.closedMenus.map((m) => m.menuId)).toEqual(["menu-mixed-closed"]);
+    });
+
+    it("never lists an unrestricted menu as closed, or an unpublished one at all", async () => {
+      await publishOpenMenu("menu-free-1", "All day");
+      await publishOpenMenu("menu-unpub-2", "Brunch");
+      await setMenuAvailabilityForUser(db, ownerA, "menu-unpub-2", [
+        { days: [0], start: "11:00", end: "15:00" },
+      ]);
+      await setRestaurantSlugForUser(db, ownerA, restaurantA, "cafe-a");
+      let landing = await listOpenMenusForRestaurantSlug(db, "cafe-a", MON_NOON);
+      // Unrestricted = open; the Sunday-only one is closed, not missing.
+      expect(landing?.menus.map((m) => m.menuId)).toEqual(["menu-free-1"]);
+      expect(landing?.closedMenus.map((m) => m.menuId)).toEqual(["menu-unpub-2"]);
+      // Unpublishing removes it from both lists.
+      await unpublishMenuForUser(db, ownerA, "menu-unpub-2");
+      landing = await listOpenMenusForRestaurantSlug(db, "cafe-a", MON_NOON);
+      expect(landing?.closedMenus).toEqual([]);
     });
 
     it("stops listing a menu after it is unpublished", async () => {

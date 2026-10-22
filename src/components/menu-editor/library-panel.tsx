@@ -146,16 +146,18 @@ export function LibraryPanel({
                       value={menu.title}
                       onCommit={(title) => onRename(menu.id, title.trim())}
                     />
-                    <p className="mt-1 text-xs text-stone-500">
-                      {menu.categoryCount} {menu.categoryCount === 1 ? "category" : "categories"} ·{" "}
-                      {menu.itemCount} {menu.itemCount === 1 ? "item" : "items"} · updated{" "}
-                      {formatDate(menu.updatedAt)}{" "}
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                      <span>
+                        {menu.categoryCount} {menu.categoryCount === 1 ? "category" : "categories"} ·{" "}
+                        {menu.itemCount} {menu.itemCount === 1 ? "item" : "items"} · updated{" "}
+                        {formatDate(menu.updatedAt)}
+                      </span>
                       {accountMode && (
                         <span
                           className={
                             menu.onServer
-                              ? "mt-1 inline-block whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-emerald-900"
-                              : "mt-1 inline-block whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-amber-900"
+                              ? "whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900"
+                              : "whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
                           }
                         >
                           {menu.onServer ? "On your account" : "This browser only"}
