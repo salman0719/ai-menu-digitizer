@@ -161,6 +161,9 @@ export default function Home() {
   const [menus, setMenus] = useState<MenuSummary[]>([]);
   /** True until the first library read settles (skeleton rows, not the empty state). */
   const [libraryLoading, setLibraryLoading] = useState(true);
+  /** Menu whose "Move to account" button should beep (from the editor's move link). */
+  const [moveHighlightId, setMoveHighlightId] = useState<string | null>(null);
+  const moveHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [storageDown, setStorageDown] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<MenuDocument | null>(null);
@@ -947,6 +950,17 @@ export default function Home() {
     navigateTo({ screen: "library" }, false, false);
   }
 
+  /**
+   * "Move this menu to your account" (from the editor's opening-times
+   * panel): go to My menus and beep that menu's move button for a while.
+   */
+  function handleGoToMove(menuId: string) {
+    if (moveHighlightTimer.current) clearTimeout(moveHighlightTimer.current);
+    setMoveHighlightId(menuId);
+    navigateTo({ screen: "library" }, false, false);
+    moveHighlightTimer.current = setTimeout(() => setMoveHighlightId(null), 6000);
+  }
+
   // --- Capture flow -------------------------------------------------------
 
   function scrollToResult() {
@@ -1301,6 +1315,7 @@ export default function Home() {
             <LibraryPanel
               menus={libraryMenus}
               loading={libraryLoading}
+              highlightMoveId={moveHighlightId}
               accountMode={signedIn}
               ownedRestaurants={signedIn ? ownedRestaurants : []}
               onMoveToAccount={handleMoveMenuToAccount}
@@ -1346,6 +1361,7 @@ export default function Home() {
               onChange={handleDocChange}
               saveState={saveState}
               syncMode={signedIn ? "account" : "local"}
+              onMoveToAccount={() => handleGoToMove(activeDoc.id)}
               canManage={!activeMenuIsStaff}
               onServer={serverIds.has(activeDoc.id)}
               imageUrl={editorImageUrl}
