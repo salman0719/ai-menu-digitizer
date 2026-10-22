@@ -242,7 +242,7 @@ into stale data.
   Optimistic status changes that roll back loudly on failure.
 - **P2-6 Public table links.** The QR target changes from a local menu id to
   a public one (e.g. `/order?m=<menuId>&table=3` served from server data, or
-  a slug under `/m/<slug>` once I3 lands). Printable cards keep working; a
+  a slug under `/r/<restaurant>/m/<menu>` once I3 lands). Printable cards keep working; a
   dead link says so honestly instead of silently.
 
 ### Out of scope for I1
@@ -476,7 +476,7 @@ backlog below Phase 2 revenue work.
 | Billing provider     | **Stripe — parked.** Billing is the last thing built, riding with the parked B2B step.                                          |
 | Charge anything now  | **No.** Free launch promotion: no checkout or payment links anywhere; pricing revisited after measurement, early users in mind. |
 | Pilot price          | Deferred by design: suggest pricing only after real cost-per-extraction and effort are measured.                                |
-| Public URL shape     | **`/r/<restaurant>/m/<menu>`** on the current domain (decided 2026-10-22: menu slugs are scoped to their café, so two restaurants can both publish `lunch`); the pre-scope `/m/<slug>` links 308-redirect. Custom domains stay out of scope. |
+| Public URL shape     | **`/r/<restaurant>/m/<menu>`** on the current domain (decided 2026-10-22: menu slugs are scoped to their café, so two restaurants can both publish `lunch`). Custom domains stay out of scope. |
 | Local vs server mode | **Keep both** — signed-out = local prototype, signed-in = server.                                                               |
 | Error tracking       | **Approved:** Sentry (free tier) plus cookie-free view counts only.                                                             |
 

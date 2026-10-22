@@ -7,7 +7,7 @@ an idea graduates by being scoped into those docs.
 ## Routing / URLs
 
 - **Table-aware public order links** — put the selected table number in
-  the public order page URL (e.g. a `?table=` param on `/m/[slug]/order`),
+  the public order page URL (e.g. a `?table=` param on `/r/<restaurant>/m/<menu>/order`),
   so table QR codes deep-link straight to that table's ordering page
   instead of asking the diner to pick one.
 - **Refresh-proof capture flow** — persist the capture flow state in the
