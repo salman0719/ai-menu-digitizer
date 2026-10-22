@@ -54,19 +54,19 @@ export async function generateMetadata({
   const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) {
     return {
-      title: "Menu not published · Tablepass",
+      title: "Menu not published · Eateryo",
       robots: { index: false, follow: false },
     };
   }
   const title = page.doc.title.trim() || "Menu";
   const description = describe(page.doc, page.restaurantName);
   return {
-    title: `${title} · Tablepass`,
+    title: `${title} · Eateryo`,
     description,
     // Noindex by default: a café opts into being found later, not by
     // publishing a link for its own tables.
     robots: { index: false, follow: false },
-    openGraph: { title, description, type: "website", siteName: "Tablepass" },
+    openGraph: { title, description, type: "website", siteName: "Eateryo" },
     twitter: { card: "summary", title, description },
   };
 }
@@ -133,7 +133,7 @@ async function PublishedMenu({
               })}
             </time>
           </p>
-          <p className="mt-1">Published with Tablepass</p>
+          <p className="mt-1">Published with Eateryo</p>
         </footer>
       </main>
     </div>

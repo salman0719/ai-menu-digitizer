@@ -1,4 +1,4 @@
-# Tablepass
+# Eateryo
 
 > Working name (decided 2026-10-18) — Phase 1 shipped as "AI Menu Digitizer",
 > and the product now covers more than digitizing alone.

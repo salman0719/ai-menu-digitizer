@@ -122,7 +122,7 @@ describe("operator alerts", () => {
       },
       now
     );
-    expect(email.subject).toBe("[Tablepass] Server error: <orders>");
+    expect(email.subject).toBe("[Eateryo] Server error: <orders>");
     expect(email.text).toContain("When: 2026-10-18T12:00:00.000Z");
     expect(email.text).not.toContain("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
     expect(email.html).toContain("&lt;script&gt;");

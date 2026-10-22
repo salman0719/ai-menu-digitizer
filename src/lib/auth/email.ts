@@ -48,7 +48,7 @@ export async function sendMagicLinkEmail({ email, url }: MagicLinkEmail): Promis
       to: [email],
       subject: "Your sign-in link",
       html: [
-        "<p>Sign in to Tablepass:</p>",
+        "<p>Sign in to Eateryo:</p>",
         `<p><a href="${url}">Sign in</a></p>`,
         "<p>This link can be used once and expires in 5 minutes.</p>",
         "<p>If you didn't request this, you can ignore this email.</p>",
@@ -100,14 +100,14 @@ export async function sendInvitationEmail({
     body: JSON.stringify({
       from,
       to: [email],
-      subject: `${inviterName} invited you to ${restaurantName} on Tablepass`,
+      subject: `${inviterName} invited you to ${restaurantName} on Eateryo`,
       html: [
-        `<p>${inviterName} invited you to join <strong>${restaurantName}</strong> on Tablepass as ${roleLabel}.</p>`,
+        `<p>${inviterName} invited you to join <strong>${restaurantName}</strong> on Eateryo as ${roleLabel}.</p>`,
         `<p><a href="${url}">Accept the invitation</a></p>`,
         "<p>Signing in with this email address accepts the invitation. The link expires in 7 days.</p>",
         "<p>If you weren't expecting this, you can ignore this email.</p>",
       ].join(""),
-      text: `${inviterName} invited you to join ${restaurantName} on Tablepass as ${roleLabel}.\n\nAccept: ${url}\n\nSigning in with this email address accepts the invitation. The link expires in 7 days.\n`,
+      text: `${inviterName} invited you to join ${restaurantName} on Eateryo as ${roleLabel}.\n\nAccept: ${url}\n\nSigning in with this email address accepts the invitation. The link expires in 7 days.\n`,
     }),
   });
 

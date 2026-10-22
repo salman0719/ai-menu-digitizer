@@ -31,7 +31,7 @@ export function OrderShell({
             T
           </span>
           <div>
-            <p className="text-sm font-bold tracking-tight text-stone-900">Tablepass</p>
+            <p className="text-sm font-bold tracking-tight text-stone-900">Eateryo</p>
             <p className="text-xs text-stone-500">Order from your table</p>
           </div>
         </div>

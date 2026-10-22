@@ -8,7 +8,7 @@ import { contactEmail, LEGAL_UPDATED, SITE_NAME } from "@/lib/site";
 export const metadata: Metadata = {
   title: `Privacy — ${SITE_NAME}`,
   description:
-    "What Tablepass stores, what it never stores, how long orders are kept, and how to export or delete your data.",
+    "What Eateryo stores, what it never stores, how long orders are kept, and how to export or delete your data.",
 };
 
 function Section({

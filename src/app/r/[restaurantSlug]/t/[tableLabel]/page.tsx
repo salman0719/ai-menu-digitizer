@@ -44,14 +44,14 @@ export async function generateMetadata({
   const label = normalizeTableLabel(decodeURIComponent(tableLabel));
   if (!landing) {
     return {
-      title: "Restaurant link isn’t live · Tablepass",
+      title: "Restaurant link isn’t live · Eateryo",
       robots: { index: false, follow: false },
     };
   }
   return {
     title: label
-      ? `${landing.restaurantName} · ${formatTableLabel(label)} · Tablepass`
-      : `${landing.restaurantName} · Tablepass`,
+      ? `${landing.restaurantName} · ${formatTableLabel(label)} · Eateryo`
+      : `${landing.restaurantName} · Eateryo`,
     robots: { index: false, follow: false },
   };
 }

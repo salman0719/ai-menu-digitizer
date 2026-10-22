@@ -22,7 +22,7 @@ export function SiteHeader() {
             T
           </span>
           <div>
-            <p className="text-sm font-bold tracking-tight text-stone-900">Tablepass</p>
+            <p className="text-sm font-bold tracking-tight text-stone-900">Eateryo</p>
             <p className="text-xs text-stone-500">Menus, tables, and orders in one place</p>
           </div>
         </div>

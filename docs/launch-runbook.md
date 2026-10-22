@@ -51,7 +51,7 @@ Do this once after the first deploy and after changing alerting.
    `ai.provider_fallback` log line) behave as expected.
 2. Run an extraction from the UI.
 3. Expect: the browser shows a plain error (no key, no stack), and the ops
-   inbox receives `[Tablepass] Extraction needs attention: provider_auth_failed`
+   inbox receives `[Eateryo] Extraction needs attention: provider_auth_failed`
    within a minute. The log line has the same `x-request-id` the response
    carries.
 4. Remove the bad value and redeploy.
