@@ -138,8 +138,7 @@ async function TableLandingContent({
         <p className="mt-1 text-sm text-stone-600">
           {landing.menus.length === 1
             ? "One menu is open — tap a dish to add it."
-            : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}{" "}
-          No account or app needed.
+            : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}
         </p>
       </div>
 
