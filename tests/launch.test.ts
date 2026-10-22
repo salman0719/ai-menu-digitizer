@@ -121,6 +121,7 @@ describe("launch snapshot", () => {
     });
 
     await placeOrderFromSlug(db, {
+      restaurantSlug: publication.restaurantSlug,
       slug: publication.slug,
       tableLabel: "2",
       note: null,

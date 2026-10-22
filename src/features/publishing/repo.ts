@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 
 import {
   menu,
@@ -197,16 +197,17 @@ export async function getPublicationStatus(
   return readStatus(db, menuId);
 }
 
-/** True when the slug already belongs to a different menu. */
+/** True when the slug already belongs to a different menu of this restaurant. */
 async function slugTakenByAnother(
   db: TenancyDb,
+  restaurantId: string,
   slug: string,
   menuId: string
 ): Promise<boolean> {
   const rows = await db
     .select({ menuId: publishedMenu.menuId })
     .from(publishedMenu)
-    .where(eq(publishedMenu.slug, slug));
+    .where(and(eq(publishedMenu.restaurantId, restaurantId), eq(publishedMenu.slug, slug)));
   return rows.some((row) => row.menuId !== menuId);
 }
 
@@ -222,9 +223,9 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * Reserve a new publication row, deriving a free slug from `base`. Races are
- * resolved by retrying the next candidate on a unique violation instead of
- * failing the publish.
+ * Reserve a new publication row, deriving a free slug from `base` **inside
+ * this restaurant**. Races are resolved by retrying the next candidate on a
+ * unique violation instead of failing the publish.
  */
 async function reservePublication(
   db: TenancyDb,
@@ -252,11 +253,15 @@ async function reservePublication(
 
 async function changeSlug(
   db: TenancyDb,
+  restaurantId: string,
   menuId: string,
   slug: string
 ): Promise<void> {
-  if (await slugTakenByAnother(db, slug, menuId)) {
-    throw new PublicationRepoError("slug_taken", "That link is already used by another menu.");
+  if (await slugTakenByAnother(db, restaurantId, slug, menuId)) {
+    throw new PublicationRepoError(
+      "slug_taken",
+      "That link is already used by another menu at this restaurant."
+    );
   }
   try {
     await db.update(publishedMenu).set({ slug }).where(eq(publishedMenu.menuId, menuId));
@@ -307,8 +312,11 @@ export async function publishMenuForUser(
   let publication = existing[0];
   if (!publication) {
     if (body.data.slug) {
-      if (await slugTakenByAnother(db, body.data.slug, menuId)) {
-        throw new PublicationRepoError("slug_taken", "That link is already used by another menu.");
+      if (await slugTakenByAnother(db, menuRow.restaurantId, body.data.slug, menuId)) {
+        throw new PublicationRepoError(
+          "slug_taken",
+          "That link is already used by another menu at this restaurant."
+        );
       }
       publication = await reservePublication(db, menuId, menuRow.restaurantId, body.data.slug);
     } else {
@@ -320,7 +328,7 @@ export async function publishMenuForUser(
       );
     }
   } else if (body.data.slug && body.data.slug !== publication.slug) {
-    await changeSlug(db, menuId, body.data.slug);
+    await changeSlug(db, menuRow.restaurantId, menuId, body.data.slug);
   }
 
   const revisionId = crypto.randomUUID();
@@ -397,7 +405,7 @@ export async function changeMenuSlugForUser(
   if (existing.length === 0) {
     throw new PublicationRepoError("not_published", "Publish this menu before naming its link.");
   }
-  if (existing[0].slug !== slug) await changeSlug(db, menuId, slug);
+  if (existing[0].slug !== slug) await changeSlug(db, menuRow.restaurantId, menuId, slug);
 
   const status = await readStatus(db, menuId);
   if (!status) throw new Error("changing the slug did not produce a readable publication row");
@@ -469,6 +477,11 @@ export async function getPublishedMenuByPath(
  * bare menu slug to the café that holds it, so links printed before the
  * address moved under `/r/<restaurant>/m/<menu>` still open. Null means
  * "unknown or not serving" — the caller renders a 404, never a guess.
+ *
+ * Since slugs are now unique per restaurant, several cafés may hold the same
+ * one. The link belongs to whoever held it while the namespace was global,
+ * i.e. the oldest publication of that slug — a rule that is stable, needs no
+ * extra bookkeeping, and never hands a printed code to a later publisher.
  */
 export async function getPublishedMenuBySlug(
   db: TenancyDb,
@@ -491,7 +504,9 @@ export async function getPublishedMenuBySlug(
     .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
     .innerJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
     .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
-    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)));
+    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)))
+    .orderBy(asc(publishedMenu.createdAt), asc(publishedMenu.id))
+    .limit(1);
 
   const row = rows[0];
   if (!row || row.publishedAt === null) return null;

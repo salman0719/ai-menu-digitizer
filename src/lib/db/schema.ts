@@ -98,8 +98,10 @@ export const verification = pgTable("verification", {
 });
 
 /**
- * A restaurant (café) tenant. `slug` is reserved for the public `/m/<slug>`
- * menu page in Step 9 — nullable until publishing exists.
+ * A restaurant (café) tenant. `slug` is the café's public `/r/<slug>`
+ * address — the prefix of every table QR code and every published menu link
+ * (`/r/<restaurant>/<menu>`) — claimed from the name when it is first
+ * needed, so it is nullable until then.
  */
 export const restaurant = pgTable(
   "restaurant",
@@ -307,13 +309,17 @@ export const menuRevision = pgTable(
 );
 
 /**
- * The public pointer for a menu (Step 9): its `/m/<slug>` address, the live
- * revision, and a cookie-free view count.
+ * The public pointer for a menu (Step 9): its address segment under the
+ * café's `/r/<slug>` — `/r/<restaurant>/<slug>` — the live revision, and a
+ * cookie-free view count.
  *
- * Unpublishing keeps this row and its slug (`publishedAt` and
+ * The slug is unique **inside one restaurant**, not globally: two cafés can
+ * both publish `/m/lunch` under their own addresses, so no one gets an
+ * unpredictable "-2" suffix for a title somebody else happened to publish
+ * first. Unpublishing keeps this row and its slug (`publishedAt` and
  * `liveRevisionId` become null), so the address stays reserved for the same
  * café instead of being recycled by whoever grabs it next. Publishing again
- * reuses it. 
+ * reuses it.
  */
 export const publishedMenu = pgTable(
   "published_menu",
@@ -339,7 +345,10 @@ export const publishedMenu = pgTable(
   },
   (t) => ({
     menuUnique: uniqueIndex("published_menu_menu_unique").on(t.menuId),
-    slugUnique: uniqueIndex("published_menu_slug_unique").on(t.slug),
+    restaurantSlugUnique: uniqueIndex("published_menu_restaurant_slug_unique").on(
+      t.restaurantId,
+      t.slug
+    ),
   })
 );
 

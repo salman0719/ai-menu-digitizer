@@ -45,9 +45,14 @@ const orderLineBodySchema = z.object({
 
 const orderBodySchema = z
   .object({
-    /** Single-menu path (older QRs): the menu's own public slug. */
+    /** Single-menu path (older QRs): the menu's own address segment. */
     slug: z.string().trim().min(1).max(64).nullable().optional(),
-    /** Table path (`/r/<slug>/t/<table>`): the restaurant's public slug. */
+    /**
+     * The café's public slug. Required on the table path
+     * (`/r/<slug>/t/<table>`), and sent by every menu link printed now
+     * (`/r/<slug>/<menu>/order`); absent only from links rendered before
+     * menu links moved under the restaurant.
+     */
     restaurantSlug: z.string().trim().min(1).max(64).nullable().optional(),
     tableLabel: z.string().trim().min(1).max(24),
     note: z.string().max(280).nullable().optional(),
@@ -56,17 +61,12 @@ const orderBodySchema = z
     website: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.slug && data.restaurantSlug) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Send either a menu link or a restaurant link, not both.",
-      });
-    } else if (!data.slug && !data.restaurantSlug) {
+    if (!data.slug && !data.restaurantSlug) {
       ctx.addIssue({ code: "custom", message: "A menu or restaurant link is required." });
-    } else if (data.restaurantSlug && data.lines.some((line) => !line.menuSlug)) {
-      ctx.addIssue({ code: "custom", message: "Every line needs its menu." });
     } else if (data.slug && data.lines.some((line) => line.menuSlug)) {
       ctx.addIssue({ code: "custom", message: "Lines cannot name a menu on this link." });
+    } else if (!data.slug && data.lines.some((line) => !line.menuSlug)) {
+      ctx.addIssue({ code: "custom", message: "Every line needs its menu." });
     }
   });
 
@@ -158,24 +158,33 @@ export async function POST(request: Request) {
       return response;
     }
 
-    const order = parsed.data.restaurantSlug
-      ? await placeTableOrder(getDb(), {
-          restaurantSlug: parsed.data.restaurantSlug,
+    // The schema's refine above guarantees exactly one shape: a body that
+    // names a menu on every line is the table path, a body carrying `slug`
+    // is the single-menu path (with or without the café it was printed
+    // under). Branch on `slug` first — modern single-menu links send both.
+    const order = parsed.data.slug
+      ? await placeOrderFromSlug(getDb(), {
+          slug: parsed.data.slug,
+          ...(parsed.data.restaurantSlug ? { restaurantSlug: parsed.data.restaurantSlug } : {}),
           tableLabel: parsed.data.tableLabel,
           note: parsed.data.note ?? null,
           lines: parsed.data.lines.map((line) => ({
-            menuSlug: line.menuSlug ?? "",
             menuItemId: line.menuItemId,
             variantName: line.variantName,
             quantity: line.quantity,
           })),
         })
-      : parsed.data.slug
-        ? await placeOrderFromSlug(getDb(), {
-            slug: parsed.data.slug,
+      : parsed.data.restaurantSlug
+        ? await placeTableOrder(getDb(), {
+            restaurantSlug: parsed.data.restaurantSlug,
             tableLabel: parsed.data.tableLabel,
             note: parsed.data.note ?? null,
-            lines: parsed.data.lines,
+            lines: parsed.data.lines.map((line) => ({
+              menuSlug: line.menuSlug ?? "",
+              menuItemId: line.menuItemId,
+              variantName: line.variantName,
+              quantity: line.quantity,
+            })),
           })
         : null;
     if (!order) {

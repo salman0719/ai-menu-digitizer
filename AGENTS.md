@@ -121,9 +121,11 @@ errors, or add lint/type suppressions just to make checks pass.
   publication status + `publicationPath`), `slug.ts` (deterministic slug
   generation and collision candidates), `repo.ts` (snapshot revisions,
   publish/unpublish, slug changes, scoped public read path, view counter),
-  `client.ts` (typed browser client). Menu slugs are scoped per restaurant:
-  the canonical address is `/r/<restaurant>/m/<menu>`, and the old global
-  `/m/<slug>` links 308-redirect from `src/proxy.ts`. Routes:
+  `client.ts` (typed browser client). Menu slugs are unique per restaurant
+  (`published_menu_restaurant_slug_unique`), never globally: the canonical
+  address is `/r/<restaurant>/m/<menu>`, two cafés may both hold `lunch`, and
+  the old global `/m/<slug>` links 308-redirect from `src/proxy.ts` to the
+  oldest holder. Routes:
   `src/app/api/menus/[menuId]/publication/`,
   `src/app/api/r/[restaurantSlug]/m/[menuSlug]/view/`, public page
   `src/app/r/[restaurantSlug]/m/[menuSlug]/page.tsx` (partial prerender;

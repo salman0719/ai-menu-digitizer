@@ -6,6 +6,7 @@ import { placeTableOrder } from "@/features/orders/repo";
 import { publishMenuForUser } from "@/features/publishing/repo";
 import { createRestaurant } from "@/features/tenancy/repo";
 import { setMenuAvailabilityForUser, setRestaurantSlugForUser } from "@/features/tables/repo";
+import { order as orderTable } from "@/lib/db/schema";
 import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
 
 /**
@@ -184,11 +185,78 @@ describe("multi-menu table orders", () => {
   it("keeps the single-menu path stamping per-line provenance", async () => {
     const { placeOrderFromSlug } = await import("@/features/orders/repo");
     const placed = await placeOrderFromSlug(db, {
+      restaurantSlug: "cafe-a",
       slug: "lunch",
       tableLabel: "3",
       note: null,
       lines: [{ menuItemId: "item-soup", quantity: 1 }],
     });
     expect(placed.lines[0]).toMatchObject({ menuId: "menu-lunch", menuTitle: "Lunch" });
+
+    // Links printed before menu links moved under the restaurant omit the
+    // café: the bare slug still resolves, through the legacy rule.
+    const legacy = await placeOrderFromSlug(db, {
+      slug: "lunch",
+      tableLabel: "3",
+      note: null,
+      lines: [{ menuItemId: "item-soup", quantity: 1 }],
+    });
+    expect(legacy.lines[0]).toMatchObject({ menuId: "menu-lunch" });
+  });
+
+  it("resolves an identical menu slug inside the café the diner is at", async () => {
+    // Both cafés publish a menu called "Lunch" — same slug, two addresses.
+    const restaurantB = (await createRestaurant(db, ownerB, "Café B")).id;
+    await setRestaurantSlugForUser(db, ownerB, restaurantB, "cafe-b");
+    await createMenuForUser(
+      db,
+      ownerB,
+      restaurantB,
+      menuDoc("menu-lunch-b", "Lunch", [item({ id: "item-taco", name: "Taco", price: 7 })])
+    );
+    const publishedB = await publishMenuForUser(db, ownerB, "menu-lunch-b", {
+      theme: "bistro",
+      layout: "list",
+    });
+    expect(publishedB.slug).toBe("lunch");
+
+    const { placeOrderFromSlug } = await import("@/features/orders/repo");
+    const atA = await placeOrderFromSlug(db, {
+      restaurantSlug: "cafe-a",
+      slug: "lunch",
+      tableLabel: "3",
+      note: null,
+      lines: [{ menuItemId: "item-soup", quantity: 1 }],
+    });
+    expect(atA.lines[0]).toMatchObject({ menuId: "menu-lunch", name: "Soup" });
+
+    const atB = await placeOrderFromSlug(db, {
+      restaurantSlug: "cafe-b",
+      slug: "lunch",
+      tableLabel: "3",
+      note: null,
+      lines: [{ menuItemId: "item-taco", quantity: 1 }],
+    });
+    expect(atB.lines[0]).toMatchObject({ menuId: "menu-lunch-b", name: "Taco" });
+
+    // Each ticket landed on the café the diner's link names.
+    const stored = await db
+      .select({ id: orderTable.id, restaurantId: orderTable.restaurantId })
+      .from(orderTable);
+    const ownerByOrder = new Map(stored.map((row) => [row.id, row.restaurantId]));
+    expect(ownerByOrder.get(atA.id)).toBe(restaurantA);
+    expect(ownerByOrder.get(atB.id)).toBe(restaurantB);
+
+    // A menu that exists only at the other café is refused, not guessed at:
+    // "bar" is live at Café A, and names nothing at Café B.
+    await expect(
+      placeOrderFromSlug(db, {
+        restaurantSlug: "cafe-b",
+        slug: "bar",
+        tableLabel: "3",
+        note: null,
+        lines: [{ menuItemId: "item-beer", quantity: 1 }],
+      })
+    ).rejects.toMatchObject({ code: "menu_not_live" });
   });
 });

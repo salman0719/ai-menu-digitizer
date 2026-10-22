@@ -27,9 +27,13 @@ const errorEnvelope = z.object({
 });
 
 export interface PlaceOrderRequest {
-  /** Single-menu path: the menu's public slug. Omit on the table path. */
+  /** Single-menu path: the menu's own address segment. Omit on the table path. */
   slug?: string;
-  /** Table path: the restaurant's public slug; every line names its menu. */
+  /**
+   * The restaurant's public slug. Required on the table path (every line
+   * then names its menu), and sent alongside `slug` on the single-menu path
+   * so the server resolves the menu inside that café.
+   */
   restaurantSlug?: string;
   tableLabel: string;
   note: string | null;

@@ -99,6 +99,7 @@ async function TableOrderLink({
 
   return (
     <ServerTableOrder
+      restaurantSlug={page.restaurantSlug}
       slug={page.slug}
       doc={page.doc}
       tableLabel={tableLabel}

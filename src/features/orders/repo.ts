@@ -10,7 +10,11 @@ import {
 import { menuAvailabilitySchema } from "@/features/availability/schema";
 import { isMenuOpenAt } from "@/features/availability/open-at";
 import type { TenancyDb } from "@/features/tenancy/repo";
-import { getPublishedMenuBySlug, type PublishedMenuPage } from "@/features/publishing/repo";
+import {
+  getPublishedMenuByPath,
+  getPublishedMenuBySlug,
+  type PublishedMenuPage,
+} from "@/features/publishing/repo";
 import { getRestaurantBySlug } from "@/features/tables/repo";
 import { menuDocumentSchema, type MenuDocument, type MenuItem } from "@/features/menu/schema";
 
@@ -78,6 +82,12 @@ export interface OrderLineRequest {
 export interface PlaceOrderInput {
   /** Public menu slug the diner ordered from. */
   slug: string;
+  /**
+   * The café's public slug, present on every link printed now. Omitted only
+   * by pages rendered before menu links moved under the restaurant; the slug
+   * alone still resolves, through the same legacy rule the redirects use.
+   */
+  restaurantSlug?: string;
   tableLabel: string;
   note?: string | null;
   lines: OrderLineRequest[];
@@ -271,7 +281,9 @@ export async function placeOrderFromSlug(
   db: TenancyDb,
   input: PlaceOrderInput
 ): Promise<Order> {
-  const page = await getPublishedMenuBySlug(db, input.slug);
+  const page = input.restaurantSlug
+    ? await getPublishedMenuByPath(db, input.restaurantSlug, input.slug)
+    : await getPublishedMenuBySlug(db, input.slug);
   if (!page) {
     throw new OrderRepoError("menu_not_live", "This menu is not published.");
   }
@@ -354,13 +366,11 @@ export async function placeTableOrder(
   const pages = new Map<string, PublishedMenuPage>();
   for (const request of input.lines) {
     if (!pages.has(request.menuSlug)) {
-      const page = await getPublishedMenuBySlug(db, request.menuSlug);
+      // Resolved inside this restaurant only: a menu slug that names
+      // another café's menu answers exactly like an unpublished one, so the
+      // slug gives away nothing about other tenants.
+      const page = await getPublishedMenuByPath(db, input.restaurantSlug, request.menuSlug);
       if (!page) {
-        throw new OrderRepoError("menu_not_live", "One of these menus is no longer published.");
-      }
-      if (page.restaurantId !== restaurant.id) {
-        // Same code as an unpublished menu: the slug gives away nothing
-        // about other tenants.
         throw new OrderRepoError("menu_not_live", "One of these menus is no longer published.");
       }
       pages.set(request.menuSlug, page);

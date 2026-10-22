@@ -71,6 +71,13 @@
       "when": 1792559897921,
       "tag": "0009_cheerful_the_spike",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792640338020,
+      "tag": "0010_abandoned_talon",
+      "breakpoints": true
     }
   ]
 }

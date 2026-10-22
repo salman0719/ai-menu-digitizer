@@ -26,7 +26,9 @@ import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
  * - publishing again updates the page and reuses the slug (and view count);
  * - unpublishing stops serving while keeping the slug reserved;
  * - public addresses live under the café (`/r/<restaurant>/m/<menu>`);
- * - slugs collide safely (suffix on derived names, refusal for a changed one);
+ * - slugs are scoped to one restaurant (same title elsewhere = same slug,
+ *   no suffix), with suffixes and refusals inside a single café;
+ * - the old global slug keeps resolving to the café that held it first;
  * - tenancy and roles: staff read only, outsiders see nothing and learn nothing.
  */
 describe("publishing repo", () => {
@@ -114,7 +116,7 @@ describe("publishing repo", () => {
     expect(revisions).toHaveLength(2);
   });
 
-  it("suffixes a derived slug on collision instead of failing", async () => {
+  it("suffixes a derived slug on collision inside one restaurant instead of failing", async () => {
     await publish();
     const secondId = "menu-pub-2";
     await createMenuForUser(db, ownerA, restaurantA, sampleDoc(secondId, "Café A — Menu"));
@@ -126,7 +128,42 @@ describe("publishing repo", () => {
     expect(second.urlPath).toBe("/r/cafe-a/m/cafe-a-menu-2");
   });
 
-  it("refuses a slug the owner explicitly asked for when it is taken", async () => {
+  it("lets another restaurant publish the same slug — slugs are scoped, not global", async () => {
+    await publish();
+    const restaurantB = (await createRestaurant(db, ownerB, "Café B")).id;
+    const otherId = "menu-pub-b1";
+    await createMenuForUser(db, ownerB, restaurantB, sampleDoc(otherId, "Café A — Menu"));
+
+    const other = await publishMenuForUser(db, ownerB, otherId, {
+      theme: "classic",
+      layout: "list",
+    });
+    // No "-2" suffix: the same title at another café is a different address.
+    expect(other.slug).toBe("cafe-a-menu");
+    expect(other.urlPath).toBe("/r/cafe-b/m/cafe-a-menu");
+
+    // Both pages resolve, each under its own café, and neither can be read
+    // through the other's address.
+    expect((await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu"))!.menuId).toBe(menuId);
+    expect((await getPublishedMenuByPath(db, "cafe-b", "cafe-a-menu"))!.menuId).toBe(otherId);
+    expect(await getPublishedMenuByPath(db, "cafe-c", "cafe-a-menu")).toBeNull();
+
+    // The old global address belongs to whoever held it first — a printed
+    // link never switches cafés when a later publisher reuses the slug.
+    expect((await getPublishedMenuBySlug(db, "cafe-a-menu"))!.restaurantId).toBe(restaurantA);
+
+    // An explicitly chosen slug is only taken *within* one restaurant.
+    const explicitId = "menu-pub-b2";
+    await createMenuForUser(db, ownerB, restaurantB, sampleDoc(explicitId, "Other"));
+    const explicit = await publishMenuForUser(db, ownerB, explicitId, {
+      theme: "bistro",
+      layout: "columns",
+      slug: "taken-link",
+    });
+    expect(explicit.urlPath).toBe("/r/cafe-b/m/taken-link");
+  });
+
+  it("refuses a slug the owner explicitly asked for when it is taken at this restaurant", async () => {
     await publish("taken-link");
     const secondId = "menu-pub-3";
     await createMenuForUser(db, ownerA, restaurantA, sampleDoc(secondId, "Other"));
