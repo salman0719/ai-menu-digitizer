@@ -399,7 +399,7 @@ export function MenuEditor({
     | { status: "added"; items: number; categories: number }
     | { status: "error"; message: string };
   const [addPages, setAddPages] = useState<AddPagesState>({ status: "idle" });
-  /** The hidden "Add pages" input in the menu toolbar; the header button reuses it. */
+  /** The hidden "Add pages" input, carried by the plus box beside the source image. */
   const addPagesInputRef = useRef<HTMLInputElement>(null);
 
   async function handleAddPages(files: File[]) {
@@ -491,14 +491,6 @@ export function MenuEditor({
         </>
       ) : mode === "edit" ? (
         <>
-          <button
-            type="button"
-            onClick={() => addPagesInputRef.current?.click()}
-            disabled={addPages.status === "working"}
-            className={smallButton}
-          >
-            {addPages.status === "working" ? "Reading pages…" : "+ Add pages"}
-          </button>
           <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
             ↕ Reorder
           </button>
@@ -824,14 +816,49 @@ export function MenuEditor({
                 )}
               </p>
             ))}
-          {imageUrl && (
+          {(imageUrl || canManage) && (
             <div className="mt-3">
-              <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>
-              <img
-                src={imageUrl}
-                alt="Original uploaded menu"
-                className="max-h-28 w-auto rounded-lg border border-stone-200 object-contain"
-              />
+              {imageUrl && <p className="mb-1 text-xs font-medium text-stone-500">Source image</p>}
+              <div className="flex items-stretch gap-3">
+                {imageUrl && (
+                  <img
+                    src={imageUrl}
+                    alt="Original uploaded menu"
+                    className="max-h-28 w-auto self-center rounded-lg border border-stone-200 object-contain"
+                  />
+                )}
+                {canManage && (
+                  <label
+                    className={`flex min-w-36 flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-4 py-2 text-center transition-colors hover:border-amber-700 hover:bg-amber-50 focus-within:border-amber-700 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber-700 ${addPages.status === "working" ? "pointer-events-none opacity-60" : ""}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="text-xl leading-none font-bold text-stone-500"
+                    >
+                      +
+                    </span>
+                    <span className="text-xs font-semibold text-stone-700">
+                      {addPages.status === "working" ? "Reading pages…" : "Add pages"}
+                    </span>
+                    <span className="text-[11px] leading-4 text-stone-500">
+                      Photograph more pages of this menu to add their items
+                    </span>
+                    <input
+                      ref={addPagesInputRef}
+                      type="file"
+                      multiple
+                      accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
+                      className="sr-only"
+                      disabled={addPages.status === "working"}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (files.length > 0) void handleAddPages(files);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
           )}
           {reviewCount > 0 && (
@@ -1145,22 +1172,6 @@ export function MenuEditor({
               const file = event.target.files?.[0];
               if (file) onImportFile(file);
               event.target.value = "";
-            }}
-          />
-        </label>
-        <label className={`${smallButton} cursor-pointer`}>
-          {addPages.status === "working" ? "Reading pages…" : "Add pages"}
-          <input
-            ref={addPagesInputRef}
-            type="file"
-            multiple
-            accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
-            className="sr-only"
-            disabled={addPages.status === "working"}
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              event.target.value = "";
-              if (files.length > 0) void handleAddPages(files);
             }}
           />
         </label>
