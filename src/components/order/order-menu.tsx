@@ -28,7 +28,7 @@ export function OrderShell({
             aria-hidden="true"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-700 text-base font-bold text-white"
           >
-            T
+            E
           </span>
           <div>
             <p className="text-sm font-bold tracking-tight text-stone-900">Eateryo</p>
