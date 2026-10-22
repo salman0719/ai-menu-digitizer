@@ -79,10 +79,10 @@ export function OrderMenuSection({
             <li key={item.id} className={`px-5 py-3.5 ${soldOut ? "opacity-60" : ""}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-stone-900">
-                    {item.name}
+                  <p className="flex items-center gap-2 font-medium text-stone-900">
+                    <span>{item.name}</span>
                     {soldOut && (
-                      <span className="ml-2 rounded-full bg-stone-200 px-2 py-0.5 align-middle text-[11px] font-semibold text-stone-600">
+                      <span className="shrink-0 rounded-full bg-stone-200 px-2 py-0.5 text-[11px] font-semibold text-stone-600">
                         Sold out
                       </span>
                     )}
