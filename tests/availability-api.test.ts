@@ -90,7 +90,7 @@ describe("GET /api/menus/[menuId]/availability", () => {
   it("returns the empty schedule by default", async () => {
     const res = await getAvailability(new Request("http://test.local"), menuParams(menuId));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ availability: [] });
+    expect(await res.json()).toEqual({ availability: [], timeZone: null });
   });
 
   it("lets staff read but hides other tenants behind 404", async () => {
@@ -111,10 +111,39 @@ describe("PUT /api/menus/[menuId]/availability", () => {
   it("stores windows for the owner and reads them back", async () => {
     const res = await putAvailability(jsonRequest({ windows: lunch }), menuParams(menuId));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ availability: lunch });
+    expect(await res.json()).toEqual({ availability: lunch, timeZone: null });
 
     const read = await getAvailability(new Request("http://test.local"), menuParams(menuId));
-    expect(await read.json()).toEqual({ availability: lunch });
+    expect(await read.json()).toEqual({ availability: lunch, timeZone: null });
+  });
+
+  it("stores the restaurant's time zone, keeps it when omitted, rejects nonsense", async () => {
+    const withZone = await putAvailability(
+      jsonRequest({ windows: lunch, timeZone: "Australia/Sydney" }),
+      menuParams(menuId)
+    );
+    expect(withZone.status).toBe(200);
+    expect(await withZone.json()).toEqual({ availability: lunch, timeZone: "Australia/Sydney" });
+
+    // Omitting the zone must not reset it to UTC.
+    const kept = await putAvailability(jsonRequest({ windows: lunch }), menuParams(menuId));
+    expect(await kept.json()).toEqual({ availability: lunch, timeZone: "Australia/Sydney" });
+
+    // An unrecognised zone is refused and changes nothing.
+    const bad = await putAvailability(
+      jsonRequest({ windows: lunch, timeZone: "Mars/Olympus" }),
+      menuParams(menuId)
+    );
+    expect(bad.status).toBe(400);
+    const read = await getAvailability(new Request("http://test.local"), menuParams(menuId));
+    expect(await read.json()).toEqual({ availability: lunch, timeZone: "Australia/Sydney" });
+
+    // An explicit null clears it back to the UTC fallback.
+    const cleared = await putAvailability(
+      jsonRequest({ windows: lunch, timeZone: null }),
+      menuParams(menuId)
+    );
+    expect(await cleared.json()).toEqual({ availability: lunch, timeZone: null });
   });
 
   it("rejects invalid windows without storing anything", async () => {
@@ -125,7 +154,7 @@ describe("PUT /api/menus/[menuId]/availability", () => {
     expect(res.status).toBe(400);
 
     const read = await getAvailability(new Request("http://test.local"), menuParams(menuId));
-    expect(await read.json()).toEqual({ availability: [] });
+    expect(await read.json()).toEqual({ availability: [], timeZone: null });
   });
 
   it("refuses staff writes and other tenants", async () => {

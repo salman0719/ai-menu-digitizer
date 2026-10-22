@@ -46,3 +46,21 @@ export type AvailabilityWindow = z.infer<typeof availabilityWindowSchema>;
 export const menuAvailabilitySchema = z.array(availabilityWindowSchema).max(28);
 
 export type MenuAvailability = z.infer<typeof menuAvailabilitySchema>;
+
+/**
+ * True when the runtime recognises `value` as an IANA time zone name.
+ *
+ * Opening windows are wall-clock times, so open/closed decisions also
+ * need the restaurant's zone (stored on the restaurant row). The zone a
+ * browser reports via `Intl` is accepted here, and the server re-checks
+ * it rather than trusting the client.
+ */
+export function isTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
