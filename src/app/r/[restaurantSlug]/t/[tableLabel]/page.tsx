@@ -2,7 +2,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { OrderShell } from "@/components/order/order-menu";
+import { OrderShell, OrderSkeleton } from "@/components/order/order-menu";
 import { TableOrderTabs } from "@/components/order/table-order-tabs";
 import { isSlug } from "@/features/publishing/slug";
 import { normalizeTableLabel, formatTableLabel } from "@/features/orders/table-links";
@@ -70,9 +70,7 @@ export default function TableLandingPage({
 function LandingLoading() {
   return (
     <OrderShell>
-      <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center" role="status">
-        <p className="text-sm text-stone-600">Finding this table’s menus…</p>
-      </div>
+      <OrderSkeleton label="Finding this table’s menus…" />
     </OrderShell>
   );
 }
