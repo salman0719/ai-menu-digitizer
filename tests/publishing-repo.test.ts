@@ -5,7 +5,6 @@ import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
 import {
   changeMenuSlugForUser,
   getPublishedMenuByPath,
-  getPublishedMenuBySlug,
   getPublicationStatus,
   publishMenuForUser,
   PublicationRepoError,
@@ -28,7 +27,6 @@ import { createTestDb, seedUser, type TestDb } from "./helpers/pg-test-db";
  * - public addresses live under the café (`/r/<restaurant>/m/<menu>`);
  * - slugs are scoped to one restaurant (same title elsewhere = same slug,
  *   no suffix), with suffixes and refusals inside a single café;
- * - the old global slug keeps resolving to the café that held it first;
  * - tenancy and roles: staff read only, outsiders see nothing and learn nothing.
  */
 describe("publishing repo", () => {
@@ -82,9 +80,8 @@ describe("publishing repo", () => {
       stored.doc.categories.map((c) => c.id)
     );
     // The address is scoped: the same menu slug under another restaurant is
-    // a different page, and the old global lookup still resolves it.
+    // a different page.
     expect(await getPublishedMenuByPath(db, "cafe-b", "cafe-a-menu")).toBeNull();
-    expect((await getPublishedMenuBySlug(db, "cafe-a-menu"))!.restaurantSlug).toBe("cafe-a");
   });
 
   it("keeps the public page frozen while the menu keeps being edited", async () => {
@@ -148,10 +145,6 @@ describe("publishing repo", () => {
     expect((await getPublishedMenuByPath(db, "cafe-b", "cafe-a-menu"))!.menuId).toBe(otherId);
     expect(await getPublishedMenuByPath(db, "cafe-c", "cafe-a-menu")).toBeNull();
 
-    // The old global address belongs to whoever held it first — a printed
-    // link never switches cafés when a later publisher reuses the slug.
-    expect((await getPublishedMenuBySlug(db, "cafe-a-menu"))!.restaurantId).toBe(restaurantA);
-
     // An explicitly chosen slug is only taken *within* one restaurant.
     const explicitId = "menu-pub-b2";
     await createMenuForUser(db, ownerB, restaurantB, sampleDoc(explicitId, "Other"));
@@ -184,7 +177,6 @@ describe("publishing repo", () => {
     expect(changed.isLive).toBe(true);
     expect(await getPublishedMenuByPath(db, "cafe-a", "cafe-a-menu")).toBeNull();
     expect(await getPublishedMenuByPath(db, "cafe-a", "chez-a")).not.toBeNull();
-    expect(await getPublishedMenuBySlug(db, "cafe-a-menu")).toBeNull();
 
     await expect(changeMenuSlugForUser(db, ownerA, menuId, "Two Words")).rejects.toMatchObject({
       code: "invalid",

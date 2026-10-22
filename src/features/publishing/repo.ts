@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import {
   menu,
@@ -43,9 +43,7 @@ import { slugCandidates, slugifyMenuTitle } from "./slug";
  *
  * Public addresses live under the café: `/r/<restaurant>/m/<menu>`, built
  * from the restaurant's own `/r/<slug>` address plus the menu's slug (see
- * `publicationPath`). The old global `/m/<slug>` namespace is kept working
- * as a redirect (the proxy resolves it through `getPublishedMenuBySlug`),
- * so links printed before this change still open.
+ * `publicationPath`).
  *
  * Unpublishing keeps the row (and its slug) reserved with `published_at`
  * cleared, so the address stays with the same café and the page stops
@@ -461,67 +459,6 @@ export async function getPublishedMenuByPath(
   return {
     slug: row.slug,
     restaurantSlug,
-    menuId: row.menuId,
-    restaurantId: row.restaurantId,
-    restaurantName: row.restaurantName,
-    doc: parsedDoc.data,
-    theme: row.theme,
-    layout: row.layout,
-    publishedAt: row.publishedAt.toISOString(),
-    viewCount: row.viewCount,
-  };
-}
-
-/**
- * The old global `/m/<slug>` namespace, kept alive as a redirect: resolve a
- * bare menu slug to the café that holds it, so links printed before the
- * address moved under `/r/<restaurant>/m/<menu>` still open. Null means
- * "unknown or not serving" — the caller renders a 404, never a guess.
- *
- * Since slugs are now unique per restaurant, several cafés may hold the same
- * one. The link belongs to whoever held it while the namespace was global,
- * i.e. the oldest publication of that slug — a rule that is stable, needs no
- * extra bookkeeping, and never hands a printed code to a later publisher.
- */
-export async function getPublishedMenuBySlug(
-  db: TenancyDb,
-  slug: string
-): Promise<PublishedMenuPage | null> {
-  const rows = await db
-    .select({
-      slug: publishedMenu.slug,
-      menuId: publishedMenu.menuId,
-      restaurantId: publishedMenu.restaurantId,
-      restaurantSlug: restaurant.slug,
-      publishedAt: publishedMenu.publishedAt,
-      viewCount: publishedMenu.viewCount,
-      restaurantName: restaurant.name,
-      doc: menuRevision.doc,
-      theme: menuRevision.theme,
-      layout: menuRevision.layout,
-    })
-    .from(publishedMenu)
-    .innerJoin(menu, eq(menu.id, publishedMenu.menuId))
-    .innerJoin(menuRevision, eq(menuRevision.id, publishedMenu.liveRevisionId))
-    .innerJoin(restaurant, eq(restaurant.id, publishedMenu.restaurantId))
-    .where(and(eq(publishedMenu.slug, slug), isNotNull(publishedMenu.publishedAt)))
-    .orderBy(asc(publishedMenu.createdAt), asc(publishedMenu.id))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row || row.publishedAt === null) return null;
-
-  const parsedDoc = menuDocumentSchema.safeParse(row.doc);
-  if (!parsedDoc.success) {
-    throw new Error(`published menu ${slug} failed canonical schema validation`);
-  }
-  if (!isPreviewThemeId(row.theme) || !isPreviewLayoutId(row.layout)) {
-    throw new Error(`published menu ${slug} has an unknown theme or layout`);
-  }
-
-  return {
-    slug: row.slug,
-    restaurantSlug: await ensureRestaurantSlugValue(db, row.restaurantId, row.restaurantSlug),
     menuId: row.menuId,
     restaurantId: row.restaurantId,
     restaurantName: row.restaurantName,
