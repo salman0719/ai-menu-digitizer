@@ -16,11 +16,10 @@ import { getDb } from "@/lib/db";
  * Per-table landing (Steps 1–2): `/r/<restaurant>/t/<table>`.
  *
  * One QR code per table resolves here — not to a single menu. The page
- * lists every currently-open menu for the restaurant (live publication +
- * availability windows covering now) and links each one into the existing
- * per-menu order flow. Step 3 will turn these links into tabs with a shared
- * cart; until then the landing is already useful: a diner sees what is
- * being served and taps through to order.
+ * lists every live menu for the restaurant: open ones (publication live +
+ * availability covering now) as orderable tabs, and menus outside their
+ * hours as disabled tabs that reveal their opening times, so a diner can
+ * tell a closed menu from a missing one.
  *
  * No account, no cookie: a stranger's phone sees exactly the open menus.
  * Unknown restaurant slugs 404; a known restaurant with nothing open gets
@@ -107,7 +106,7 @@ async function TableLandingContent({
 
   const frame = "rounded-2xl border border-stone-200 bg-white";
 
-  if (landing.menus.length === 0) {
+  if (landing.menus.length === 0 && landing.closedMenus.length === 0) {
     return (
       <OrderShell tableLabel={tableLabel}>
         <div className={`${frame} p-5`}>
@@ -136,9 +135,11 @@ async function TableLandingContent({
         </p>
         <h1 className="mt-1 text-2xl font-bold text-stone-900">Order from your table</h1>
         <p className="mt-1 text-sm text-stone-600">
-          {landing.menus.length === 1
-            ? "One menu is open — tap a dish to add it."
-            : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}
+          {landing.menus.length === 0
+            ? "Nothing is being served right now — tap a menu to see when it opens."
+            : landing.menus.length === 1
+              ? "One menu is open — tap a dish to add it."
+              : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}
         </p>
       </div>
 
@@ -152,6 +153,7 @@ async function TableLandingContent({
           title: menu.title,
           doc: menu.doc,
         }))}
+        closedMenus={landing.closedMenus}
       />
     </OrderShell>
   );

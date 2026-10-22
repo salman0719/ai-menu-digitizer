@@ -15,6 +15,8 @@
 
 import { useMemo, useState } from "react";
 
+import type { MenuAvailability } from "@/features/availability/schema";
+import { formatAvailability } from "@/features/availability/format";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
 import { searchMenu, type SearchMatch } from "@/features/menu/search";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
@@ -40,6 +42,17 @@ export interface TableOrderMenu {
   doc: MenuDocument;
 }
 
+/**
+ * A live menu that is published but not being served at the diner's visit:
+ * shown in the tab row as a disabled entry so they know it exists, and
+ * kept out of the tab scope, the search and the cart.
+ */
+export interface ClosedTableOrderMenu {
+  menuId: string;
+  title: string;
+  availability: MenuAvailability;
+}
+
 const ALL_TAB = "all";
 
 interface TableOrderTabsProps {
@@ -47,9 +60,10 @@ interface TableOrderTabsProps {
   restaurantSlug: string;
   tableLabel: string;
   menus: TableOrderMenu[];
+  closedMenus: ClosedTableOrderMenu[];
 }
 
-function menuLabel(menu: TableOrderMenu): string {
+function menuLabel(menu: { title: string }): string {
   return menu.title.trim() || "Untitled menu";
 }
 
@@ -58,9 +72,11 @@ export function TableOrderTabs({
   restaurantSlug,
   tableLabel,
   menus,
+  closedMenus,
 }: TableOrderTabsProps) {
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
   const [query, setQuery] = useState("");
+  const [infoMenuId, setInfoMenuId] = useState<string | null>(null);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [note, setNote] = useState("");
   const [variantChoice, setVariantChoice] = useState<Record<string, string>>({});
@@ -70,6 +86,9 @@ export function TableOrderTabs({
   const [placed, setPlaced] = useState<Order | null>(null);
 
   const searching = query.trim().length > 0;
+
+  /** The closed menu whose opening times are currently revealed, if any. */
+  const infoMenu = closedMenus.find((menu) => menu.menuId === infoMenuId) ?? null;
 
   /** Menus in scope for the visible list: the tab, or every menu on All. */
   const scopedMenus = useMemo(
@@ -200,40 +219,80 @@ export function TableOrderTabs({
       <div className="flex min-w-0 flex-col gap-4">
         <nav aria-label="Menus" className={`${frame} p-3`}>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            <TabButton
-              active={activeTab === ALL_TAB}
-              onClick={() => setActiveTab(ALL_TAB)}
-              label="All"
-            />
+            {menus.length > 0 && (
+              <TabButton
+                active={activeTab === ALL_TAB}
+                onClick={() => {
+                  setInfoMenuId(null);
+                  setActiveTab(ALL_TAB);
+                }}
+                label="All"
+              />
+            )}
             {menus.map((menu) => (
               <TabButton
                 key={menu.menuId}
                 active={activeTab === menu.menuId}
-                onClick={() => setActiveTab(menu.menuId)}
+                onClick={() => {
+                  setInfoMenuId(null);
+                  setActiveTab(menu.menuId);
+                }}
                 label={menuLabel(menu)}
               />
             ))}
+            {closedMenus.map((menu) => (
+              <ClosedTabButton
+                key={menu.menuId}
+                label={menuLabel(menu)}
+                onShow={() => setInfoMenuId(menu.menuId)}
+                onHide={() => setInfoMenuId(null)}
+              />
+            ))}
           </div>
-          <label className="mt-2 block">
-            <span className="sr-only">Search dishes</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-700 focus:outline-none"
-            />
-          </label>
-          {searching && (
-            <p className="mt-2 text-xs text-stone-500" role="status">
-              {visibleCount === 0
-                ? `No dishes match “${query.trim()}”.`
-                : `${visibleCount} ${visibleCount === 1 ? "dish" : "dishes"} match “${query.trim()}”.`}
+          {infoMenu && (
+            <p
+              role="status"
+              className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"
+            >
+              <span className="font-semibold">{menuLabel(infoMenu)}</span> is closed right now.
+              Open {formatAvailability(infoMenu.availability).join("; ")}.
+            </p>
+          )}
+          {menus.length > 0 ? (
+            <>
+              <label className="mt-2 block">
+                <span className="sr-only">Search dishes</span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={`Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`}
+                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-700 focus:outline-none"
+                />
+              </label>
+              {searching && (
+                <p className="mt-2 text-xs text-stone-500" role="status">
+                  {visibleCount === 0
+                    ? `No dishes match “${query.trim()}”.`
+                    : `${visibleCount} ${visibleCount === 1 ? "dish" : "dishes"} match “${query.trim()}”.`}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-stone-500">
+              Nothing to order at the moment — tap a menu to see when it opens.
             </p>
           )}
         </nav>
 
-        {visibleCount === 0 ? (
+        {menus.length === 0 ? (
+          <div className={`${frame} p-8 text-center`}>
+            <p className="text-lg font-semibold text-stone-900">Nothing is open right now</p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+              Every menu is between services — tap one above to see when it opens.
+            </p>
+          </div>
+        ) : visibleCount === 0 ? (
           <div className={`${frame} p-8 text-center`}>
             <p className="text-lg font-semibold text-stone-900">No dishes match</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
@@ -429,6 +488,42 @@ function TabButton({
           ? "bg-stone-900 text-white"
           : "border border-stone-300 text-stone-700 hover:border-amber-700 hover:text-amber-900"
       }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * A published menu that is not being served now: listed in the tab row
+ * but inert — pressing it never selects a tab, so it stays out of the
+ * search scope and the cart by construction. Hovering with a mouse or
+ * pressing it (touch/keyboard) reveals when it opens, shown in the strip
+ * below the tab row. Pointer events are filtered by pointer type so a
+ * touch tap does not reveal and then immediately hide the strip again.
+ */
+function ClosedTabButton({
+  label,
+  onShow,
+  onHide,
+}: {
+  label: string;
+  onShow: () => void;
+  onHide: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-disabled="true"
+      aria-label={`${label}, closed right now`}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") onShow();
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") onHide();
+      }}
+      onClick={onShow}
+      className="shrink-0 cursor-not-allowed rounded-full border border-dashed border-stone-300 bg-stone-50 px-4 py-1.5 text-sm font-semibold whitespace-nowrap text-stone-400"
     >
       {label}
     </button>
