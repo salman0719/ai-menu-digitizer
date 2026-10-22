@@ -159,14 +159,13 @@ describe("POST /api/orders", () => {
     expect((await unknown.json()).error.code).toBe("unknown_item");
   });
 
-  it("still accepts a link printed before menu links carried the café", async () => {
+  it("refuses a single-menu order that omits the café", async () => {
     holder.userId = null;
     const { slug, tableLabel, note } = validBody;
     const res = await placeOrderRoute(
       orderRequest({ slug, tableLabel, note, lines: [sampleLine()] })
     );
-    expect(res.status).toBe(201);
-    expect((await res.json()).order.lines[0].menuTitle).toBe("Café API — Orders");
+    expect(res.status).toBe(400);
   });
 
   it("prices an order from the café in the link when two cafés share a slug", async () => {

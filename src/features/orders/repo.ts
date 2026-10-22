@@ -12,7 +12,6 @@ import { isMenuOpenAt } from "@/features/availability/open-at";
 import type { TenancyDb } from "@/features/tenancy/repo";
 import {
   getPublishedMenuByPath,
-  getPublishedMenuBySlug,
   type PublishedMenuPage,
 } from "@/features/publishing/repo";
 import { getRestaurantBySlug } from "@/features/tables/repo";
@@ -82,12 +81,8 @@ export interface OrderLineRequest {
 export interface PlaceOrderInput {
   /** Public menu slug the diner ordered from. */
   slug: string;
-  /**
-   * The café's public slug, present on every link printed now. Omitted only
-   * by pages rendered before menu links moved under the restaurant; the slug
-   * alone still resolves, through the same legacy rule the redirects use.
-   */
-  restaurantSlug?: string;
+  /** The café's public slug — the menu is resolved inside it. */
+  restaurantSlug: string;
   tableLabel: string;
   note?: string | null;
   lines: OrderLineRequest[];
@@ -281,9 +276,7 @@ export async function placeOrderFromSlug(
   db: TenancyDb,
   input: PlaceOrderInput
 ): Promise<Order> {
-  const page = input.restaurantSlug
-    ? await getPublishedMenuByPath(db, input.restaurantSlug, input.slug)
-    : await getPublishedMenuBySlug(db, input.slug);
+  const page = await getPublishedMenuByPath(db, input.restaurantSlug, input.slug);
   if (!page) {
     throw new OrderRepoError("menu_not_live", "This menu is not published.");
   }

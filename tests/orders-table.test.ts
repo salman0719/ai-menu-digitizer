@@ -192,16 +192,6 @@ describe("multi-menu table orders", () => {
       lines: [{ menuItemId: "item-soup", quantity: 1 }],
     });
     expect(placed.lines[0]).toMatchObject({ menuId: "menu-lunch", menuTitle: "Lunch" });
-
-    // Links printed before menu links moved under the restaurant omit the
-    // café: the bare slug still resolves, through the legacy rule.
-    const legacy = await placeOrderFromSlug(db, {
-      slug: "lunch",
-      tableLabel: "3",
-      note: null,
-      lines: [{ menuItemId: "item-soup", quantity: 1 }],
-    });
-    expect(legacy.lines[0]).toMatchObject({ menuId: "menu-lunch" });
   });
 
   it("resolves an identical menu slug inside the café the diner is at", async () => {

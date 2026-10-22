@@ -86,6 +86,7 @@ describe("orders repo", () => {
 
   function place(lines: { menuItemId: string; variantName?: string | null; quantity: number }[]) {
     return placeOrderFromSlug(db, {
+      restaurantSlug: "cafe-a",
       slug: "cafe-a-orders",
       tableLabel: "7",
       note: "No onions",
@@ -175,6 +176,7 @@ describe("orders repo", () => {
   it("refuses to order from an unpublished menu", async () => {
     await expect(
       placeOrderFromSlug(db, {
+        restaurantSlug: "cafe-a",
         slug: "not-live",
         tableLabel: "1",
         lines: [{ menuItemId: "item-flat", quantity: 1 }],

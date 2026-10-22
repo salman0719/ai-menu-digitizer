@@ -45,13 +45,12 @@ const orderLineBodySchema = z.object({
 
 const orderBodySchema = z
   .object({
-    /** Single-menu path (older QRs): the menu's own address segment. */
+    /** Single-menu path: the menu's own address segment. Omit on the table path. */
     slug: z.string().trim().min(1).max(64).nullable().optional(),
     /**
-     * The café's public slug. Required on the table path
-     * (`/r/<slug>/t/<table>`), and sent by every menu link printed now
-     * (`/r/<slug>/<menu>/order`); absent only from links rendered before
-     * menu links moved under the restaurant.
+     * The café's public slug. Required on both paths: alongside `slug` on
+     * the single-menu path (`/r/<slug>/m/<menu>/order`), and on its own on
+     * the table path (`/r/<slug>/t/<table>`, where every line names its menu).
      */
     restaurantSlug: z.string().trim().min(1).max(64).nullable().optional(),
     tableLabel: z.string().trim().min(1).max(24),
@@ -61,7 +60,7 @@ const orderBodySchema = z
     website: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.slug && !data.restaurantSlug) {
+    if (!data.restaurantSlug) {
       ctx.addIssue({ code: "custom", message: "A menu or restaurant link is required." });
     } else if (data.slug && data.lines.some((line) => line.menuSlug)) {
       ctx.addIssue({ code: "custom", message: "Lines cannot name a menu on this link." });
@@ -160,12 +159,15 @@ export async function POST(request: Request) {
 
     // The schema's refine above guarantees exactly one shape: a body that
     // names a menu on every line is the table path, a body carrying `slug`
-    // is the single-menu path (with or without the café it was printed
-    // under). Branch on `slug` first — modern single-menu links send both.
+    // is the single-menu path (always with the café it was printed under).
+    // Branch on `slug` first — single-menu links send both.
+    if (parsed.data.slug && !parsed.data.restaurantSlug) {
+      return errorResponse("invalid_body", "A menu or restaurant link is required.", 400);
+    }
     const order = parsed.data.slug
       ? await placeOrderFromSlug(getDb(), {
           slug: parsed.data.slug,
-          ...(parsed.data.restaurantSlug ? { restaurantSlug: parsed.data.restaurantSlug } : {}),
+          restaurantSlug: parsed.data.restaurantSlug ?? "",
           tableLabel: parsed.data.tableLabel,
           note: parsed.data.note ?? null,
           lines: parsed.data.lines.map((line) => ({

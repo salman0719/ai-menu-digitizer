@@ -30,11 +30,11 @@ export interface PlaceOrderRequest {
   /** Single-menu path: the menu's own address segment. Omit on the table path. */
   slug?: string;
   /**
-   * The restaurant's public slug. Required on the table path (every line
-   * then names its menu), and sent alongside `slug` on the single-menu path
-   * so the server resolves the menu inside that café.
+   * The restaurant's public slug. Required on both paths: alongside `slug`
+   * on the single-menu path so the server resolves the menu inside that
+   * café, and on its own on the table path (where every line names its menu).
    */
-  restaurantSlug?: string;
+  restaurantSlug: string;
   tableLabel: string;
   note: string | null;
   lines: {
