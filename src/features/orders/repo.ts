@@ -5,6 +5,7 @@ import {
   order as orderTable,
   orderLine as orderLineTable,
   orderRateLimit,
+  restaurant as restaurantTable,
   restaurantMembership,
 } from "@/lib/db/schema";
 import { menuAvailabilitySchema } from "@/features/availability/schema";
@@ -249,17 +250,23 @@ function resolveOrderLine(items: Map<string, MenuItem>, request: OrderLineReques
   };
 }
 
-/** Refuse orders for a menu whose time windows do not cover `now`. */
+/**
+ * Refuse orders for a menu whose time windows do not cover `now`, judged
+ * in the restaurant's zone: the windows are wall-clock times, and the
+ * stored `restaurant.time_zone` says which wall clock they mean (null =
+ * UTC, the fallback for a restaurant that has never saved hours).
+ */
 async function assertMenuOpen(db: TenancyDb, menuId: string, now: Date): Promise<void> {
   const rows = await db
-    .select({ availability: menuTable.availability })
+    .select({ availability: menuTable.availability, timeZone: restaurantTable.timeZone })
     .from(menuTable)
+    .innerJoin(restaurantTable, eq(restaurantTable.id, menuTable.restaurantId))
     .where(eq(menuTable.id, menuId));
   const availability = menuAvailabilitySchema.safeParse(rows[0]?.availability ?? []);
   if (!availability.success) {
     throw new Error(`stored menu ${menuId} has invalid availability`);
   }
-  if (!isMenuOpenAt(availability.data, now)) {
+  if (!isMenuOpenAt(availability.data, now, rows[0]?.timeZone ?? "UTC")) {
     throw new OrderRepoError("menu_not_live", "That menu is not being served right now.");
   }
 }

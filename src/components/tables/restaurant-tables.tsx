@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { TableQrPanel } from "@/components/tables/table-qr-panel";
+import { GuidanceCard } from "@/components/ui/guidance-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
 
 /**
@@ -13,7 +15,14 @@ import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/clie
  * were printed. The panel therefore lives here, next to Orders: every member
  * (owner or staff) can print, while only an owner sees the claim action.
  */
-export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
+export function RestaurantTables({
+  signedIn,
+  sessionPending = false,
+}: {
+  signedIn: boolean;
+  /** Session still resolving: show the loading shape, never the sign-in card. */
+  sessionPending?: boolean;
+}) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -52,7 +61,7 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
         </p>
       </div>
 
-      {!signedIn && (
+      {!signedIn && !sessionPending && (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <p className="text-sm font-medium text-stone-900">Sign in to print table cards</p>
           <p className="mt-1 text-xs leading-5 text-stone-500">
@@ -69,26 +78,31 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
 
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
-      {signedIn && restaurants === null && !loadError && (
-        <p role="status" className="text-xs text-stone-400">
-          Loading your restaurants…
-        </p>
+      {(sessionPending || signedIn) && restaurants === null && !loadError && (
+        <div role="status" aria-busy="true" className="flex flex-col gap-4">
+          <span className="sr-only">Loading your restaurants…</span>
+          <div className="rounded-2xl border border-stone-200 bg-white p-5">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-9 w-full max-w-sm" />
+            <Skeleton className="mt-3 h-3 w-3/5" />
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((card) => (
+              <Skeleton key={card} className="aspect-square w-full rounded-2xl" />
+            ))}
+          </div>
+        </div>
       )}
 
       {signedIn && restaurants !== null && restaurants.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">No restaurant yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Move a menu to your account and a restaurant is created for it — then come back here to
-            print the cards.
-          </p>
-          <a
-            href="/menus"
-            className="mt-3 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            Go to My menus
-          </a>
-        </div>
+        <GuidanceCard
+          title="No restaurant yet"
+          steps={[
+            "Move a menu to your account from My menus — moving it creates the restaurant.",
+            "Come back here to print one card per table.",
+          ]}
+          action={{ href: "/menus", label: "Go to My menus" }}
+        />
       )}
 
       {signedIn && restaurants !== null && restaurants.length > 0 && (

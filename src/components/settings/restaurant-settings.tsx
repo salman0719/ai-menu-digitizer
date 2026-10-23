@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { CommitInput } from "@/components/menu-editor/fields";
 import { TeamActivity } from "@/components/settings/team-activity";
+import { GuidanceCard } from "@/components/ui/guidance-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   addMember,
   deleteRestaurant,
@@ -32,11 +34,17 @@ import {
 
 interface RestaurantSettingsProps {
   signedIn: boolean;
+  /** Session still resolving: show the loading shape, never the sign-in card. */
+  sessionPending?: boolean;
   /** The signed-in user id, to mark their own row in the team list. */
   currentUserId: string | null;
 }
 
-export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettingsProps) {
+export function RestaurantSettings({
+  signedIn,
+  sessionPending = false,
+  currentUserId,
+}: RestaurantSettingsProps) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -112,7 +120,7 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
     <div className="flex flex-col gap-4">
       <h2 className="text-xl font-bold text-stone-900">Restaurant settings</h2>
 
-      {!signedIn && (
+      {!signedIn && !sessionPending && (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <p className="text-sm font-medium text-stone-900">Sign in to manage your restaurants</p>
           <p className="mt-1 text-xs leading-5 text-stone-500">
@@ -129,10 +137,19 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
 
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
-      {signedIn && restaurants === null && !loadError && (
-        <p role="status" className="text-xs text-stone-400">
-          Loading your restaurants…
-        </p>
+      {(sessionPending || signedIn) && restaurants === null && !loadError && (
+        <div role="status" aria-busy="true" className="flex flex-col gap-4">
+          <span className="sr-only">Loading your restaurants…</span>
+          <div className="rounded-2xl border border-stone-200 bg-white p-5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-3 h-9 w-full max-w-sm" />
+            <Skeleton className="mt-3 h-3 w-2/5" />
+            <div className="mt-4 flex gap-2">
+              <Skeleton className="h-8 w-28 rounded-full" />
+              <Skeleton className="h-8 w-20 rounded-full" />
+            </div>
+          </div>
+        </div>
       )}
 
       {staffOnly && (
@@ -143,13 +160,15 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
       )}
 
       {signedIn && restaurants !== null && owned.length === 0 && !staffOnly && (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">You don&apos;t own a restaurant yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Create one from “Move my menus to my account” in My menus, then come back here to name
-            it, staff it, or remove it.
-          </p>
-        </div>
+        <GuidanceCard
+          title="You don't own a restaurant yet"
+          steps={[
+            "Open My menus and pick a menu — upload a photo first if you don't have one yet.",
+            "Use “Move my menus to my account” on it: moving a menu creates the restaurant that owns it.",
+            "Come back here to rename it, staff it, or delete it.",
+          ]}
+          action={{ href: "/menus", label: "Go to My menus" }}
+        />
       )}
 
       {owned.length > 0 && (
@@ -448,9 +467,21 @@ function TeamCard({ restaurantId, restaurantName, currentUserId, onTeamChanged }
       {notice && !error && <p className="mt-2 text-xs text-emerald-800">{notice}</p>}
 
       {members === null && !error && (
-        <p role="status" className="mt-3 text-xs text-stone-400">
-          Loading the team…
-        </p>
+        <div role="status" aria-busy="true" className="mt-3 flex flex-col gap-2">
+          <span className="sr-only">Loading the team…</span>
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="flex items-center gap-3 rounded-xl border border-stone-200 px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="mt-1.5 h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-7 w-24 rounded-full" />
+            </div>
+          ))}
+        </div>
       )}
 
       {members !== null && (

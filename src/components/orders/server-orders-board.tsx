@@ -27,6 +27,8 @@ import {
   type Order,
   type OrderStatus,
 } from "@/features/orders/schema";
+import { GuidanceCard } from "@/components/ui/guidance-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchStaffOrders, setOrderStatus } from "@/features/orders/client";
 import { SyncError } from "@/features/menus/sync";
 import { formatTableLabel } from "@/features/orders/table-links";
@@ -41,6 +43,35 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
   served: "bg-green-100 text-green-900",
   cancelled: "bg-stone-200 text-stone-600",
 };
+
+/**
+ * Loading placeholder shared by both boards: pulsing ticket cards in the
+ * shape the real ones land in, so the list does not jump when they arrive.
+ */
+export function OrdersSkeleton() {
+  return (
+    <div role="status" aria-busy="true">
+      <span className="sr-only">Loading orders…</span>
+      <ul className="space-y-3">
+        {[0, 1, 2].map((row) => (
+          <li key={row} className="rounded-2xl border border-stone-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <Skeleton className="mt-3 h-3 w-2/5" />
+            <Skeleton className="mt-2 h-3 w-1/3" />
+            <div className="mt-4 flex gap-2">
+              <Skeleton className="h-8 w-28 rounded-full" />
+              <Skeleton className="h-8 w-20 rounded-full" />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -221,17 +252,16 @@ export function ServerOrdersBoard() {
       )}
 
       {phase === "loading" && orders.length === 0 ? (
-        <p className="text-sm text-stone-500" role="status">
-          Loading orders…
-        </p>
+        <OrdersSkeleton />
       ) : orders.length === 0 && !error ? (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">No orders yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Print your table cards from the Tables tab, then scan one with a phone to place a real
-            order — it will show up here within seconds.
-          </p>
-        </div>
+        <GuidanceCard
+          title="No orders yet"
+          steps={[
+            "Print your table cards from the Tables tab.",
+            "Scan one with a phone and place a real order — it shows up here within seconds.",
+          ]}
+          action={{ href: "/tables", label: "Go to Tables" }}
+        />
       ) : (
         <ul className="space-y-3">
           {orders.map((order) => {

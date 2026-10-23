@@ -12,9 +12,35 @@ import { z } from "zod";
 
 import { SyncError, type SyncErrorCode } from "@/features/menus/sync";
 
-import { menuAvailabilitySchema, type MenuAvailability } from "./schema";
+import { isTimeZone, menuAvailabilitySchema, type MenuAvailability } from "./schema";
 
-const availabilityEnvelope = z.object({ availability: menuAvailabilitySchema });
+/** A menu's opening windows plus the zone those wall times are written in. */
+export interface AvailabilitySettings {
+  availability: MenuAvailability;
+  /** The restaurant's IANA zone, or null when it has never saved one (UTC). */
+  timeZone: string | null;
+}
+
+const availabilityEnvelope = z.object({
+  availability: menuAvailabilitySchema,
+  timeZone: z.string().nullable().optional(),
+});
+
+function decodeAvailability(payload: unknown): AvailabilitySettings {
+  const parsed = availabilityEnvelope.parse(payload);
+  return { availability: parsed.availability, timeZone: parsed.timeZone ?? null };
+}
+
+/**
+ * This browser's IANA time zone — what the owner's "9 to 5" actually
+ * means. Sent with every save so the server can resolve open/closed in
+ * the restaurant's local time instead of UTC; null only if the browser
+ * reports nothing recognisable (then nothing is sent and UTC is kept).
+ */
+export function browserTimeZone(): string | null {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isTimeZone(zone) ? zone : null;
+}
 
 const errorEnvelope = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
@@ -86,25 +112,26 @@ function availabilityUrl(menuId: string): string {
   return `/api/menus/${encodeURIComponent(menuId)}/availability`;
 }
 
-/** The menu's opening windows (`[]` = always open). Any member may read. */
-export async function fetchAvailability(menuId: string): Promise<MenuAvailability> {
-  return requestJson(availabilityUrl(menuId), undefined, (payload) =>
-    availabilityEnvelope.parse(payload).availability
-  );
+/** The menu's opening windows (`[]` = always open) and its zone. Any member may read. */
+export async function fetchAvailability(menuId: string): Promise<AvailabilitySettings> {
+  return requestJson(availabilityUrl(menuId), undefined, decodeAvailability);
 }
 
-/** Replace the opening windows (owner-only). */
+/** Replace the opening windows (owner-only), and the zone they mean. */
 export async function saveAvailability(
   menuId: string,
-  windows: MenuAvailability
-): Promise<MenuAvailability> {
+  windows: MenuAvailability,
+  timeZone?: string | null
+): Promise<AvailabilitySettings> {
   return requestJson(
     availabilityUrl(menuId),
     {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ windows }),
+      // `undefined` is dropped by JSON.stringify (zone untouched); `null`
+      // is sent so an explicit "UTC" choice clears the stored zone.
+      body: JSON.stringify({ windows, timeZone }),
     },
-    (payload) => availabilityEnvelope.parse(payload).availability
+    decodeAvailability
   );
 }

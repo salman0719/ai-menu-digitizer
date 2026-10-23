@@ -66,12 +66,27 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Branded red header for the internal ops alert (stands out in an inbox). */
+function alertHeader(): string {
+  return (
+    `<tr><td style="background:#991b1b;padding:14px 28px;font-family:Arial,sans-serif">` +
+    `<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>` +
+    `<td style="width:34px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
+    `<td align="center" style="width:32px;height:32px;background:#ffffff;border-radius:8px;` +
+    `font-family:Arial,sans-serif;font-size:18px;font-weight:bold;color:#991b1b;line-height:32px">E</td>` +
+    `</tr></table></td>` +
+    `<td style="font-size:13px;font-weight:bold;color:#ffffff;padding-left:10px">Eateryo &middot; Ops alert</td>` +
+    `<td align="right" style="font-size:11px;color:#fecaca">deduped 1/hour</td>` +
+    `</tr></table></td></tr>`
+  );
+}
+
 /** The email body for an alert. Kept pure so it can be asserted in tests. */
 export function buildAlertEmail(
   alert: OpsAlert,
   now: Date = new Date()
 ): { subject: string; text: string; html: string } {
-  const subject = `[Tablepass] ${scrubText(alert.subject)}`;
+  const subject = `[Eateryo] ${scrubText(alert.subject)}`;
   const detail = scrubText(alert.details);
   const text = [
     subject,
@@ -83,15 +98,34 @@ export function buildAlertEmail(
     "",
     "This message is also in the server logs under event=ops_alert.",
   ].join("\n");
-  return {
-    subject,
-    text,
-    html: [
-      `<p><strong>${escapeHtml(scrubText(alert.subject))}</strong></p>`,
-      `<pre style="white-space:pre-wrap">${escapeHtml(detail)}</pre>`,
-      `<p>When: ${escapeHtml(now.toISOString())}<br />Alert key: ${escapeHtml(alert.dedupeKey)}</p>`,
-    ].join(""),
-  };
+  const safeKey = escapeHtml(alert.dedupeKey);
+  const cardInner =
+    alertHeader() +
+    `<tr><td style="padding:20px 28px 0;font-family:Arial,sans-serif">` +
+    `<h1 style="margin:0 0 6px;font-size:18px;color:#1c1917">${escapeHtml(scrubText(alert.subject))}</h1>` +
+    `<p style="margin:0;font-size:13px;color:#57534e">Internal failure notice \u2014 see the scrubbed detail below, then the server logs.</p>` +
+    `</td></tr>` +
+    `<tr><td style="padding:14px 28px 0;font-family:Arial,sans-serif">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1c1917;border-radius:10px">` +
+    `<tr><td style="padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#e7e5e4">${escapeHtml(detail)}</td></tr>` +
+    `</table></td></tr>` +
+    `<tr><td style="padding:14px 28px 26px;font-family:Arial,sans-serif;font-size:12px;color:#78716c">` +
+    `When: ${escapeHtml(now.toISOString())} &middot; Alert key: ` +
+    `<span style="font-family:ui-monospace,Menlo,monospace">${safeKey}</span><br />` +
+    `This message is also in the server logs under <span style="font-family:ui-monospace,Menlo,monospace">event=ops_alert</span>.` +
+    `</td></tr>`;
+  const html =
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" ` +
+    `style="background:#f5f4f2;margin:0;padding:0">` +
+    `<tr><td align="center" style="padding:28px 16px">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" ` +
+    `style="max-width:520px;background:#ffffff;border:1px solid #e7e5e4;border-radius:16px;overflow:hidden">` +
+    cardInner +
+    `</table>` +
+    `<p style="margin:14px 0 0;font-family:Arial,sans-serif;font-size:11px;color:#a8a29e">` +
+    `Internal \u2014 never sent to customers &middot; throttle: one per key per hour</p>` +
+    `</td></tr></table>`;
+  return { subject, text, html };
 }
 
 export interface AlertDeps {

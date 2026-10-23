@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { describeAuditEvent } from "@/features/tenancy/audit-format";
 import { fetchAuditEvents, type AuditEventOption } from "@/features/tenancy/client";
 
@@ -52,9 +53,18 @@ export function TeamActivity({
       )}
 
       {!failed && events === null && (
-        <p role="status" className="mt-3 text-xs text-stone-400">
-          Loading team activity…
-        </p>
+        <div role="status" aria-busy="true" className="mt-3 flex flex-col gap-2">
+          <span className="sr-only">Loading team activity…</span>
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="flex items-baseline justify-between gap-3 border-b border-stone-100 pb-2 last:border-b-0 last:pb-0"
+            >
+              <Skeleton className="h-3 flex-1" />
+              <Skeleton className="h-3 w-12 shrink-0" />
+            </div>
+          ))}
+        </div>
       )}
 
       {!failed && events !== null && events.length === 0 && (

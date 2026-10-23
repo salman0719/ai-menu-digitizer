@@ -2,7 +2,7 @@ import { Suspense, cache } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { OrderShell } from "@/components/order/order-menu";
+import { OrderShell, OrderSkeleton } from "@/components/order/order-menu";
 import { ServerTableOrder } from "@/components/order/server-table-order";
 import { normalizeTableLabel } from "@/features/orders/table-links";
 import { getPublishedMenuByPath } from "@/features/publishing/repo";
@@ -41,12 +41,12 @@ export async function generateMetadata({
   const page = await loadPublishedMenu(restaurantSlug, menuSlug);
   if (!page) {
     return {
-      title: "Menu not published · Tablepass",
+      title: "Menu not published · Eateryo",
       robots: { index: false, follow: false },
     };
   }
   return {
-    title: `Order · ${page.doc.title.trim() || "Menu"} · Tablepass`,
+    title: `Order · ${page.doc.title.trim() || "Menu"} · Eateryo`,
     robots: { index: false, follow: false },
   };
 }
@@ -111,9 +111,7 @@ async function TableOrderLink({
 function OrderLoading() {
   return (
     <OrderShell>
-      <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center" role="status">
-        <p className="text-sm text-stone-600">Loading the menu…</p>
-      </div>
+      <OrderSkeleton label="Loading the menu…" />
     </OrderShell>
   );
 }

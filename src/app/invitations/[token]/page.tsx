@@ -1,9 +1,9 @@
 import { Suspense } from "react";
 
-import { InvitationClient } from "./invitation-client";
+import { InvitationClient, InvitationSkeleton } from "./invitation-client";
 
 export const metadata = {
-  title: "Team invitation — Tablepass",
+  title: "Team invitation — Eateryo",
 };
 
 /**
@@ -23,9 +23,7 @@ export default function InvitationPage({ params }: { params: Promise<{ token: st
       fallback={
         <main className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
           <h1 className="text-2xl font-bold tracking-tight text-stone-900">Team invitation</h1>
-          <p role="status" className="text-sm text-stone-500">
-            Loading the invitation…
-          </p>
+          <InvitationSkeleton />
         </main>
       }
     >

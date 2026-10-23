@@ -11,6 +11,11 @@
  * extend the switch without breaking existing data.
  */
 
+/**
+ * The Phase 1 legacy name (the product is now Eateryo). Renaming the
+ * database would orphan the data already stored in users' browsers, so it
+ * stays as-is; only the object stores above evolve.
+ */
 export const DB_NAME = "ai-menu-digitizer";
 export const DB_VERSION = 2;
 

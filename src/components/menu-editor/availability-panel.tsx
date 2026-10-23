@@ -17,7 +17,8 @@
 
 import { useEffect, useState } from "react";
 
-import { fetchAvailability, saveAvailability } from "@/features/availability/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { browserTimeZone, fetchAvailability, saveAvailability } from "@/features/availability/client";
 import {
   menuAvailabilitySchema,
   type AvailabilityWindow,
@@ -27,10 +28,19 @@ import { SyncError } from "@/features/menus/sync";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+/** Every IANA zone the browser knows; engines without the API get plain text. */
+const ZONE_CHOICES: string[] | null =
+  typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : null;
+
 interface AvailabilityPanelProps {
   menuId: string;
   syncMode: "local" | "account";
   canManage?: boolean;
+  /**
+   * "Move this menu to your account" action: navigates to My menus and
+   * highlights that menu's move button. Absent disables the link.
+   */
+  onMoveToAccount?: () => void;
 }
 
 /** "Mon–Fri" / "Sun" / "Mon, Wed, Fri" / "Every day". */
@@ -63,7 +73,12 @@ function freshWindow(): AvailabilityWindow {
   return { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" };
 }
 
-export function AvailabilityPanel({ menuId, syncMode, canManage = true }: AvailabilityPanelProps) {
+export function AvailabilityPanel({
+  menuId,
+  syncMode,
+  canManage = true,
+  onMoveToAccount,
+}: AvailabilityPanelProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     syncMode === "account" ? "loading" : "ready"
   );
@@ -73,6 +88,9 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
+  /** The zone the stored hours are written in (null = never set: UTC). */
+  const [timeZone, setTimeZone] = useState<string | null>(null);
+  const [draftTimeZone, setDraftTimeZone] = useState<string | null>(null);
 
   // The parent keys this panel by menu id, so mount always means a fresh
   // menu: "loading" is the initial state, and the effect only settles the
@@ -83,8 +101,10 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
     fetchAvailability(menuId)
       .then((current) => {
         if (cancelled) return;
-        setWindows(current);
-        setDraft(current);
+        setWindows(current.availability);
+        setDraft(current.availability);
+        setTimeZone(current.timeZone);
+        setDraftTimeZone(current.timeZone ?? browserTimeZone());
         setStatus("ready");
       })
       .catch((error: unknown) => {
@@ -107,8 +127,20 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
         <p className="mt-1 text-xs leading-5 text-stone-600">
-          This menu lives only in this browser, so it has no table page yet. Move it to your
-          account to set lunch, dinner, or bar hours — until then it would be served all day.
+          Opening hours are set on the account copy of a menu — the one its table page serves.
+          This menu is still only in this browser, so there is nothing to set yet.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-stone-600">
+          <button
+            type="button"
+            onClick={onMoveToAccount}
+            disabled={!onMoveToAccount}
+            className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 disabled:cursor-not-allowed disabled:no-underline disabled:text-stone-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Move this menu to your account
+          </button>{" "}
+          — we&apos;ll take you to My menus and highlight the button — then come back here to
+          set lunch, dinner, or bar hours. Until then it would be served all day.
         </p>
       </section>
     );
@@ -122,7 +154,11 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
         className="rounded-2xl border border-stone-200 bg-white p-4"
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
-        <p className="mt-1 text-xs text-stone-500">Loading…</p>
+        <div role="status" className="mt-2 flex flex-col gap-2">
+          <span className="sr-only">Loading opening times…</span>
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-4/5" />
+        </div>
       </section>
     );
   }
@@ -144,8 +180,10 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
             setLoadError(null);
             fetchAvailability(menuId)
               .then((current) => {
-                setWindows(current);
-                setDraft(current);
+                setWindows(current.availability);
+                setDraft(current.availability);
+                setTimeZone(current.timeZone);
+                setDraftTimeZone(current.timeZone ?? browserTimeZone());
                 setStatus("ready");
               })
               .catch((error: unknown) => {
@@ -170,6 +208,9 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
         className="rounded-2xl border border-stone-200 bg-white p-4"
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
+        <p className="mt-1 text-xs text-stone-500">
+          Times are in {timeZone ?? "UTC"}.
+        </p>
         {windows.length === 0 ? (
           <p className="mt-1 text-xs text-stone-600">Always open — no restricted hours.</p>
         ) : (
@@ -186,7 +227,7 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
   }
 
   const validation = menuAvailabilitySchema.safeParse(draft);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(windows);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(windows) || draftTimeZone !== timeZone;
 
   function updateWindow(index: number, next: AvailabilityWindow) {
     setDraft((current) => current.map((window, i) => (i === index ? next : window)));
@@ -199,9 +240,11 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await saveAvailability(menuId, validation.data);
-      setWindows(saved);
-      setDraft(saved);
+      const saved = await saveAvailability(menuId, validation.data, draftTimeZone);
+      setWindows(saved.availability);
+      setDraft(saved.availability);
+      setTimeZone(saved.timeZone);
+      setDraftTimeZone(saved.timeZone);
       setSavedTick(true);
     } catch (error: unknown) {
       setSaveError(error instanceof SyncError ? error.message : "Could not save opening times.");
@@ -223,6 +266,34 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
             : "Only these hours show on the table page. Takes effect right away, no republish needed."}
         </p>
       </div>
+
+      <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-600">
+        Times are in
+        {ZONE_CHOICES ? (
+          <select
+            value={draftTimeZone ?? "UTC"}
+            onChange={(event) => {
+              setDraftTimeZone(event.target.value === "UTC" ? null : event.target.value);
+              setSaveError(null);
+              setSavedTick(false);
+            }}
+            className="rounded-lg border border-stone-300 px-2 py-1 text-xs focus:border-amber-700 focus:outline-none"
+          >
+            <option value="UTC">UTC</option>
+            {draftTimeZone && !ZONE_CHOICES.includes(draftTimeZone) && (
+              <option value={draftTimeZone}>{draftTimeZone}</option>
+            )}
+            {ZONE_CHOICES.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span>{draftTimeZone ?? "UTC"}</span>
+        )}
+        <span className="text-stone-400">— diners see the menu as open or closed in this zone.</span>
+      </label>
 
       {draft.length > 0 && (
         <ul className="mt-3 space-y-3">

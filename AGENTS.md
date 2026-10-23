@@ -5,13 +5,13 @@ Read it before making any change.
 
 ## Project
 
-AI Menu Digitizer — see `PLAN.md` for mission, stack, and the Phase 1
+Eateryo — see `PLAN.md` for mission, stack, and the Phase 1
 acceptance criteria, and `PHASE-2.md` (scope) + `ROADMAP.md` (build order)
 for the current phase.
 
-Product name: **Tablepass** (temporary, decided 2026-10-18). "AI Menu
+Product name: **Eateryo** (renamed from Tablepass, decided 2026-10-22). "AI Menu
 Digitizer" was the Phase 1 name — keep it only where historical context
-demands it; all user-facing copy uses Tablepass.
+demands it; all user-facing copy uses Eateryo.
 
 Phase 1 (the local-first P0/P1 prototype) is complete and deployed.
 Phase 2 — accounts, a server DB, cross-device table ordering, one-click

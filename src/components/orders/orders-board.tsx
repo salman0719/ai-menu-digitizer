@@ -27,8 +27,9 @@ import {
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
 import { formatTableLabel } from "@/features/orders/table-links";
 import { authClient } from "@/lib/auth-client";
+import { GuidanceCard } from "@/components/ui/guidance-card";
 
-import { ServerOrdersBoard } from "./server-orders-board";
+import { OrdersSkeleton, ServerOrdersBoard } from "./server-orders-board";
 
 const REFRESH_MS = 5000;
 
@@ -39,11 +40,7 @@ const REFRESH_MS = 5000;
 export function OrdersBoard() {
   const { data: session, isPending } = authClient.useSession();
   if (isPending) {
-    return (
-      <p role="status" className="text-sm text-stone-500">
-        Loading orders…
-      </p>
-    );
+    return <OrdersSkeleton />;
   }
   return session?.user ? <ServerOrdersBoard /> : <LocalOrdersBoard />;
 }
@@ -195,16 +192,16 @@ function LocalOrdersBoard() {
       )}
 
       {state === "loading" && orders.length === 0 ? (
-        <p className="text-sm text-stone-500" role="status">
-          Loading orders…
-        </p>
+        <OrdersSkeleton />
       ) : orders.length === 0 && !error ? (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">No orders yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Open a menu, print its table QR cards, and scan one to place a test order.
-          </p>
-        </div>
+        <GuidanceCard
+          title="No orders yet"
+          steps={[
+            "Open a menu in My menus and print its table QR cards.",
+            "Scan one with a phone to place a test order — it appears here within seconds.",
+          ]}
+          action={{ href: "/menus", label: "Go to My menus" }}
+        />
       ) : (
         <ul className="space-y-3">
           {orders.map((order) => {

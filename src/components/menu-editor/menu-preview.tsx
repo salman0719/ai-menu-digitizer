@@ -84,11 +84,11 @@ export function MenuPreview({
                   return (
                     <li key={item.id} className={`py-3 ${soldOut ? "opacity-60" : ""}`}>
                       <div className="flex items-baseline gap-2">
-                        <p className={theme.itemName}>
-                          {item.name}
+                        <p className={`flex items-center gap-2 ${theme.itemName}`}>
+                          <span>{item.name}</span>
                           {soldOut && (
                             <span
-                              className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${theme.badge}`}
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${theme.badge}`}
                             >
                               Sold out
                             </span>

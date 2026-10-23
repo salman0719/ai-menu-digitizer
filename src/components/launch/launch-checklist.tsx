@@ -12,13 +12,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchLaunchStatus } from "@/features/launch/client";
 import type { LaunchStatus } from "@/features/launch/schema";
 import { launchSteps, verifiedProgress, type LaunchStep } from "@/features/launch/steps";
 import { formatMicroUsd } from "@/features/usage/pricing";
 import { SyncError } from "@/features/menus/sync";
 
-const CARDS_PRINTED_KEY = "tablepass:launch:cards-printed";
+const CARDS_PRINTED_KEY = "eateryo:launch:cards-printed";
 
 type State =
   | { kind: "loading" }
@@ -117,8 +118,17 @@ export function LaunchChecklist() {
 
   if (state.kind === "loading") {
     return (
-      <div className="rounded-2xl border border-stone-200 bg-white p-5" role="status">
-        <p className="text-sm text-stone-500">Checking your account…</p>
+      <div role="status" aria-busy="true" className="rounded-2xl border border-stone-200 bg-white p-5">
+        <span className="sr-only">Checking your account…</span>
+        <Skeleton className="h-5 w-48" />
+        <div className="mt-4 flex flex-col gap-3">
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="flex items-center gap-3">
+              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+              <Skeleton className="h-3 flex-1" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

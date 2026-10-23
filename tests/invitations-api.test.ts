@@ -86,7 +86,7 @@ function pendingParams(
 
 /** Pull the one-time token out of the emailed accept URL. */
 function tokenFromUrl(url: string): string {
-  const path = new URL(url, "https://tablepass.invalid").pathname;
+  const path = new URL(url, "https://eateryo.invalid").pathname;
   return decodeURIComponent(path.split("/").pop() ?? "");
 }
 

@@ -1,7 +1,9 @@
 # PHASE-2.md — Going live: accounts, ordering backend, one-click publish, B2B API (later)
 
-Status: **scoped; decisions settled 2026-10-18 (§9); work not started.**
-Written on branch `docs/phase-2-scope` (based on `feat/table-ordering`).
+Status: **scoped; decisions settled 2026-10-18 (§9). Steps 7–11 of the
+build order are built and locally verified on `staging` (see `ROADMAP.md`);
+the B2B API and billing (§5) stay parked.** Written on branch
+`docs/phase-2-scope` (based on `feat/table-ordering`).
 
 Phase 1 (the `PLAN.md` P0/P1 prototype) is shipped and deployed on Vercel:
 local-first menus in IndexedDB, Gemini extraction through a server route, an

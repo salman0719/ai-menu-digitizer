@@ -1,4 +1,7 @@
-# ROADMAP — AI Menu Digitizer (sequential build order)
+# ROADMAP — Eateryo (sequential build order)
+
+> The product was built as "AI Menu Digitizer" (Phase 1) and renamed to
+> Eateryo on 2026-10-22; the Git remote still carries the old name.
 
 No parallel agents. Small atomic commits, one step at a time. P0 first;
 do not start P1 until all P0 acceptance criteria pass (see PLAN.md §11).
@@ -67,7 +70,7 @@ production URL verified end-to-end by the user on 2026-10-16 with
 production). Vercel Hobby's 300s default function timeout covers the Gemini
 call — no `maxDuration` config needed. **P0 is complete; P1 is unblocked.**
 
-## Phase 2 — going live (scoped, not started)
+## Phase 2 — going live (scoped; Steps 7–11 built on `staging`, 12–13 parked)
 
 Scope, sequencing rationale, acceptance criteria, and researched service
 choices live in [`PHASE-2.md`](PHASE-2.md). Same working rules as Phase 1:

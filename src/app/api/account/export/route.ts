@@ -32,7 +32,7 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const data = await buildAccountExport(getDb(), userId);
-    const filename = `tablepass-export-${data.exportedAt.slice(0, 10)}.json`;
+    const filename = `eateryo-export-${data.exportedAt.slice(0, 10)}.json`;
     return new NextResponse(JSON.stringify(data, null, 2), {
       headers: {
         "Content-Type": "application/json; charset=utf-8",

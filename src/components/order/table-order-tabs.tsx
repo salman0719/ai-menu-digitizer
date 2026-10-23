@@ -13,8 +13,11 @@
  * `searchMenu` matching so filtering behaves identically everywhere.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
+import type { MenuAvailability } from "@/features/availability/schema";
+import { formatAvailability } from "@/features/availability/format";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
 import { searchMenu, type SearchMatch } from "@/features/menu/search";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
@@ -30,7 +33,7 @@ import {
 import { SyncError } from "@/features/menus/sync";
 import { formatTableLabel } from "@/features/orders/table-links";
 
-import { OrderMenuSection, OrderShell, formatOrderTotal } from "./order-menu";
+import { OrderMenuSection, OrderShell, StickyCartBar, formatOrderTotal } from "./order-menu";
 
 /** One open menu on the table landing (serializable for the client). */
 export interface TableOrderMenu {
@@ -40,6 +43,25 @@ export interface TableOrderMenu {
   doc: MenuDocument;
 }
 
+/**
+ * A live menu that is published but not being served at the diner's visit:
+ * shown in the tab row as a disabled entry so they know it exists, and
+ * kept out of the tab scope, the search and the cart.
+ */
+export interface ClosedTableOrderMenu {
+  menuId: string;
+  title: string;
+  availability: MenuAvailability;
+}
+
+/** Where a closed menu's tooltip sits: viewport coords measured on reveal. */
+interface ClosedInfo {
+  menuId: string;
+  x: number;
+  y: number;
+  above: boolean;
+}
+
 const ALL_TAB = "all";
 
 interface TableOrderTabsProps {
@@ -47,9 +69,10 @@ interface TableOrderTabsProps {
   restaurantSlug: string;
   tableLabel: string;
   menus: TableOrderMenu[];
+  closedMenus: ClosedTableOrderMenu[];
 }
 
-function menuLabel(menu: TableOrderMenu): string {
+function menuLabel(menu: { title: string }): string {
   return menu.title.trim() || "Untitled menu";
 }
 
@@ -58,9 +81,11 @@ export function TableOrderTabs({
   restaurantSlug,
   tableLabel,
   menus,
+  closedMenus,
 }: TableOrderTabsProps) {
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
   const [query, setQuery] = useState("");
+  const [closedInfo, setClosedInfo] = useState<ClosedInfo | null>(null);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [note, setNote] = useState("");
   const [variantChoice, setVariantChoice] = useState<Record<string, string>>({});
@@ -70,6 +95,64 @@ export function TableOrderTabs({
   const [placed, setPlaced] = useState<Order | null>(null);
 
   const searching = query.trim().length > 0;
+
+  /** The closed menu whose opening times are currently revealed, if any. */
+  const infoMenu =
+    closedInfo === null ? null : closedMenus.find((menu) => menu.menuId === closedInfo.menuId) ?? null;
+
+  /**
+   * Reveal a closed menu's opening times as a fixed-position tooltip: it
+   * floats over the page, so revealing never shifts the layout, and it
+   * cannot be clipped by the horizontally scrolling tab row. Anchored to
+   * the tab, flipped above when there is no room below, and clamped to the
+   * viewport edges.
+   */
+  function showClosedInfo(menu: ClosedTableOrderMenu, anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect();
+    // Half of the 16rem tooltip plus breathing room, used to clamp x.
+    const half = 136;
+    const x = Math.min(
+      Math.max(rect.left + rect.width / 2, half),
+      Math.max(window.innerWidth - half, half)
+    );
+    const belowY = rect.bottom + 8;
+    const roomBelow = belowY + 76 <= window.innerHeight;
+    setClosedInfo({
+      menuId: menu.menuId,
+      x,
+      y: roomBelow ? belowY : rect.top - 8,
+      above: !roomBelow,
+    });
+  }
+
+  function hideClosedInfo() {
+    setClosedInfo(null);
+  }
+
+  // While the tooltip is up: dismiss on Escape, on any press outside the
+  // closed tabs, and on any scroll (the anchor would move under it).
+  const tooltipVisible = closedInfo !== null;
+  useEffect(() => {
+    if (!tooltipVisible) return;
+    const hide = () => setClosedInfo(null);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-closed-tab]")) return;
+      hide();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    const onScroll = () => hide();
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [tooltipVisible]);
 
   /** Menus in scope for the visible list: the tab, or every menu on All. */
   const scopedMenus = useMemo(
@@ -93,8 +176,33 @@ export function TableOrderTabs({
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
   const showMenuBadges = menus.length > 1;
 
+  /**
+   * One menu means no navigation: the tab row (All + one identical tab)
+   * collapses to just search, and a lone closed menu states its hours
+   * inline instead of hiding them behind a tab. Closed menus count here —
+   * a single out-of-hours menu is still "the menu" to the diner.
+   */
+  const singleMenu = menus.length + closedMenus.length <= 1;
+  const onlyClosedMenu = singleMenu && menus.length === 0 ? closedMenus[0] ?? null : null;
+
   function choiceKey(menuId: string, itemId: string): string {
     return `${menuId}:${itemId}`;
+  }
+
+  /**
+   * The variant map `OrderMenuSection` reads, scoped to one menu: choices
+   * are stored under `choiceKey` (two menus can hold the same item id),
+   * but the list reads plain item ids — passing the raw map left the
+   * dropdown stuck on the first variant while adding still used the
+   * stored (correct) one.
+   */
+  function scopedVariantChoice(menuId: string, items: MenuItem[]): Record<string, string> {
+    const scoped: Record<string, string> = {};
+    for (const item of items) {
+      const chosen = variantChoice[choiceKey(menuId, item.id)];
+      if (chosen !== undefined) scoped[item.id] = chosen;
+    }
+    return scoped;
   }
 
   function chosenVariantName(menu: TableOrderMenu, item: MenuItem): string | null {
@@ -198,47 +306,97 @@ export function TableOrderTabs({
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <nav aria-label="Menus" className={`${frame} p-3`}>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            <TabButton
-              active={activeTab === ALL_TAB}
-              onClick={() => setActiveTab(ALL_TAB)}
-              label="All"
-            />
-            {menus.map((menu) => (
-              <TabButton
-                key={menu.menuId}
-                active={activeTab === menu.menuId}
-                onClick={() => setActiveTab(menu.menuId)}
-                label={menuLabel(menu)}
-              />
-            ))}
-          </div>
-          <label className="mt-2 block">
-            <span className="sr-only">Search dishes</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-700 focus:outline-none"
-            />
-          </label>
-          {searching && (
-            <p className="mt-2 text-xs text-stone-500" role="status">
-              {visibleCount === 0
-                ? `No dishes match “${query.trim()}”.`
-                : `${visibleCount} ${visibleCount === 1 ? "dish" : "dishes"} match “${query.trim()}”.`}
+        <nav aria-label={singleMenu ? "Search the menu" : "Menus"} className={`${frame} p-3`}>
+          {!singleMenu && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {menus.length > 0 && (
+                <TabButton
+                  active={activeTab === ALL_TAB}
+                  onClick={() => {
+                    hideClosedInfo();
+                    setActiveTab(ALL_TAB);
+                  }}
+                  label="All"
+                />
+              )}
+              {menus.map((menu) => (
+                <TabButton
+                  key={menu.menuId}
+                  active={activeTab === menu.menuId}
+                  onClick={() => {
+                    hideClosedInfo();
+                    setActiveTab(menu.menuId);
+                  }}
+                  label={menuLabel(menu)}
+                />
+              ))}
+              {closedMenus.map((menu) => (
+                <ClosedTabButton
+                  key={menu.menuId}
+                  menu={menu}
+                  show={closedInfo?.menuId === menu.menuId}
+                  onShow={(anchor) => showClosedInfo(menu, anchor)}
+                  onHide={hideClosedInfo}
+                />
+              ))}
+            </div>
+          )}
+          {onlyClosedMenu ? (
+            <div>
+              <p className="text-sm font-semibold text-stone-900">
+                {menuLabel(onlyClosedMenu)} is closed right now
+              </p>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                Open {formatAvailability(onlyClosedMenu.availability).join("; ")}.
+              </p>
+            </div>
+          ) : menus.length > 0 ? (
+            <>
+              <label className={!singleMenu ? "mt-2 block" : "block"}>
+                <span className="sr-only">Search dishes</span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={
+                    singleMenu
+                      ? "Search dishes…"
+                      : `Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`
+                  }
+                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-700 focus:outline-none"
+                />
+              </label>
+              {searching && (
+                <p className="mt-2 text-xs text-stone-500" role="status">
+                  {visibleCount === 0
+                    ? `No dishes match “${query.trim()}”.`
+                    : `${visibleCount} ${visibleCount === 1 ? "dish" : "dishes"} match “${query.trim()}”.`}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-stone-500">
+              Nothing to order at the moment — tap a menu to see when it opens.
             </p>
           )}
         </nav>
 
-        {visibleCount === 0 ? (
+        {menus.length === 0 ? (
+          <div className={`${frame} p-8 text-center`}>
+            <p className="text-lg font-semibold text-stone-900">Nothing is open right now</p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+              {singleMenu
+                ? "The kitchen is between services — opening hours are shown above."
+                : "Every menu is between services — tap one above to see when it opens."}
+            </p>
+          </div>
+        ) : visibleCount === 0 ? (
           <div className={`${frame} p-8 text-center`}>
             <p className="text-lg font-semibold text-stone-900">No dishes match</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
               Nothing on {activeTab === ALL_TAB ? "these menus" : "this menu"} matches “
-              {query.trim()}”. Try a shorter search, or browse the tabs above.
+              {query.trim()}”. Try a shorter search,{" "}
+              {singleMenu ? "or clear it to browse the whole menu." : "or browse the tabs above."}
             </p>
           </div>
         ) : (
@@ -255,7 +413,7 @@ export function TableOrderTabs({
                     key={`${menu.menuId}:${match.category.id}`}
                     category={{ ...match.category, items: match.items }}
                     currency={menu.doc.currency}
-                    variantChoice={variantChoice}
+                    variantChoice={scopedVariantChoice(menu.menuId, match.items)}
                     onVariantChange={(itemId, name) =>
                       setVariantChoice((current) => ({
                         ...current,
@@ -263,6 +421,14 @@ export function TableOrderTabs({
                       }))
                     }
                     onAdd={(item) => addItem(menu, item)}
+                    itemCount={(item, variantName) =>
+                      lines.find(
+                        (line) =>
+                          line.menuId === menu.menuId &&
+                          line.menuItemId === item.id &&
+                          (line.variantName ?? null) === (variantName ?? null)
+                      )?.quantity ?? 0
+                    }
                   />
                 ))}
               </div>
@@ -271,7 +437,11 @@ export function TableOrderTabs({
         )}
       </div>
 
-      <aside className={`${frame} h-fit p-5 lg:sticky lg:top-4`} aria-label="Your order">
+      <aside
+        id="your-order"
+        className={`${frame} h-fit scroll-mt-4 p-5 lg:sticky lg:top-4`}
+        aria-label="Your order"
+      >
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-bold text-stone-900">Your order</h2>
           <span className="text-xs font-medium text-stone-500">
@@ -395,10 +565,37 @@ export function TableOrderTabs({
           disabled={lines.length === 0 || submitting}
           onClick={() => void sendOrder()}
           className="mt-4 w-full rounded-full bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting ? "Sending…" : "Send order to the kitchen"}
-        </button>
+        >            {submitting ? "Sending…" : "Send order to the kitchen"}
+          </button>
       </aside>
+        <StickyCartBar
+          itemCount={itemCount}
+          total={total}
+          currency={distinctCurrency(menus.map((menu) => menu.doc))}
+        />
+
+      {closedInfo &&
+        infoMenu &&
+        createPortal(
+          <div
+            role="status"
+            className="pointer-events-none fixed z-50"
+            style={{
+              left: closedInfo.x,
+              top: closedInfo.y,
+              transform: closedInfo.above ? "translate(-50%, -100%)" : "translateX(-50%)",
+            }}
+          >
+            <div
+              role="tooltip"
+              className="w-max max-w-[16rem] rounded-xl bg-stone-900 px-3 py-2 text-left text-xs leading-5 text-white shadow-lg"
+            >
+              <span className="font-semibold">{menuLabel(infoMenu)}</span> is closed right now.
+              Open {formatAvailability(infoMenu.availability).join("; ")}.
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -428,6 +625,58 @@ function TabButton({
         active
           ? "bg-stone-900 text-white"
           : "border border-stone-300 text-stone-700 hover:border-amber-700 hover:text-amber-900"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * A published menu that is not being served now: listed in the tab row
+ * but inert — pressing it never selects a tab, so it stays out of the
+ * search scope and the cart by construction. Hovering with a mouse or
+ * pressing it (touch or keyboard) reveals when it opens, as a floating
+ * tooltip anchored to the tab. Pointer type decides the press behaviour:
+ * a tap toggles the tooltip, while a mouse click only keeps it shown, so
+ * hover-then-click never flickers it away.
+ */
+function ClosedTabButton({
+  menu,
+  show,
+  onShow,
+  onHide,
+}: {
+  menu: ClosedTableOrderMenu;
+  show: boolean;
+  onShow: (anchor: HTMLElement) => void;
+  onHide: () => void;
+}) {
+  const lastPointerType = useRef<string | null>(null);
+  const label = menuLabel(menu);
+  return (
+    <button
+      type="button"
+      data-closed-tab=""
+      aria-disabled="true"
+      aria-label={`${label}, closed right now`}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") onShow(event.currentTarget);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") onHide();
+      }}
+      onPointerDown={(event) => {
+        lastPointerType.current = event.pointerType;
+      }}
+      onClick={(event) => {
+        if (lastPointerType.current === "mouse" || !show) onShow(event.currentTarget);
+        else onHide();
+      }}
+      className={`shrink-0 cursor-not-allowed rounded-full border border-dashed px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${
+        show
+          ? "border-stone-400 bg-white text-stone-600"
+          : "border-stone-300 bg-stone-50 text-stone-400"
       }`}
     >
       {label}

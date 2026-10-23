@@ -19,7 +19,7 @@ export default function RestaurantNotFound() {
           href="/"
           className="font-medium text-amber-800 underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
         >
-          Tablepass
+          Eateryo
         </Link>{" "}
         turns menu photos into editable, shareable menus.
       </p>

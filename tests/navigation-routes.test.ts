@@ -4,8 +4,8 @@ import { appRouteHref, menuIdFromPathname, parseAppRoute } from "../src/features
 
 describe("application routes", () => {
   it("defaults the root and unknown paths to capture", () => {
-    expect(parseAppRoute("https://tablepass.example/")).toEqual({ screen: "capture" });
-    expect(parseAppRoute("https://tablepass.example/unknown")).toEqual({ screen: "capture" });
+    expect(parseAppRoute("https://eateryo.example/")).toEqual({ screen: "capture" });
+    expect(parseAppRoute("https://eateryo.example/unknown")).toEqual({ screen: "capture" });
   });
 
   it("parses top-level screen paths", () => {
