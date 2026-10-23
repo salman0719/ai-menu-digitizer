@@ -14,7 +14,9 @@
  * Fallbacks preserve the older flows: a browser-only menu keeps the Phase 1
  * `{origin}/order?menu=<menuId>&table=<label>` codes (this device's storage
  * only), and an account menu the panel cannot resolve right now keeps its
- * own public `/r/<restaurant>/m/<menu>/order` code.
+ * own public `/r/<restaurant>/m/<menu>/order` code. Per-menu codes are
+ * currently switched off (see ENABLE_MENU_QR_LINKS below) — the generation
+ * code stays so they can be re-enabled.
  *
  * Claiming is one tap for the owner; staff see cards but never the claim
  * button. Codes are generated in the browser (no third-party image API);
@@ -46,6 +48,15 @@ const COUNT_STORAGE_KEY = "table-qr-count";
 const PREFIX_STORAGE_KEY = "table-qr-prefix";
 const LABELS_STORAGE_KEY = "table-qr-labels";
 const CUSTOM_FLAG_KEY = "table-qr-custom";
+
+/**
+ * Kill switch for per-menu table codes from the menu editor's Table QR view.
+ * The direction is one code per table scoped to the restaurant
+ * (`/r/<slug>/t/<label>`, printed from the Tables tab), so the per-menu
+ * codes (`/order?menu=…` and `/r/…/m/…/order`) are disabled for now. Nothing
+ * is removed: flip this back to `true` to re-enable the menu-page codes.
+ */
+const ENABLE_MENU_QR_LINKS: boolean = false;
 
 type TableQrPanelProps =
   | {
@@ -252,11 +263,14 @@ export function TableQrPanel(props: TableQrPanelProps) {
     const labels = custom ?? defaultTableLabels(count, prefix.trim());
     Promise.all(
       labels.map(async (label) => {
+        // Per-menu codes are switched off (ENABLE_MENU_QR_LINKS): only a live
+        // restaurant link encodes cards from a menu page. The per-menu
+        // branches stay so the flow can be re-enabled.
         const url = tableSlug
           ? restaurantTableUrl(origin, tableSlug, label)
-          : publicSlug && publicRestaurantSlug
+          : ENABLE_MENU_QR_LINKS && publicSlug && publicRestaurantSlug
             ? publicTableOrderUrl(origin, publicRestaurantSlug, publicSlug, label)
-            : menuId
+            : ENABLE_MENU_QR_LINKS && menuId
               ? tableOrderUrl(origin, menuId, label)
               : null;
         if (!url) return null;
@@ -358,6 +372,14 @@ export function TableQrPanel(props: TableQrPanelProps) {
   }
 
   const resolvingLink = linkState.status === "loading";
+  /**
+   * Per-menu codes are switched off (see ENABLE_MENU_QR_LINKS): on a menu
+   * page with no live restaurant link there is nothing honest to encode, so
+   * the sheet is replaced with a pointer to the Tables tab.
+   * Restaurant-scoped cards (`tableSlug`) are unaffected.
+   */
+  const menuLinksDisabled =
+    !ENABLE_MENU_QR_LINKS && props.context === "menu" && !tableSlug && !resolvingLink;
 
   return (
     <div className="flex flex-col gap-4">
@@ -412,6 +434,15 @@ export function TableQrPanel(props: TableQrPanelProps) {
             : linkState.status === "unavailable"
               ? `${linkState.message} Table cards need the restaurant link — try again when you're back online.`
               : "Table cards will appear here once the restaurant link is live."}
+        </p>
+      ) : menuLinksDisabled ? (
+        <p
+          data-print-hide
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900"
+        >
+          <span className="font-bold">Table codes moved.</span> This menu no longer prints
+          its own table cards — print them from the Tables tab instead, where one code per
+          table covers the whole restaurant.
         </p>
       ) : (
         <>
