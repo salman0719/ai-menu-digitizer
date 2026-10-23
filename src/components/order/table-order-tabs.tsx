@@ -180,6 +180,22 @@ export function TableOrderTabs({
     return `${menuId}:${itemId}`;
   }
 
+  /**
+   * The variant map `OrderMenuSection` reads, scoped to one menu: choices
+   * are stored under `choiceKey` (two menus can hold the same item id),
+   * but the list reads plain item ids — passing the raw map left the
+   * dropdown stuck on the first variant while adding still used the
+   * stored (correct) one.
+   */
+  function scopedVariantChoice(menuId: string, items: MenuItem[]): Record<string, string> {
+    const scoped: Record<string, string> = {};
+    for (const item of items) {
+      const chosen = variantChoice[choiceKey(menuId, item.id)];
+      if (chosen !== undefined) scoped[item.id] = chosen;
+    }
+    return scoped;
+  }
+
   function chosenVariantName(menu: TableOrderMenu, item: MenuItem): string | null {
     if (item.variants.length === 0) return null;
     const chosen = variantChoice[choiceKey(menu.menuId, item.id)];
@@ -370,7 +386,7 @@ export function TableOrderTabs({
                     key={`${menu.menuId}:${match.category.id}`}
                     category={{ ...match.category, items: match.items }}
                     currency={menu.doc.currency}
-                    variantChoice={variantChoice}
+                    variantChoice={scopedVariantChoice(menu.menuId, match.items)}
                     onVariantChange={(itemId, name) =>
                       setVariantChoice((current) => ({
                         ...current,
