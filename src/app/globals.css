@@ -22,21 +22,21 @@ body {
 }
 
 /* Diner order list: the "Added" confirmation that pops above the Add
-   button. Rises, holds long enough to read, then fades — removed from
-   the DOM on animation end, so it never traps keyboard focus. */
+   button. Rises, holds long enough to read (~1.6s), then fades — a timer
+   removes it from the DOM at 2s, so it never lingers or traps focus. */
 @keyframes eateryo-added-pop {
   0% {
     opacity: 0;
     transform: translateY(6px) scale(0.9);
   }
-  15% {
+  8% {
     opacity: 1;
     transform: translateY(0) scale(1.05);
   }
-  30% {
+  15% {
     transform: translateY(0) scale(1);
   }
-  75% {
+  80% {
     opacity: 1;
     transform: translateY(-2px);
   }
@@ -47,7 +47,7 @@ body {
 }
 
 .added-flash {
-  animation: eateryo-added-pop 1.2s ease-out forwards;
+  animation: eateryo-added-pop 2s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

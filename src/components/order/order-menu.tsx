@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MenuCategory, MenuItem } from "@/features/menu/schema";
@@ -98,18 +98,40 @@ export function OrderMenuSection({
   /** Quantity of this exact item + variant already in the cart (0 when absent). */
   itemCount?: (item: MenuItem, variantName: string | null) => number;
 }) {
-  // Per-item confirmation tick: bumped on every tap so the "Added" pop
-  // replays, cleared on animation end so it leaves the DOM again.
+  // Per-item confirmation: pops on every tap, gone ~2s later. A fresh tap
+  // dismisses the visible pop instantly and replays it, so rapid taps
+  // never stack or linger. Removal is timer-driven (animation end is
+  // unreliable when the node remounts mid-flight).
   const [flash, setFlash] = useState<Record<string, number>>({});
-  function bumpFlash(itemId: string) {
-    setFlash((current) => ({ ...current, [itemId]: (current[itemId] ?? 0) + 1 }));
-  }
-  function clearFlash(itemId: string) {
+  const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const flashSeq = useRef(0);
+  useEffect(
+    () => () => {
+      for (const timer of Object.values(flashTimers.current)) clearTimeout(timer);
+    },
+    []
+  );
+  function hideFlash(itemId: string) {
     setFlash((current) => {
       if (!(itemId in current)) return current;
       const next = { ...current };
       delete next[itemId];
       return next;
+    });
+  }
+  function bumpFlash(itemId: string) {
+    // Drop the visible pop first so the replay starts from a clean mount.
+    hideFlash(itemId);
+    flashSeq.current += 1;
+    const seq = flashSeq.current;
+    requestAnimationFrame(() => {
+      const pending = flashTimers.current[itemId];
+      if (pending !== undefined) clearTimeout(pending);
+      setFlash((current) => ({ ...current, [itemId]: seq }));
+      flashTimers.current[itemId] = setTimeout(() => {
+        delete flashTimers.current[itemId];
+        hideFlash(itemId);
+      }, 2000);
     });
   }
   return (
@@ -188,7 +210,6 @@ export function OrderMenuSection({
                     <span
                       key={tick}
                       aria-hidden="true"
-                      onAnimationEnd={() => clearFlash(item.id)}
                       className="added-flash absolute -top-7 left-1/2 -translate-x-1/2 rounded-full bg-green-800 px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap text-white shadow"
                     >
                       Added ✓
