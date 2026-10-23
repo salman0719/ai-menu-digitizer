@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { TableQrPanel } from "@/components/tables/table-qr-panel";
+import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
 
@@ -88,19 +88,14 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
       )}
 
       {signedIn && restaurants !== null && restaurants.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">No restaurant yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Move a menu to your account and a restaurant is created for it — then come back here to
-            print the cards.
-          </p>
-          <Link
-            href="/menus"
-            className="mt-3 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            Go to My menus
-          </Link>
-        </div>
+        <GuidanceCard
+          title="No restaurant yet"
+          steps={[
+            "Move a menu to your account from My menus — moving it creates the restaurant.",
+            "Come back here to print one card per table.",
+          ]}
+          action={{ href: "/menus", label: "Go to My menus" }}
+        />
       )}
 
       {signedIn && restaurants !== null && restaurants.length > 0 && (

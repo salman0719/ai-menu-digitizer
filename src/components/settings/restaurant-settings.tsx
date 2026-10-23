@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { CommitInput } from "@/components/menu-editor/fields";
 import { TeamActivity } from "@/components/settings/team-activity";
+import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   addMember,
@@ -153,13 +154,15 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
       )}
 
       {signedIn && restaurants !== null && owned.length === 0 && !staffOnly && (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">You don&apos;t own a restaurant yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Create one from “Move my menus to my account” in My menus, then come back here to name
-            it, staff it, or remove it.
-          </p>
-        </div>
+        <GuidanceCard
+          title="You don't own a restaurant yet"
+          steps={[
+            "Open My menus and pick a menu — upload a photo first if you don't have one yet.",
+            "Use “Move my menus to my account” on it: moving a menu creates the restaurant that owns it.",
+            "Come back here to rename it, staff it, or delete it.",
+          ]}
+          action={{ href: "/menus", label: "Go to My menus" }}
+        />
       )}
 
       {owned.length > 0 && (
