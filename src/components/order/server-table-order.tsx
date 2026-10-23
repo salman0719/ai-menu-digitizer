@@ -30,7 +30,7 @@ import {
 import { SyncError } from "@/features/menus/sync";
 import { formatTableLabel } from "@/features/orders/table-links";
 
-import { OrderMenuSection, OrderShell, formatOrderTotal } from "./order-menu";
+import { OrderMenuSection, OrderShell, StickyCartBar, formatOrderTotal } from "./order-menu";
 
 interface ServerTableOrderProps {
   /** The café's public slug — the order is resolved inside it. */
@@ -167,15 +167,26 @@ export function ServerTableOrder({
               category={category}
               currency={doc.currency}
               variantChoice={variantChoice}
-              onVariantChange={(itemId, name) =>
-                setVariantChoice((current) => ({ ...current, [itemId]: name }))
-              }
-              onAdd={addItem}
-            />
+            onVariantChange={(itemId, name) =>
+              setVariantChoice((current) => ({ ...current, [itemId]: name }))
+            }
+            onAdd={addItem}
+            itemCount={(item, variantName) =>
+              lines.find(
+                (line) =>
+                  line.menuItemId === item.id &&
+                  (line.variantName ?? null) === (variantName ?? null)
+              )?.quantity ?? 0
+            }
+          />
           ))}
         </div>
 
-        <aside className={`${frame} h-fit p-5 lg:sticky lg:top-4`} aria-label="Your order">
+        <aside
+          id="your-order"
+          className={`${frame} h-fit scroll-mt-4 p-5 lg:sticky lg:top-4`}
+          aria-label="Your order"
+        >
           <div className="flex items-baseline justify-between">
             <h2 className="text-lg font-bold text-stone-900">Your order</h2>
             <span className="text-xs font-medium text-stone-500">
@@ -293,6 +304,7 @@ export function ServerTableOrder({
             {submitting ? "Sending…" : "Send order to the kitchen"}
           </button>
         </aside>
+        <StickyCartBar itemCount={itemCount} total={total} currency={doc.currency} />
       </div>
     </OrderShell>
   );

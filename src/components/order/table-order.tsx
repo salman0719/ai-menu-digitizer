@@ -32,6 +32,7 @@ import {
   OrderMenuSection as MenuSection,
   OrderShell as Shell,
   OrderSkeleton,
+  StickyCartBar,
   formatOrderTotal as formatTotal,
 } from "./order-menu";
 
@@ -255,15 +256,26 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
               category={category}
               currency={menu.currency}
               variantChoice={variantChoice}
-              onVariantChange={(itemId, name) =>
-                setVariantChoice((current) => ({ ...current, [itemId]: name }))
-              }
-              onAdd={addItem}
-            />
+            onVariantChange={(itemId, name) =>
+              setVariantChoice((current) => ({ ...current, [itemId]: name }))
+            }
+            onAdd={addItem}
+            itemCount={(item, variantName) =>
+              lines.find(
+                (line) =>
+                  line.menuItemId === item.id &&
+                  (line.variantName ?? null) === (variantName ?? null)
+              )?.quantity ?? 0
+            }
+          />
           ))}
         </div>
 
-        <aside className={`${frame} h-fit p-5 lg:sticky lg:top-4`} aria-label="Your order">
+        <aside
+          id="your-order"
+          className={`${frame} h-fit scroll-mt-4 p-5 lg:sticky lg:top-4`}
+          aria-label="Your order"
+        >
           <div className="flex items-baseline justify-between">
             <h2 className="text-lg font-bold text-stone-900">Your order</h2>
             <span className="text-xs font-medium text-stone-500">
@@ -365,6 +377,7 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
             {submitting ? "Sending…" : "Send order"}
           </button>
         </aside>
+        <StickyCartBar itemCount={itemCount} total={total} currency={menu.currency} />
       </div>
     </Shell>
   );

@@ -15,7 +15,14 @@ import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/clie
  * were printed. The panel therefore lives here, next to Orders: every member
  * (owner or staff) can print, while only an owner sees the claim action.
  */
-export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
+export function RestaurantTables({
+  signedIn,
+  sessionPending = false,
+}: {
+  signedIn: boolean;
+  /** Session still resolving: show the loading shape, never the sign-in card. */
+  sessionPending?: boolean;
+}) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -54,7 +61,7 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
         </p>
       </div>
 
-      {!signedIn && (
+      {!signedIn && !sessionPending && (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <p className="text-sm font-medium text-stone-900">Sign in to print table cards</p>
           <p className="mt-1 text-xs leading-5 text-stone-500">
@@ -71,7 +78,7 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
 
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
-      {signedIn && restaurants === null && !loadError && (
+      {(sessionPending || signedIn) && restaurants === null && !loadError && (
         <div role="status" aria-busy="true" className="flex flex-col gap-4">
           <span className="sr-only">Loading your restaurants…</span>
           <div className="rounded-2xl border border-stone-200 bg-white p-5">

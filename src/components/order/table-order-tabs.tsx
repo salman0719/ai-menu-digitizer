@@ -33,7 +33,7 @@ import {
 import { SyncError } from "@/features/menus/sync";
 import { formatTableLabel } from "@/features/orders/table-links";
 
-import { OrderMenuSection, OrderShell, formatOrderTotal } from "./order-menu";
+import { OrderMenuSection, OrderShell, StickyCartBar, formatOrderTotal } from "./order-menu";
 
 /** One open menu on the table landing (serializable for the client). */
 export interface TableOrderMenu {
@@ -178,6 +178,22 @@ export function TableOrderTabs({
 
   function choiceKey(menuId: string, itemId: string): string {
     return `${menuId}:${itemId}`;
+  }
+
+  /**
+   * The variant map `OrderMenuSection` reads, scoped to one menu: choices
+   * are stored under `choiceKey` (two menus can hold the same item id),
+   * but the list reads plain item ids — passing the raw map left the
+   * dropdown stuck on the first variant while adding still used the
+   * stored (correct) one.
+   */
+  function scopedVariantChoice(menuId: string, items: MenuItem[]): Record<string, string> {
+    const scoped: Record<string, string> = {};
+    for (const item of items) {
+      const chosen = variantChoice[choiceKey(menuId, item.id)];
+      if (chosen !== undefined) scoped[item.id] = chosen;
+    }
+    return scoped;
   }
 
   function chosenVariantName(menu: TableOrderMenu, item: MenuItem): string | null {
@@ -370,7 +386,7 @@ export function TableOrderTabs({
                     key={`${menu.menuId}:${match.category.id}`}
                     category={{ ...match.category, items: match.items }}
                     currency={menu.doc.currency}
-                    variantChoice={variantChoice}
+                    variantChoice={scopedVariantChoice(menu.menuId, match.items)}
                     onVariantChange={(itemId, name) =>
                       setVariantChoice((current) => ({
                         ...current,
@@ -378,6 +394,14 @@ export function TableOrderTabs({
                       }))
                     }
                     onAdd={(item) => addItem(menu, item)}
+                    itemCount={(item, variantName) =>
+                      lines.find(
+                        (line) =>
+                          line.menuId === menu.menuId &&
+                          line.menuItemId === item.id &&
+                          (line.variantName ?? null) === (variantName ?? null)
+                      )?.quantity ?? 0
+                    }
                   />
                 ))}
               </div>
@@ -386,7 +410,11 @@ export function TableOrderTabs({
         )}
       </div>
 
-      <aside className={`${frame} h-fit p-5 lg:sticky lg:top-4`} aria-label="Your order">
+      <aside
+        id="your-order"
+        className={`${frame} h-fit scroll-mt-4 p-5 lg:sticky lg:top-4`}
+        aria-label="Your order"
+      >
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-bold text-stone-900">Your order</h2>
           <span className="text-xs font-medium text-stone-500">
@@ -510,10 +538,14 @@ export function TableOrderTabs({
           disabled={lines.length === 0 || submitting}
           onClick={() => void sendOrder()}
           className="mt-4 w-full rounded-full bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting ? "Sending…" : "Send order to the kitchen"}
-        </button>
+        >            {submitting ? "Sending…" : "Send order to the kitchen"}
+          </button>
       </aside>
+        <StickyCartBar
+          itemCount={itemCount}
+          total={total}
+          currency={distinctCurrency(menus.map((menu) => menu.doc))}
+        />
 
       {closedInfo &&
         infoMenu &&
