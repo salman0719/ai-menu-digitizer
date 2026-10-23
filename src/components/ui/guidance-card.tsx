@@ -1,4 +1,4 @@
-import Link from "next/link";
+import type { MouseEvent } from "react";
 
 /**
  * The shared "nothing here yet" card behind the signed-in tabs (Tables,
@@ -15,6 +15,22 @@ interface GuidanceCardProps {
   steps: readonly string[];
   /** Where the first step happens. Always a link, never prose only. */
   action: { href: string; label: string };
+}
+
+/**
+ * Navigate like the tab bar does: one history entry, no server request and
+ * no page-component swap (a Next `<Link>` push can remount the app shell
+ * and drop its state — or, when the target route is the page component
+ * already mounted, leave the visible screen untouched while only the URL
+ * changes). `HomeScreen` follows the new path via `usePathname`.
+ */
+function navigateInApp(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  // Modified clicks keep the browser's default (new tab, new window…).
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  window.history.pushState(null, "", href);
 }
 
 export function GuidanceCard({ title, steps, action }: GuidanceCardProps) {
@@ -34,12 +50,13 @@ export function GuidanceCard({ title, steps, action }: GuidanceCardProps) {
           </li>
         ))}
       </ol>
-      <Link
+      <a
         href={action.href}
+        onClick={(event) => navigateInApp(event, action.href)}
         className="mt-4 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
       >
         {action.label}
-      </Link>
+      </a>
     </div>
   );
 }
