@@ -38,7 +38,7 @@ describe("TableOrderTabs closed menus", () => {
     expect(html).not.toContain("closed-1");
   });
 
-  it("hides search and the All tab when nothing is open", () => {
+  it("states a lone closed menu's hours inline instead of tabbing", () => {
     const html = render({
       ...base,
       menus: [],
@@ -46,9 +46,26 @@ describe("TableOrderTabs closed menus", () => {
         { menuId: "closed-1", title: "Dinner", availability: [{ days: [5], start: "18:00", end: "22:00" }] },
       ],
     });
+    // No navigation with one menu: no tabs, no search, no closed pill.
     expect(html).not.toContain(">All<");
     expect(html).not.toContain('type="search"');
-    expect(html).toContain("Nothing to order at the moment");
-    expect(html).toContain('aria-label="Dinner, closed right now"');
+    expect(html).not.toContain('aria-label="Dinner, closed right now"');
+    // The hours are visible without tapping anything.
+    expect(html).toContain("Dinner is closed right now");
+    expect(html).toContain("Open Fri 6:00 pm – 10:00 pm.");
+    expect(html).toContain("Nothing is open right now");
+    expect(html).toContain("opening hours are shown above");
+  });
+
+  it("collapses to search alone when a single menu is open", () => {
+    const html = render({
+      ...base,
+      menus: [{ menuId: "open-1", menuSlug: "lunch", title: "Lunch", doc }],
+      closedMenus: [],
+    });
+    // One menu is the whole menu: no All tab, no menu tabs, just search.
+    expect(html).not.toContain(">All<");
+    expect(html).toContain('placeholder="Search dishes…"');
+    expect(html).toContain('aria-label="Search the menu"');
   });
 });
