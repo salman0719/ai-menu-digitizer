@@ -34,11 +34,17 @@ import {
 
 interface RestaurantSettingsProps {
   signedIn: boolean;
+  /** Session still resolving: show the loading shape, never the sign-in card. */
+  sessionPending?: boolean;
   /** The signed-in user id, to mark their own row in the team list. */
   currentUserId: string | null;
 }
 
-export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettingsProps) {
+export function RestaurantSettings({
+  signedIn,
+  sessionPending = false,
+  currentUserId,
+}: RestaurantSettingsProps) {
   const [restaurants, setRestaurants] = useState<RestaurantOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -114,7 +120,7 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
     <div className="flex flex-col gap-4">
       <h2 className="text-xl font-bold text-stone-900">Restaurant settings</h2>
 
-      {!signedIn && (
+      {!signedIn && !sessionPending && (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <p className="text-sm font-medium text-stone-900">Sign in to manage your restaurants</p>
           <p className="mt-1 text-xs leading-5 text-stone-500">
@@ -131,7 +137,7 @@ export function RestaurantSettings({ signedIn, currentUserId }: RestaurantSettin
 
       {signedIn && loadError && <p className="text-xs text-red-700">{loadError}</p>}
 
-      {signedIn && restaurants === null && !loadError && (
+      {(sessionPending || signedIn) && restaurants === null && !loadError && (
         <div role="status" aria-busy="true" className="flex flex-col gap-4">
           <span className="sr-only">Loading your restaurants…</span>
           <div className="rounded-2xl border border-stone-200 bg-white p-5">

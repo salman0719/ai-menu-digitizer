@@ -1344,10 +1344,16 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
 
         {screen === "orders" && <OrdersBoard />}
 
-        {screen === "tables" && <RestaurantTables signedIn={signedIn} />}
+        {screen === "tables" && (
+          <RestaurantTables signedIn={signedIn} sessionPending={sessionPending} />
+        )}
 
         {screen === "settings" && (
-          <RestaurantSettings signedIn={signedIn} currentUserId={session?.user?.id ?? null} />
+          <RestaurantSettings
+            signedIn={signedIn}
+            sessionPending={sessionPending}
+            currentUserId={session?.user?.id ?? null}
+          />
         )}
 
         {screen === "editor" && activeDoc && (
