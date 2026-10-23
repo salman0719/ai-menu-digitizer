@@ -1,7 +1,10 @@
 # Eateryo
 
-> Working name (decided 2026-10-18) — Phase 1 shipped as "AI Menu Digitizer",
-> and the product now covers more than digitizing alone.
+> Previously "Tablepass" and, in Phase 1, "AI Menu Digitizer" — renamed to
+> Eateryo on 2026-10-22, since the product now covers more than digitizing
+> alone. Some internal identifiers (the IndexedDB database name, the Git
+> remote) still carry the old name so existing data and remotes keep
+> working.
 
 Upload a photo or scan of a menu, extract it into structured categories and
 items with Gemini, review and correct the draft in an editable workspace,
@@ -11,16 +14,30 @@ uncertain for review and never invents missing prices, descriptions, or
 dietary labels.
 
 Menus are stored in your browser (IndexedDB) — no account required, and
-nothing leaves your device except extraction. Accounts/server sync (Phase 2)
-are built and locally verified (magic-link sign-in against Neon); deployment
-is pending.
+nothing leaves your device except extraction. Signed in, the same menus live
+on a Neon Postgres server and sync across devices.
+
+**Current stage:** Phase 2 Steps 7–11 are built on the `staging` branch and
+locally verified against Neon (magic-link sign-in, server menus, one-click
+publishing, cross-device table ordering, and the free-launch packaging).
+Production still runs the Phase 1 local-first prototype — nothing is deployed
+yet, and the product is free end to end (no checkout, no card, no plans).
+Before the free launch opens, what's left is the deploy, the open items in
+`docs/launch-runbook.md` (verified Resend sending domain, contact address,
+Sentry project, promotion dates), and onboarding one real café. The B2B
+extraction API and usage billing are parked (Steps 12–13).
 
 ## Stack
 
 - Next.js (App Router) + TypeScript strict + Tailwind CSS
 - Zod for validating AI output, stored records, and imported files
-- Gemini API, called only through the server route `POST /api/extract-menu`
-- Native IndexedDB for menus and image blobs (no wrapper library)
+- Gemini (default) and Groq for extraction, called only through the server
+  route `POST /api/extract-menu`, with automatic failover between them
+- Native IndexedDB for menus and image blobs (no wrapper library) — the
+  signed-out store and the signed-in offline cache
+- Neon Postgres + Drizzle for the server database; migrations are generated
+  offline and applied explicitly, never at request time
+- Better Auth magic-link sign-in (owners and staff) with Resend email
 - Vitest for unit tests
 
 ## Local setup
@@ -50,7 +67,7 @@ sample data, so the editor, persistence, and export can all be exercised.
 | `DATABASE_URL`       | Server (optional) | Neon Postgres URL. Absent = local-only mode.                      |
 | `BETTER_AUTH_SECRET` | Server only       | Better Auth secret; generate with `openssl rand -base64 32`.      |
 | `BETTER_AUTH_URL`    | Server            | App base URL (local `http://localhost:3200`; prod = site URL).    |
-| `RESEND_API_KEY`     | Server only       | Resend key for sign-in emails (placeholder until account exists). |
+| `RESEND_API_KEY`     | Server only       | Resend key for sign-in and invitation emails (sandbox sender until a verified domain exists). |
 | `EMAIL_FROM`         | Server only       | Verified sending address for sign-in mail.                        |
 | `OPS_ALERT_EMAIL`    | Server only       | Inbox for failure and volume alerts (Step 11).                    |
 | `CONTACT_EMAIL`      | Server            | Address shown on `/privacy` and `/terms`; unset renders an explicit notice. |
@@ -84,31 +101,49 @@ npm run typecheck    # tsc --noEmit (strict)
 npm run test         # Vitest unit tests (single run)
 npm run test:watch   # Vitest watch mode
 npm run format       # Prettier write
+npm run format:check # Prettier check (no writes)
 npm run db:generate  # generate a SQL migration from the schema (offline)
+npm run admin:restaurant -- list   # inspect/rename/delete a dev restaurant row
+                                    # (scripts/restaurant-admin.mjs; needs DATABASE_URL)
 npm run db:migrate   # apply migrations to DATABASE_URL (explicit, never at request time)
 npm run secrets:check  # after build: fail if a server secret reached the client bundle
 ```
 
-## Accounts, publishing, and ordering (Phase 2 — built and locally verified)
+## Accounts, publishing, and ordering (Phase 2 — built on `staging`, locally verified)
 
 Steps 7–11 are complete in code and proven against Neon locally: magic-link
 sign-in → session → restaurant → server menus → published public page →
-cross-device table ordering. What's left before a public launch is the deploy
-plus the open items in `docs/launch-runbook.md` (Sentry project, verified
-sending domain, contact address, promotion dates):
+cross-device table ordering, plus the free-launch packaging. What's left
+before a public launch is the deploy plus the open items in
+`docs/launch-runbook.md` (Sentry project, verified sending domain, contact
+address, promotion dates):
 
 - **Sign-in** — `/sign-in` sends a one-time magic link (Better Auth, implicit
   sign-up) for owners and staff only; diners and public menu visitors stay
   anonymous. Sessions last 30 days, rolling. Requires `BETTER_AUTH_SECRET`.
+- **Team** — the owner invites staff by email (one-time, hash-only tokens),
+  and the settings page lists the team with an audit trail of member
+  changes; staff can work the order board but not publish, delete, or bill.
 - **Schema** — `src/lib/db/schema.ts` holds the Better Auth core tables plus
-  `restaurant` / `restaurant_membership` (owner|staff, unique per pair);
+  `restaurant` / `restaurant_membership` (owner|staff, unique per pair),
+  `menu` / `menu_revision` / `published_menu`, and `order` / `order_line`;
   migrations live in `drizzle/`, generated with `npm run db:generate`.
-- **API** — `GET|POST /api/restaurants` behind a session guard; ownership is
-  enforced in `src/features/tenancy/repo.ts` using only the session user id.
+- **API** — restaurants, menus, publishing, and orders APIs behind a session
+  guard; ownership is enforced in `src/features/tenancy/repo.ts` using only
+  the session user id, and diners resolve prices server-side from the
+  published snapshot (never a client-supplied total).
+- **Ordering** — a diner orders from `/r/<restaurant>/m/<menu>/order?table=<n>`
+  on any phone; the staff board (~5 s polling, visible reconnect state)
+  receives it on every signed-in device. Opening hours are judged in the
+  restaurant's own time zone, and the Tables tab prints one QR per table.
+- **Launch packaging** — `/launch` runs the free onboarding checklist,
+  privacy and terms pages say what is actually stored, structured logs +
+  email ops alerts are in, and per-account extraction caps are the cost
+  brake. Owners can export everything or delete their account.
 - **Until `DATABASE_URL` exists** the app behaves exactly as before:
   local-only, sign-in reports that sync is unavailable, nothing breaks.
-- Covered by `tests/tenancy.test.ts` and `tests/auth-magic-link.test.ts`,
-  which run the real generated migrations on in-process Postgres (PGlite).
+- Covered by the PGlite-backed suites in `tests/`, which run the real
+  generated migrations on an in-process Postgres.
 
 ## How it works
 
@@ -129,9 +164,13 @@ sending domain, contact address, promotion dates):
 
 ## IndexedDB behavior
 
-- Database `ai-menu-digitizer` with versioned schema and object stores for
-  `menus` and `images` (original image blobs, stored optionally).
-- Native browser API only — no database server, no sync.
+- Database `ai-menu-digitizer` — the Phase 1 name, kept unchanged so
+  browsers that already hold data keep it — with a versioned schema and
+  object stores for `menus`, `images` (original image blobs, stored
+  optionally), and `orders` (the signed-out local order queue).
+- Native browser API only — no database server, and no sync of its own:
+  when signed in, server menus sync through the account API, but the
+  database itself stays on this device.
 - Data lives in **this browser on this device**. It does not follow you to
   other devices or browsers, and clearing site data (or browser eviction)
   removes it. **Export JSON backups of anything important.**
@@ -175,7 +214,9 @@ privacy page makes no automatic-deletion promise.
 
 ## Deployment (Vercel)
 
-1. Push the repository to GitHub/GitLab (when you choose to).
+1. The repository is on GitHub and production is deployed from `main` (the
+   Phase 1 prototype). The `staging` branch — Phase 2 — is not deployed
+   anywhere yet.
 2. Import the project in Vercel — it is detected as Next.js automatically.
 3. Set `GEMINI_API_KEY` (and optionally `GROQ_API_KEY`) under
    Project → Settings → Environment Variables. Without any key the build still
@@ -188,10 +229,12 @@ privacy page makes no automatic-deletion promise.
 5. Verify with a real image after deploying: upload → extract → edit → reload.
 
 Extraction requires no services beyond a `GEMINI_API_KEY` (and optionally
-`GROQ_API_KEY`). The scaffolded
-account features (not live yet) additionally need `DATABASE_URL` (Neon),
-`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and Resend credentials before
-sign-in works in production.
+`GROQ_API_KEY`). The Phase 2 account features (built on `staging`, not yet
+deployed) additionally need `DATABASE_URL` (Neon),
+`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and Resend credentials
+(`RESEND_API_KEY`, `EMAIL_FROM`) before sign-in works in production, plus
+the launch variables (`OPS_ALERT_EMAIL`, `CONTACT_EMAIL`, optional token
+rates) described above.
 
 ## Scope
 

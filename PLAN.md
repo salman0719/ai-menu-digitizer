@@ -1,4 +1,4 @@
-# PLAN.md: AI Menu Digitizer
+# PLAN.md: Eateryo — Phase 1 (built as "AI Menu Digitizer")
 
 > **Phase status (2026-10-18):** Phase 1 — this document — is complete and
 > deployed (see `ROADMAP.md`). Phase 2, making it live and usable by anyone

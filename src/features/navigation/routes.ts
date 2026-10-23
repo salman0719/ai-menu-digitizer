@@ -42,7 +42,7 @@ export function menuIdFromPathname(pathname: string): string | null {
 
 /** Read an application screen from a URL, defaulting unknown URLs to capture. */
 export function parseAppRoute(input: string | URL): AppRoute {
-  const url = input instanceof URL ? input : new URL(input, "https://tablepass.invalid");
+  const url = input instanceof URL ? input : new URL(input, "https://eateryo.invalid");
   if (url.pathname === "/") return { screen: "capture" };
   if (url.pathname === "/menus") return { screen: "library" };
   if (url.pathname === "/orders") return { screen: "orders" };

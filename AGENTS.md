@@ -5,7 +5,7 @@ Read it before making any change.
 
 ## Project
 
-AI Menu Digitizer — see `PLAN.md` for mission, stack, and the Phase 1
+Eateryo — see `PLAN.md` for mission, stack, and the Phase 1
 acceptance criteria, and `PHASE-2.md` (scope) + `ROADMAP.md` (build order)
 for the current phase.
 

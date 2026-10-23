@@ -19,7 +19,7 @@ import { launchSteps, verifiedProgress, type LaunchStep } from "@/features/launc
 import { formatMicroUsd } from "@/features/usage/pricing";
 import { SyncError } from "@/features/menus/sync";
 
-const CARDS_PRINTED_KEY = "tablepass:launch:cards-printed";
+const CARDS_PRINTED_KEY = "eateryo:launch:cards-printed";
 
 type State =
   | { kind: "loading" }

@@ -6,18 +6,18 @@ import { POST as placeOrderRoute } from "../src/app/api/orders/route";
 import { isSameOriginRequest, rejectCrossOrigin } from "../src/lib/http/origin";
 
 function request(headers: Record<string, string>): Request {
-  return new Request("https://tablepass.example/api/orders", { method: "POST", headers });
+  return new Request("https://eateryo.example/api/orders", { method: "POST", headers });
 }
 
 describe("isSameOriginRequest", () => {
   it("allows requests that carry no Origin (curl, servers, same-origin forms)", () => {
-    expect(isSameOriginRequest(request({ host: "tablepass.example" }))).toBe(true);
+    expect(isSameOriginRequest(request({ host: "eateryo.example" }))).toBe(true);
   });
 
   it("allows a matching origin, with or without a port", () => {
     expect(
       isSameOriginRequest(
-        request({ host: "tablepass.example", origin: "https://tablepass.example" })
+        request({ host: "eateryo.example", origin: "https://eateryo.example" })
       )
     ).toBe(true);
     expect(
@@ -30,7 +30,7 @@ describe("isSameOriginRequest", () => {
   it("refuses another origin", () => {
     expect(
       isSameOriginRequest(
-        request({ host: "tablepass.example", origin: "https://evil.example" })
+        request({ host: "eateryo.example", origin: "https://evil.example" })
       )
     ).toBe(false);
     // Same site name, different port is still another origin.
@@ -51,8 +51,8 @@ describe("isSameOriginRequest", () => {
       isSameOriginRequest(
         request({
           host: "internal:3000",
-          "x-forwarded-host": "tablepass.example",
-          origin: "https://tablepass.example",
+          "x-forwarded-host": "eateryo.example",
+          origin: "https://eateryo.example",
         })
       )
     ).toBe(true);
@@ -60,8 +60,8 @@ describe("isSameOriginRequest", () => {
       isSameOriginRequest(
         request({
           host: "internal:3000",
-          "x-forwarded-host": "tablepass.example, edge.example",
-          origin: "https://tablepass.example",
+          "x-forwarded-host": "eateryo.example, edge.example",
+          origin: "https://eateryo.example",
         })
       )
     ).toBe(true);
@@ -92,9 +92,9 @@ describe("rejectCrossOrigin", () => {
 
   it("guards the anonymous order endpoint before it touches the database", async () => {
     const response = await placeOrderRoute(
-      new Request("https://tablepass.example/api/orders", {
+      new Request("https://eateryo.example/api/orders", {
         method: "POST",
-        headers: { host: "tablepass.example", origin: "https://evil.example" },
+        headers: { host: "eateryo.example", origin: "https://evil.example" },
         body: JSON.stringify({ slug: "x", tableLabel: "1", lines: [] }),
       })
     );
