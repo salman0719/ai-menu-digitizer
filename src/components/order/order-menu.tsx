@@ -9,6 +9,10 @@
  * page must not pull IndexedDB code into its bundle just to render a menu.
  */
 
+"use client";
+
+import { useState } from "react";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MenuCategory, MenuItem } from "@/features/menu/schema";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
@@ -84,13 +88,30 @@ export function OrderMenuSection({
   variantChoice,
   onVariantChange,
   onAdd,
+  itemCount,
 }: {
   category: MenuCategory;
   currency: string | null;
   variantChoice: Record<string, string>;
   onVariantChange: (itemId: string, name: string) => void;
   onAdd: (item: MenuItem) => void;
+  /** Quantity of this exact item + variant already in the cart (0 when absent). */
+  itemCount?: (item: MenuItem, variantName: string | null) => number;
 }) {
+  // Per-item confirmation tick: bumped on every tap so the "Added" pop
+  // replays, cleared on animation end so it leaves the DOM again.
+  const [flash, setFlash] = useState<Record<string, number>>({});
+  function bumpFlash(itemId: string) {
+    setFlash((current) => ({ ...current, [itemId]: (current[itemId] ?? 0) + 1 }));
+  }
+  function clearFlash(itemId: string) {
+    setFlash((current) => {
+      if (!(itemId in current)) return current;
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
+  }
   return (
     <section
       aria-label={category.name}
@@ -107,6 +128,8 @@ export function OrderMenuSection({
             ? item.variants.find((candidate) => candidate.name === variantName)
             : null;
           const price = variant ? variant.price : item.price;
+          const inCart = itemCount?.(item, variantName) ?? 0;
+          const tick = flash[item.id] ?? 0;
           return (
             <li key={item.id} className={`px-5 py-3.5 ${soldOut ? "opacity-60" : ""}`}>
               <div className="flex items-start justify-between gap-3">
@@ -160,14 +183,29 @@ export function OrderMenuSection({
                     </select>
                   </label>
                 )}
-                <button
-                  type="button"
-                  disabled={soldOut}
-                  onClick={() => onAdd(item)}
-                  className="rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Add
-                </button>
+                <span className="relative inline-flex">
+                  {tick > 0 && (
+                    <span
+                      key={tick}
+                      aria-hidden="true"
+                      onAnimationEnd={() => clearFlash(item.id)}
+                      className="added-flash absolute -top-7 left-1/2 -translate-x-1/2 rounded-full bg-green-800 px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap text-white shadow"
+                    >
+                      Added ✓
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={soldOut}
+                    onClick={() => {
+                      onAdd(item);
+                      bumpFlash(item.id);
+                    }}
+                    className="rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-stone-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {inCart > 0 ? `Add · ${inCart}` : "Add"}
+                  </button>
+                </span>
               </div>
             </li>
           );

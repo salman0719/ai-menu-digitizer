@@ -394,6 +394,14 @@ export function TableOrderTabs({
                       }))
                     }
                     onAdd={(item) => addItem(menu, item)}
+                    itemCount={(item, variantName) =>
+                      lines.find(
+                        (line) =>
+                          line.menuId === menu.menuId &&
+                          line.menuItemId === item.id &&
+                          (line.variantName ?? null) === (variantName ?? null)
+                      )?.quantity ?? 0
+                    }
                   />
                 ))}
               </div>

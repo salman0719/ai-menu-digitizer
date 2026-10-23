@@ -21,6 +21,41 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Diner order list: the "Added" confirmation that pops above the Add
+   button. Rises, holds long enough to read, then fades — removed from
+   the DOM on animation end, so it never traps keyboard focus. */
+@keyframes eateryo-added-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  30% {
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.added-flash {
+  animation: eateryo-added-pop 1.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .added-flash {
+    animation-duration: 0.01s;
+  }
+}
+
 ::selection {
   background: #fcd9a8;
 }

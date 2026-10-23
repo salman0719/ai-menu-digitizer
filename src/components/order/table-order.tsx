@@ -255,11 +255,18 @@ export function TableOrder({ menuId, tableLabel }: TableOrderProps) {
               category={category}
               currency={menu.currency}
               variantChoice={variantChoice}
-              onVariantChange={(itemId, name) =>
-                setVariantChoice((current) => ({ ...current, [itemId]: name }))
-              }
-              onAdd={addItem}
-            />
+            onVariantChange={(itemId, name) =>
+              setVariantChoice((current) => ({ ...current, [itemId]: name }))
+            }
+            onAdd={addItem}
+            itemCount={(item, variantName) =>
+              lines.find(
+                (line) =>
+                  line.menuItemId === item.id &&
+                  (line.variantName ?? null) === (variantName ?? null)
+              )?.quantity ?? 0
+            }
+          />
           ))}
         </div>
 
