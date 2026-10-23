@@ -27,6 +27,7 @@ import {
   type Order,
   type OrderStatus,
 } from "@/features/orders/schema";
+import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchStaffOrders, setOrderStatus } from "@/features/orders/client";
 import { SyncError } from "@/features/menus/sync";
@@ -253,13 +254,14 @@ export function ServerOrdersBoard() {
       {phase === "loading" && orders.length === 0 ? (
         <OrdersSkeleton />
       ) : orders.length === 0 && !error ? (
-        <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <p className="font-medium text-stone-900">No orders yet</p>
-          <p className="mt-1 text-sm text-stone-600">
-            Print your table cards from the Tables tab, then scan one with a phone to place a real
-            order — it will show up here within seconds.
-          </p>
-        </div>
+        <GuidanceCard
+          title="No orders yet"
+          steps={[
+            "Print your table cards from the Tables tab.",
+            "Scan one with a phone and place a real order — it shows up here within seconds.",
+          ]}
+          action={{ href: "/tables", label: "Go to Tables" }}
+        />
       ) : (
         <ul className="space-y-3">
           {orders.map((order) => {

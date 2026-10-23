@@ -52,6 +52,8 @@ import {
   setPublicationSlug,
   unpublishMenu,
 } from "@/features/publishing/client";
+import { usePathname } from "next/navigation";
+
 import type { PublicationStatus } from "@/features/publishing/schema";
 import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-themes";
 import { authClient } from "@/lib/auth-client";
@@ -132,8 +134,14 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     if (typeof window !== "undefined") navigationReadyRef.current = true;
   }
 
-  // Native History API is integrated with Next's App Router; subscribe to
-  // browser back/forward so the visible screen follows the URL without reload.
+  // The visible screen must follow every URL change, however it happened:
+  // tab clicks and in-app links write the History API directly (native
+  // history is integrated with Next's router, so each path change surfaces
+  // in `usePathname`), and back/forward fires `popstate`. Subscribing to the
+  // pathname as well matters because a `<Link>` push whose target is the
+  // page component already mounted swaps nothing — without this sync the
+  // URL moves while the screen stays on the old one.
+  const pathname = usePathname();
   useEffect(() => {
     const syncFromLocation = () => {
       const next = parseAppRoute(window.location.href);
@@ -148,7 +156,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     syncFromLocation();
     window.addEventListener("popstate", syncFromLocation);
     return () => window.removeEventListener("popstate", syncFromLocation);
-  }, []);
+  }, [pathname]);
 
   const [pages, setPages] = useState<PageImage[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
