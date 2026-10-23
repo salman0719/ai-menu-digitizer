@@ -134,9 +134,11 @@ async function TableLandingContent({
         <h1 className="mt-1 text-2xl font-bold text-stone-900">Order from your table</h1>
         <p className="mt-1 text-sm text-stone-600">
           {landing.menus.length === 0
-            ? "Nothing is being served right now — tap a menu to see when it opens."
+            ? landing.closedMenus.length === 1
+              ? "Nothing is being served right now — opening hours are below."
+              : "Nothing is being served right now — tap a menu to see when it opens."
             : landing.menus.length === 1
-              ? "One menu is open — tap a dish to add it."
+              ? "Here's what's on — tap a dish to add it."
               : `${landing.menus.length} menus are open — browse the tabs or search them all at once.`}
         </p>
       </div>
