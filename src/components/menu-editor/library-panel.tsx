@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MenuSummary } from "@/features/menu/storage";
@@ -17,6 +17,12 @@ interface LibraryPanelProps {
   menus: LibraryMenu[];
   /** True until the first library read settles — rows skeleton, never the empty state. */
   loading?: boolean;
+  /**
+   * Menu whose "Move to account" action should be highlighted: the row
+   * scrolls into view and the button beeps for a few seconds (the target of
+   * the editor's "Move this menu to your account" link).
+   */
+  highlightMoveId?: string | null;
   /** Signed in: every row carries an account-status chip. */
   accountMode: boolean;
   /** Restaurants the caller owns — where a per-row move can put a menu. */
@@ -42,6 +48,7 @@ function formatDate(iso: string): string {
 export function LibraryPanel({
   menus,
   loading = false,
+  highlightMoveId = null,
   accountMode,
   ownedRestaurants = [],
   onMoveToAccount,
@@ -53,6 +60,15 @@ export function LibraryPanel({
 }: LibraryPanelProps) {
   /** The row whose restaurant picker is open (one move at a time). */
   const [pickerMenuId, setPickerMenuId] = useState<string | null>(null);
+
+  // Bring the highlighted row into view and let its move button beep.
+  useEffect(() => {
+    if (!highlightMoveId) return;
+    const target =
+      document.getElementById(`move-menu-${highlightMoveId}`) ??
+      document.getElementById(`menu-row-${highlightMoveId}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightMoveId]);
   const [targetId, setTargetId] = useState("");
   const [movingId, setMovingId] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<{ id: string; message: string } | null>(null);
@@ -141,7 +157,16 @@ export function LibraryPanel({
       ) : (
         <ul className="space-y-3">
           {menus.map((menu) => (
-            <li key={menu.id} className="rounded-2xl border border-stone-200 bg-white p-4">
+            <li
+              key={menu.id}
+              id={`menu-row-${menu.id}`}
+              className={`rounded-2xl border border-stone-200 bg-white p-4 ${
+                // The row beeps instead when there is no move button to aim at.
+                highlightMoveId === menu.id && (menu.onServer || !moveAvailable)
+                  ? "animate-pulse ring-2 ring-amber-600"
+                  : ""
+              }`}
+            >
               {menu.corrupt ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -191,9 +216,14 @@ export function LibraryPanel({
                     {!menu.onServer && moveAvailable && (
                       <button
                         type="button"
+                        id={`move-menu-${menu.id}`}
                         onClick={() => startMove(menu.id)}
                         disabled={movingId !== null}
-                        className="rounded-full border border-amber-700 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                        className={`rounded-full border border-amber-700 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+                          highlightMoveId === menu.id
+                            ? "animate-pulse ring-2 ring-amber-600 ring-offset-2"
+                            : ""
+                        }`}
                       >
                         {movingId === menu.id ? "Moving…" : "Move to account"}
                       </button>

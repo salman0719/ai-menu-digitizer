@@ -49,15 +49,9 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
-  async rewrites() {
-    return [
-      { source: "/menus", destination: "/" },
-      { source: "/menus/:path*", destination: "/" },
-      { source: "/orders", destination: "/" },
-      { source: "/tables", destination: "/" },
-      { source: "/settings", destination: "/" },
-    ];
-  },
+  // Every screen URL is a real route (src/app/menus, …) that server-renders
+  // the right shell — rewrites to "/" made hard loads flash the capture
+  // screen first, since "/" is prerendered as one static page.
 };
 
 export default nextConfig;

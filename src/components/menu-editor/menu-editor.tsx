@@ -77,6 +77,8 @@ interface MenuEditorProps {
    * signed-in account with the local copy as an offline cache (Step 8).
    */
   syncMode: "local" | "account";
+  /** Navigate to My menus with this menu's move button highlighted. */
+  onMoveToAccount?: () => void;
   imageUrl: string | null;
   onExportJson: () => void;
   onExportCsv: () => void;
@@ -159,6 +161,7 @@ export function MenuEditor({
   onChange,
   saveState,
   syncMode,
+  onMoveToAccount,
   canManage = true,
   onServer = false,
   imageUrl,
@@ -867,7 +870,15 @@ export function MenuEditor({
             </p>
           )}
         </div>
-        <AvailabilityPanel key={doc.id} menuId={doc.id} syncMode={syncMode} canManage={canManage} />
+        <AvailabilityPanel
+          key={doc.id}
+          menuId={doc.id}
+          // Opening hours live with the server copy: a browser-only menu has
+          // no availability row to fetch, account mode or not.
+          syncMode={onServer ? "account" : "local"}
+          canManage={canManage}
+          onMoveToAccount={onMoveToAccount}
+        />
       </div>
       {duplicateGroups.length > 0 && (
         <section

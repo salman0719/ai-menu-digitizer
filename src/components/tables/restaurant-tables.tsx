@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { TableQrPanel } from "@/components/tables/table-qr-panel";
@@ -93,12 +94,12 @@ export function RestaurantTables({ signedIn }: { signedIn: boolean }) {
             Move a menu to your account and a restaurant is created for it — then come back here to
             print the cards.
           </p>
-          <a
+          <Link
             href="/menus"
             className="mt-3 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
           >
             Go to My menus
-          </a>
+          </Link>
         </div>
       )}
 

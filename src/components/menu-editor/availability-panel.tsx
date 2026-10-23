@@ -36,6 +36,11 @@ interface AvailabilityPanelProps {
   menuId: string;
   syncMode: "local" | "account";
   canManage?: boolean;
+  /**
+   * "Move this menu to your account" action: navigates to My menus and
+   * highlights that menu's move button. Absent disables the link.
+   */
+  onMoveToAccount?: () => void;
 }
 
 /** "Mon–Fri" / "Sun" / "Mon, Wed, Fri" / "Every day". */
@@ -68,7 +73,12 @@ function freshWindow(): AvailabilityWindow {
   return { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" };
 }
 
-export function AvailabilityPanel({ menuId, syncMode, canManage = true }: AvailabilityPanelProps) {
+export function AvailabilityPanel({
+  menuId,
+  syncMode,
+  canManage = true,
+  onMoveToAccount,
+}: AvailabilityPanelProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     syncMode === "account" ? "loading" : "ready"
   );
@@ -117,8 +127,20 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
         <p className="mt-1 text-xs leading-5 text-stone-600">
-          This menu lives only in this browser, so it has no table page yet. Move it to your
-          account to set lunch, dinner, or bar hours — until then it would be served all day.
+          Opening hours are set on the account copy of a menu — the one its table page serves.
+          This menu is still only in this browser, so there is nothing to set yet.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-stone-600">
+          <button
+            type="button"
+            onClick={onMoveToAccount}
+            disabled={!onMoveToAccount}
+            className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 disabled:cursor-not-allowed disabled:no-underline disabled:text-stone-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Move this menu to your account
+          </button>{" "}
+          — we&apos;ll take you to My menus and highlight the button — then come back here to
+          set lunch, dinner, or bar hours. Until then it would be served all day.
         </p>
       </section>
     );
