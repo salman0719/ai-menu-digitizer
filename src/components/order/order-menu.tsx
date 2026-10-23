@@ -219,3 +219,50 @@ export function formatOrderTotal(currency: string | null, total: number | null):
   if (total === null) return "—";
   return formatPreviewPrice(total, null, currency);
 }
+
+/**
+ * Mobile cart shortcut: on small screens the "Your order" card sits below
+ * the whole menu, so diners would scroll past everything to send. Once
+ * something is in the cart this fixed bar shows the count + total and jumps
+ * to the cart. Hidden on desktop (the sticky aside covers it) and while the
+ * cart is empty (nothing to jump to). The spacer reserves room in the flow
+ * so the bar never covers the Send button.
+ */
+export function StickyCartBar({
+  itemCount,
+  total,
+  currency,
+}: {
+  itemCount: number;
+  total: number | null;
+  currency: string | null;
+}) {
+  if (itemCount === 0) return null;
+  function scrollToCart() {
+    document.getElementById("your-order")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  return (
+    <>
+      <div aria-hidden="true" className="h-16 lg:hidden" />
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 pt-3 backdrop-blur lg:hidden"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-sm text-stone-700">
+            <span className="font-bold text-stone-900">
+              {itemCount} {itemCount === 1 ? "item" : "items"}
+            </span>{" "}· {formatOrderTotal(currency, total)}
+          </p>
+          <button
+            type="button"
+            onClick={scrollToCart}
+            className="shrink-0 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800 active:scale-95"
+          >
+            View order
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
