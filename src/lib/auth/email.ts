@@ -6,9 +6,58 @@
  * the Resend free tier. The sending domain must be verified (SPF + DKIM)
  * before production use, and link tracking must be off for auth mail.
  */
+import {
+  EMAIL_COLORS,
+  emailCtaButton,
+  emailFallbackLink,
+  emailLogoMark,
+  emailPage,
+  escapeEmailHtml,
+} from "@/lib/email-layout";
+
 export interface MagicLinkEmail {
   email: string;
   url: string;
+}
+
+/** Pure branded magic-link body, asserted in tests and reused by the sender. */
+export function buildMagicLinkEmail({ email, url }: MagicLinkEmail): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const subject = "Your Eateryo sign-in link";
+  const text =
+    `Sign in to Eateryo: ${url}\n\n` +
+    `This link can be used once and expires in 5 minutes.\n` +
+    `If you didn't request this, you can ignore this email.\n`;
+  const cardInner =
+    `<tr><td align="center" style="padding:28px 28px 8px">` +
+    emailLogoMark() +
+    `<p style="margin:12px 0 0;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:${EMAIL_COLORS.INK};letter-spacing:-.01em">Eateryo</p>` +
+    `<p style="margin:2px 0 0;font-family:Arial,sans-serif;font-size:12px;color:${EMAIL_COLORS.MUTED}">Menus, tables, and orders in one place</p>` +
+    `</td></tr>` +
+    `<tr><td style="padding:12px 32px 0;font-family:Arial,sans-serif">` +
+    `<h1 style="margin:0 0 8px;font-size:22px;line-height:1.25;color:${EMAIL_COLORS.INK}">Sign in to Eateryo</h1>` +
+    `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:${EMAIL_COLORS.BODY_TEXT}">Hi there \u2014 tap the button below to sign in. No password needed.</p>` +
+    `<p style="margin:0;font-size:13px;line-height:1.6;color:${EMAIL_COLORS.MUTED}">This link can be used <strong>once</strong> and expires in <strong>5&nbsp;minutes</strong>.</p>` +
+    `</td></tr>` +
+    `<tr><td align="center" style="padding:22px 32px 8px">` +
+    emailCtaButton("Sign in \u2192", url) +
+    `</td></tr>` +
+    `<tr><td style="padding:8px 32px 0;font-family:Arial,sans-serif">` +
+    `<p style="margin:0 0 4px;font-size:12px;color:${EMAIL_COLORS.MUTED}">Button not working? Paste this link into your browser:</p>` +
+    emailFallbackLink(url) +
+    `</td></tr>` +
+    `<tr><td style="padding:20px 32px 0"><hr style="border:0;border-top:1px solid ${EMAIL_COLORS.CARD_BORDER};margin:0" /></td></tr>` +
+    `<tr><td style="padding:14px 32px 26px;font-family:Arial,sans-serif">` +
+    `<p style="margin:0;font-size:12px;line-height:1.6;color:${EMAIL_COLORS.FAINT}">If you didn\u2019t request this, you can safely ignore this email.<br />This message was sent to <span style="color:${EMAIL_COLORS.MUTED}">${escapeEmailHtml(email)}</span>.</p>` +
+    `</td></tr>`;
+  const html = emailPage({
+    preheader: "One tap to sign in \u2014 expires in 5 minutes.",
+    cardInner,
+  });
+  return { subject, text, html };
 }
 
 export interface InvitationEmail {
@@ -37,6 +86,7 @@ export async function sendMagicLinkEmail({ email, url }: MagicLinkEmail): Promis
     return;
   }
 
+  const content = buildMagicLinkEmail({ email, url });
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -46,14 +96,9 @@ export async function sendMagicLinkEmail({ email, url }: MagicLinkEmail): Promis
     body: JSON.stringify({
       from,
       to: [email],
-      subject: "Your sign-in link",
-      html: [
-        "<p>Sign in to Eateryo:</p>",
-        `<p><a href="${url}">Sign in</a></p>`,
-        "<p>This link can be used once and expires in 5 minutes.</p>",
-        "<p>If you didn't request this, you can ignore this email.</p>",
-      ].join(""),
-      text: `Sign in: ${url}\n\nThis link can be used once and expires in 5 minutes.\nIf you didn't request this, you can ignore this email.\n`,
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
     }),
   });
 
@@ -62,6 +107,57 @@ export async function sendMagicLinkEmail({ email, url }: MagicLinkEmail): Promis
     console.error(`[auth] Resend send failed with status ${response.status}`);
     throw new Error("Failed to send sign-in email");
   }
+}
+
+/** Pure branded invitation body, asserted in tests and reused by the sender. */
+export function buildInvitationEmail({
+  email,
+  restaurantName,
+  inviterName,
+  role,
+  url,
+}: InvitationEmail): { subject: string; text: string; html: string } {
+  const roleLabel = role === "owner" ? "an owner" : "staff";
+  const roleBadge = role === "owner" ? "OWNER" : "STAFF";
+  const subject = `${inviterName} invited you to ${restaurantName} on Eateryo`;
+  const text =
+    `${inviterName} invited you to join ${restaurantName} on Eateryo as ${roleLabel}.\n\n` +
+    `Accept: ${url}\n\n` +
+    `Signing in with this email address accepts the invitation. The link expires in 7 days.\n`;
+  const cardInner =
+    `<tr><td align="center" style="padding:28px 28px 8px">` +
+    emailLogoMark() +
+    `<p style="margin:12px 0 0;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:${EMAIL_COLORS.INK}">Eateryo</p>` +
+    `</td></tr>` +
+    `<tr><td style="padding:12px 32px 0;font-family:Arial,sans-serif">` +
+    `<h1 style="margin:0 0 8px;font-size:22px;line-height:1.25;color:${EMAIL_COLORS.INK}">You\u2019re invited</h1>` +
+    `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:${EMAIL_COLORS.BODY_TEXT}"><strong>${escapeEmailHtml(inviterName)}</strong> invited you to join <strong>${escapeEmailHtml(restaurantName)}</strong> on Eateryo as <strong>${escapeEmailHtml(roleLabel)}</strong>.</p>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafaf9;border:1px solid ${EMAIL_COLORS.CARD_BORDER};border-radius:12px">` +
+    `<tr><td style="padding:14px 16px;font-family:Arial,sans-serif">` +
+    `<p style="margin:0;font-size:15px;font-weight:bold;color:${EMAIL_COLORS.INK}">${escapeEmailHtml(restaurantName)}</p>` +
+    `<p style="margin:4px 0 0;font-size:12px;color:${EMAIL_COLORS.MUTED}">Invited by ${escapeEmailHtml(inviterName)} &middot; for ${escapeEmailHtml(email)}</p>` +
+    `</td><td align="right" style="padding:14px 16px;font-family:Arial,sans-serif">` +
+    `<span style="display:inline-block;font-size:12px;font-weight:bold;color:${EMAIL_COLORS.AMBER_DARK};background:${EMAIL_COLORS.AMBER_BG};border:1px solid ${EMAIL_COLORS.AMBER_BORDER};border-radius:999px;padding:4px 12px">${roleBadge}</span>` +
+    `</td></tr></table>` +
+    `</td></tr>` +
+    `<tr><td align="center" style="padding:22px 32px 4px">` +
+    emailCtaButton("Accept invitation", url) +
+    `<p style="margin:10px 0 0;font-family:Arial,sans-serif;font-size:12px;color:${EMAIL_COLORS.MUTED}">Signing in with <strong>${escapeEmailHtml(email)}</strong> accepts it &middot; expires in 7 days.</p>` +
+    `</td></tr>` +
+    `<tr><td style="padding:10px 32px 0;font-family:Arial,sans-serif">` +
+    `<p style="margin:0 0 6px;font-size:12px;font-weight:bold;color:${EMAIL_COLORS.BODY_TEXT}">HOW IT WORKS</p>` +
+    `<p style="margin:0;font-size:13px;line-height:1.7;color:${EMAIL_COLORS.BODY_TEXT}">1&nbsp;&middot;&nbsp;Tap <strong>Accept invitation</strong><br />2&nbsp;&middot;&nbsp;Sign in with this email address<br />3&nbsp;&middot;&nbsp;You\u2019re on the ${escapeEmailHtml(restaurantName)} team</p>` +
+    emailFallbackLink(url) +
+    `</td></tr>` +
+    `<tr><td style="padding:20px 32px 0"><hr style="border:0;border-top:1px solid ${EMAIL_COLORS.CARD_BORDER};margin:0" /></td></tr>` +
+    `<tr><td style="padding:14px 32px 26px;font-family:Arial,sans-serif">` +
+    `<p style="margin:0;font-size:12px;line-height:1.6;color:${EMAIL_COLORS.FAINT}">Not expecting this? Ignore it \u2014 nothing joins without you signing in.</p>` +
+    `</td></tr>`;
+  const html = emailPage({
+    preheader: `Join ${restaurantName} as ${roleLabel} \u2014 invitation expires in 7 days.`,
+    cardInner,
+  });
+  return { subject, text, html };
 }
 
 /**
@@ -90,7 +186,7 @@ export async function sendInvitationEmail({
     return;
   }
 
-  const roleLabel = role === "owner" ? "an owner" : "staff";
+  const content = buildInvitationEmail({ email, restaurantName, inviterName, role, url });
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -100,14 +196,9 @@ export async function sendInvitationEmail({
     body: JSON.stringify({
       from,
       to: [email],
-      subject: `${inviterName} invited you to ${restaurantName} on Eateryo`,
-      html: [
-        `<p>${inviterName} invited you to join <strong>${restaurantName}</strong> on Eateryo as ${roleLabel}.</p>`,
-        `<p><a href="${url}">Accept the invitation</a></p>`,
-        "<p>Signing in with this email address accepts the invitation. The link expires in 7 days.</p>",
-        "<p>If you weren't expecting this, you can ignore this email.</p>",
-      ].join(""),
-      text: `${inviterName} invited you to join ${restaurantName} on Eateryo as ${roleLabel}.\n\nAccept: ${url}\n\nSigning in with this email address accepts the invitation. The link expires in 7 days.\n`,
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
     }),
   });
 
