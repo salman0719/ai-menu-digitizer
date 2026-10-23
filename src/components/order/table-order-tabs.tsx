@@ -176,6 +176,15 @@ export function TableOrderTabs({
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
   const showMenuBadges = menus.length > 1;
 
+  /**
+   * One menu means no navigation: the tab row (All + one identical tab)
+   * collapses to just search, and a lone closed menu states its hours
+   * inline instead of hiding them behind a tab. Closed menus count here —
+   * a single out-of-hours menu is still "the menu" to the diner.
+   */
+  const singleMenu = menus.length + closedMenus.length <= 1;
+  const onlyClosedMenu = singleMenu && menus.length === 0 ? closedMenus[0] ?? null : null;
+
   function choiceKey(menuId: string, itemId: string): string {
     return `${menuId}:${itemId}`;
   }
@@ -297,48 +306,63 @@ export function TableOrderTabs({
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <nav aria-label="Menus" className={`${frame} p-3`}>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {menus.length > 0 && (
-              <TabButton
-                active={activeTab === ALL_TAB}
-                onClick={() => {
-                  hideClosedInfo();
-                  setActiveTab(ALL_TAB);
-                }}
-                label="All"
-              />
-            )}
-            {menus.map((menu) => (
-              <TabButton
-                key={menu.menuId}
-                active={activeTab === menu.menuId}
-                onClick={() => {
-                  hideClosedInfo();
-                  setActiveTab(menu.menuId);
-                }}
-                label={menuLabel(menu)}
-              />
-            ))}
-            {closedMenus.map((menu) => (
-              <ClosedTabButton
-                key={menu.menuId}
-                menu={menu}
-                show={closedInfo?.menuId === menu.menuId}
-                onShow={(anchor) => showClosedInfo(menu, anchor)}
-                onHide={hideClosedInfo}
-              />
-            ))}
-          </div>
-          {menus.length > 0 ? (
+        <nav aria-label={singleMenu ? "Search the menu" : "Menus"} className={`${frame} p-3`}>
+          {!singleMenu && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {menus.length > 0 && (
+                <TabButton
+                  active={activeTab === ALL_TAB}
+                  onClick={() => {
+                    hideClosedInfo();
+                    setActiveTab(ALL_TAB);
+                  }}
+                  label="All"
+                />
+              )}
+              {menus.map((menu) => (
+                <TabButton
+                  key={menu.menuId}
+                  active={activeTab === menu.menuId}
+                  onClick={() => {
+                    hideClosedInfo();
+                    setActiveTab(menu.menuId);
+                  }}
+                  label={menuLabel(menu)}
+                />
+              ))}
+              {closedMenus.map((menu) => (
+                <ClosedTabButton
+                  key={menu.menuId}
+                  menu={menu}
+                  show={closedInfo?.menuId === menu.menuId}
+                  onShow={(anchor) => showClosedInfo(menu, anchor)}
+                  onHide={hideClosedInfo}
+                />
+              ))}
+            </div>
+          )}
+          {onlyClosedMenu ? (
+            <div>
+              <p className="text-sm font-semibold text-stone-900">
+                {menuLabel(onlyClosedMenu)} is closed right now
+              </p>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                Open {formatAvailability(onlyClosedMenu.availability).join("; ")}.
+              </p>
+            </div>
+          ) : menus.length > 0 ? (
             <>
-              <label className="mt-2 block">
+              <label className={!singleMenu ? "mt-2 block" : "block"}>
                 <span className="sr-only">Search dishes</span>
                 <input
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={`Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`}
+                  placeholder={
+                    singleMenu
+                      ? "Search dishes…"
+                      : `Search across ${activeTab === ALL_TAB ? "all menus" : "this menu"}…`
+                  }
                   className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-700 focus:outline-none"
                 />
               </label>
@@ -361,7 +385,9 @@ export function TableOrderTabs({
           <div className={`${frame} p-8 text-center`}>
             <p className="text-lg font-semibold text-stone-900">Nothing is open right now</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
-              Every menu is between services — tap one above to see when it opens.
+              {singleMenu
+                ? "The kitchen is between services — opening hours are shown above."
+                : "Every menu is between services — tap one above to see when it opens."}
             </p>
           </div>
         ) : visibleCount === 0 ? (
@@ -369,7 +395,8 @@ export function TableOrderTabs({
             <p className="text-lg font-semibold text-stone-900">No dishes match</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
               Nothing on {activeTab === ALL_TAB ? "these menus" : "this menu"} matches “
-              {query.trim()}”. Try a shorter search, or browse the tabs above.
+              {query.trim()}”. Try a shorter search,{" "}
+              {singleMenu ? "or clear it to browse the whole menu." : "or browse the tabs above."}
             </p>
           </div>
         ) : (
