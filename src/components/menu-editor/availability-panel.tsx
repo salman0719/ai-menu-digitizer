@@ -18,7 +18,11 @@
 import { useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { browserTimeZone, fetchAvailability, saveAvailability } from "@/features/availability/client";
+import {
+  browserTimeZone,
+  fetchAvailability,
+  saveAvailability,
+} from "@/features/availability/client";
 import {
   menuAvailabilitySchema,
   type AvailabilityWindow,
@@ -36,11 +40,6 @@ interface AvailabilityPanelProps {
   menuId: string;
   syncMode: "local" | "account";
   canManage?: boolean;
-  /**
-   * "Move this menu to your account" action: navigates to My menus and
-   * highlights that menu's move button. Absent disables the link.
-   */
-  onMoveToAccount?: () => void;
 }
 
 /** "Mon–Fri" / "Sun" / "Mon, Wed, Fri" / "Every day". */
@@ -73,12 +72,7 @@ function freshWindow(): AvailabilityWindow {
   return { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" };
 }
 
-export function AvailabilityPanel({
-  menuId,
-  syncMode,
-  canManage = true,
-  onMoveToAccount,
-}: AvailabilityPanelProps) {
+export function AvailabilityPanel({ menuId, syncMode, canManage = true }: AvailabilityPanelProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     syncMode === "account" ? "loading" : "ready"
   );
@@ -109,9 +103,7 @@ export function AvailabilityPanel({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setLoadError(
-          error instanceof SyncError ? error.message : "Could not load opening times."
-        );
+        setLoadError(error instanceof SyncError ? error.message : "Could not load opening times.");
         setStatus("error");
       });
     return () => {
@@ -127,20 +119,8 @@ export function AvailabilityPanel({
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
         <p className="mt-1 text-xs leading-5 text-stone-600">
-          Opening hours are set on the account copy of a menu — the one its table page serves.
-          This menu is still only in this browser, so there is nothing to set yet.
-        </p>
-        <p className="mt-2 text-xs leading-5 text-stone-600">
-          <button
-            type="button"
-            onClick={onMoveToAccount}
-            disabled={!onMoveToAccount}
-            className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 disabled:cursor-not-allowed disabled:no-underline disabled:text-stone-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-          >
-            Move this menu to your account
-          </button>{" "}
-          — we&apos;ll take you to My menus and highlight the button — then come back here to
-          set lunch, dinner, or bar hours. Until then it would be served all day.
+          Opening hours are set once this menu is on your account, because that is the copy its
+          table page serves. Get your public link first — until then the menu is served all day.
         </p>
       </section>
     );
@@ -208,9 +188,7 @@ export function AvailabilityPanel({
         className="rounded-2xl border border-stone-200 bg-white p-4"
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
-        <p className="mt-1 text-xs text-stone-500">
-          Times are in {timeZone ?? "UTC"}.
-        </p>
+        <p className="mt-1 text-xs text-stone-500">Times are in {timeZone ?? "UTC"}.</p>
         {windows.length === 0 ? (
           <p className="mt-1 text-xs text-stone-600">Always open — no restricted hours.</p>
         ) : (
@@ -292,17 +270,20 @@ export function AvailabilityPanel({
         ) : (
           <span>{draftTimeZone ?? "UTC"}</span>
         )}
-        <span className="text-stone-400">— diners see the menu as open or closed in this zone.</span>
+        <span className="text-stone-400">
+          — diners see the menu as open or closed in this zone.
+        </span>
       </label>
 
       {draft.length > 0 && (
         <ul className="mt-3 space-y-3">
           {draft.map((window, index) => (
-            <li
-              key={index}
-              className="rounded-xl border border-stone-200 p-3"
-            >
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`Days for row ${index + 1}`}>
+            <li key={index} className="rounded-xl border border-stone-200 p-3">
+              <div
+                className="flex flex-wrap items-center gap-1.5"
+                role="group"
+                aria-label={`Days for row ${index + 1}`}
+              >
                 {WEEKDAYS.map((label, day) => {
                   const on = window.days.includes(day);
                   return (
@@ -346,7 +327,9 @@ export function AvailabilityPanel({
                   <input
                     type="time"
                     value={window.start}
-                    onChange={(event) => updateWindow(index, { ...window, start: event.target.value })}
+                    onChange={(event) =>
+                      updateWindow(index, { ...window, start: event.target.value })
+                    }
                     className="rounded-lg border border-stone-300 px-2 py-1 text-xs focus:border-amber-700 focus:outline-none"
                   />
                 </label>
@@ -355,14 +338,14 @@ export function AvailabilityPanel({
                   <input
                     type="time"
                     value={window.end}
-                    onChange={(event) => updateWindow(index, { ...window, end: event.target.value })}
+                    onChange={(event) =>
+                      updateWindow(index, { ...window, end: event.target.value })
+                    }
                     className="rounded-lg border border-stone-300 px-2 py-1 text-xs focus:border-amber-700 focus:outline-none"
                   />
                 </label>
                 {window.end <= window.start && (
-                  <span className="text-[11px] font-medium text-stone-500">
-                    runs past midnight
-                  </span>
+                  <span className="text-[11px] font-medium text-stone-500">runs past midnight</span>
                 )}
               </div>
             </li>
