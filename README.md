@@ -203,6 +203,8 @@ npm run secrets:check   # needs the build output above
   ordering acceptance script, on real devices and networks.
 - [`docs/backup-restore.md`](docs/backup-restore.md) — what lives in Postgres,
   the quarterly restore drill, and the bad-migration runbook.
+- [`docs/ai-assistant.md`](docs/ai-assistant.md) — the Workers AI assistant:
+  setup, caps, feature flags, failure copy and acceptance results.
 
 The launch promotion is free, with no payment step anywhere; the app enforces
 per-account extraction caps instead, and shows them on `/launch`.
