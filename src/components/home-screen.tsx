@@ -20,6 +20,7 @@ import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { PublishWizard } from "@/components/menu-editor/publish-wizard";
 import { Dropzone } from "@/components/upload/dropzone";
+import { ExtractionProgress } from "@/components/upload/extraction-progress";
 import { ExtractionResult, PreviewMenu } from "@/components/upload/extraction-result";
 import { ImagePreview, type PageImage } from "@/components/upload/image-preview";
 import { extractedMenuToDocument } from "@/features/menu/convert";
@@ -189,6 +190,14 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("upload");
   const [extracted, setExtracted] = useState<MenuExtractionResult | null>(null);
+  /** Canonical form of the current result, for the phone-framed first look. */
+  const [resultDoc, setResultDoc] = useState<MenuDocument | null>(null);
+  /** Real progress for the extraction wait; null outside an extraction. */
+  const [extractProgress, setExtractProgress] = useState<{
+    pageCount: number;
+    preparedPages: number;
+    requestStartedAt: number | null;
+  } | null>(null);
   /** Draft persisted automatically after a successful AI extraction. */
   const [draftSave, setDraftSave] = useState<"idle" | "saving" | "saved" | "unavailable">("idle");
   const draftDocRef = useRef<MenuDocument | null>(null);
@@ -1180,7 +1189,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     setFileError(null);
     setExtractError(null);
     setExtracted(null);
+    setResultDoc(null);
     setDemoDoc(null);
+    setExtractProgress(null);
     setPhase(next.length > 0 ? "ready" : "upload");
   }
 
@@ -1255,17 +1266,37 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     setPhase("extracting");
     setFileError(null);
     setExtractError(null);
+    setExtractProgress({ pageCount: files.length, preparedPages: 0, requestStartedAt: null });
     try {
       // Normalize first: AVIF is transcoded to JPEG here because the provider
-      // cannot read it, and mislabeled files get their real MIME type.
-      const prepared = await Promise.all(files.map(prepareImageForUpload));
+      // cannot read it, and mislabeled files get their real MIME type. One at
+      // a time, so the page count in the progress panel is a real milestone.
+      const prepared: Awaited<ReturnType<typeof prepareImageForUpload>>[] = [];
+      for (const file of files) {
+        prepared.push(await prepareImageForUpload(file));
+        setExtractProgress((current) =>
+          current ? { ...current, preparedPages: current.preparedPages + 1 } : current
+        );
+      }
+      setExtractProgress((current) =>
+        current ? { ...current, requestStartedAt: Date.now() } : current
+      );
       const extraction = await extractMenuFromFiles(
         prepared.map((image) => new File([image.blob], image.filename, { type: image.mimeType }))
       );
+      const previewDoc =
+        extraction.menu.categories.length > 0
+          ? extractedMenuToDocument(extraction.menu, {
+              provider: extraction.provider,
+              model: extraction.model,
+              originalFileName: files[0]?.name,
+            })
+          : null;
+      setResultDoc(previewDoc);
       setExtracted(extraction);
       setSource("ai");
       setPhase("done");
-      void autoSaveDraft(extraction, files[0] ?? null);
+      void autoSaveDraft(extraction, files[0] ?? null, previewDoc);
     } catch (error) {
       setExtractError(
         error instanceof ExtractClientError
@@ -1286,7 +1317,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   function handleDemo() {
     if (!confirmDiscard()) return;
     clearCapture();
-    setDemoDoc(createSampleMenuDocument());
+    const doc = createSampleMenuDocument();
+    setDemoDoc(doc);
+    setResultDoc(doc);
     setSource("demo");
     setPhase("done");
     scrollToResult();
@@ -1297,18 +1330,24 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
    * is optional rather than the act of saving. Skips empty results (nothing
    * worth storing) and keeps the newest draft when extractions overlap.
    */
-  async function autoSaveDraft(extraction: MenuExtractionResult, primaryPage: File | null) {
+  async function autoSaveDraft(
+    extraction: MenuExtractionResult,
+    primaryPage: File | null,
+    existingDoc: MenuDocument | null = null
+  ) {
     const token = (draftTokenRef.current += 1);
     if (extraction.menu.categories.length === 0) {
       draftDocRef.current = null;
       setDraftSave("idle");
       return;
     }
-    const doc = extractedMenuToDocument(extraction.menu, {
-      provider: extraction.provider,
-      model: extraction.model,
-      originalFileName: primaryPage?.name,
-    });
+    const doc =
+      existingDoc ??
+      extractedMenuToDocument(extraction.menu, {
+        provider: extraction.provider,
+        model: extraction.model,
+        originalFileName: primaryPage?.name,
+      });
     draftDocRef.current = doc;
     // One blob per menu: the first page stands in as the source image.
     const primaryPageBlob = primaryPage;
@@ -1909,23 +1948,12 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
               </div>
             )}
 
-            {phase === "extracting" && (
-              <div
-                role="status"
-                className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"
-              >
-                <span
-                  aria-hidden="true"
-                  className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-amber-700 border-t-transparent"
-                />
-                <p className="text-sm text-amber-900">
-                  {pages.length > 1
-                    ? `Reading ${pages.length} pages… keep this tab open.`
-                    : "Reading your menu… keep this tab open."}{" "}
-                  The {pages.length > 1 ? "images are" : "image is"} processed in memory and never
-                  stored on the server.
-                </p>
-              </div>
+            {phase === "extracting" && extractProgress && (
+              <ExtractionProgress
+                pageCount={extractProgress.pageCount}
+                preparedPages={extractProgress.preparedPages}
+                requestStartedAt={extractProgress.requestStartedAt}
+              />
             )}
 
             {extractError && phase !== "extracting" && (
@@ -1956,6 +1984,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                       ? () => void handleStartPublish()
                       : undefined
                   }
+                  previewDoc={resultDoc}
                   savedNotice={
                     source === "ai" && draftSave === "saved"
                       ? "Draft saved to My menus"
