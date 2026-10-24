@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { CommitInput } from "@/components/menu-editor/fields";
+import { OrderAlertsCard } from "@/components/settings/order-alerts";
 import { TeamActivity } from "@/components/settings/team-activity";
 import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -223,6 +224,12 @@ export function RestaurantSettings({
             key={`activity-${selected.id}`}
             restaurantId={selected.id}
             refreshKey={teamVersion}
+          />
+
+          <OrderAlertsCard
+            key={`alerts-${selected.id}`}
+            restaurantId={selected.id}
+            restaurantName={selected.name}
           />
 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
