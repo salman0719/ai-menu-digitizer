@@ -56,6 +56,33 @@ body {
   }
 }
 
+/* R0 mobile floor: 16px form text stops iOS focus-zoom; coarse-pointer
+   targets get a 44px minimum so phone taps land. Text floors stay in
+   components (12px secondary / 14-16px body on mobile). */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+}
+
 ::selection {
   background: #fcd9a8;
 }
