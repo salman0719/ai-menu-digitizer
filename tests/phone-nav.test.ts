@@ -53,9 +53,11 @@ describe("moreSheetRows", () => {
     expect(rows[rows.length - 1]?.why).toContain("Usage");
   });
 
-  it("shows the Assistant to signed-out visitors even when the flag is off", () => {
-    const rows = moreSheetRows({ signedIn: false, assistantEnabled: false });
-    expect(rows.map((row) => row.id)).toContain("assistant");
+  it("never shows the Assistant signed out, whatever the flag says", () => {
+    for (const assistantEnabled of [false, true]) {
+      const rows = moreSheetRows({ signedIn: false, assistantEnabled });
+      expect(rows.map((row) => row.id)).not.toContain("assistant");
+    }
   });
 
   it("hides the Assistant from signed-in accounts while the flag is off", () => {
