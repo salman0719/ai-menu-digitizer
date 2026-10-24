@@ -46,6 +46,11 @@ describe("application routes", () => {
       menuId: "menu-1",
       mode: "preview",
     });
+    expect(parseAppRoute("/menus/menu-1/publish")).toEqual({
+      screen: "editor",
+      menuId: "menu-1",
+      mode: "publish",
+    });
     // Unknown editor sub-paths fall back to the library, never a blank screen.
     expect(parseAppRoute("/menus/menu-1/nope")).toEqual({ screen: "library" });
   });
@@ -66,6 +71,7 @@ describe("application routes", () => {
       { screen: "editor", menuId: "menu id/&1", mode: "reorder" },
       { screen: "editor", menuId: "menu id/&1", mode: "qr" },
       { screen: "editor", menuId: "menu id/&1", mode: "preview" },
+      { screen: "editor", menuId: "menu id/&1", mode: "publish" },
       { screen: "item", menuId: "menu id/&1", itemId: "item /&2" },
     ] as const;
     for (const route of routes) {

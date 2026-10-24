@@ -35,6 +35,8 @@ interface ExtractionResultProps {
   onStartOver: () => void;
   /** Open the result in the editor. Absent until Step 4 wiring provides it. */
   onEdit?: () => void;
+  /** Save the draft and open the publish wizard (shown when the draft is safe). */
+  onPublish?: () => void;
   /** Label for the primary action; defaults to "Edit menu". */
   editLabel?: string;
   /** Shown when the draft already exists in local storage. */
@@ -52,6 +54,7 @@ export function ExtractionResult({
   source,
   onStartOver,
   onEdit,
+  onPublish,
   editLabel = "Edit menu",
   savedNotice = null,
 }: ExtractionResultProps) {
@@ -115,6 +118,25 @@ export function ExtractionResult({
           </button>
         </div>
       </div>
+
+      {onPublish && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Ready to share it?</p>
+            <p className="text-xs leading-5 text-amber-800">
+              Your draft is saved. Get a public link in one short form — sign-in happens inside the
+              flow, and the draft stays here.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onPublish}
+            className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+          >
+            Get your public link
+          </button>
+        </div>
+      )}
 
       {data.categories.length === 0 ? (
         <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center">

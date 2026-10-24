@@ -13,6 +13,7 @@ import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { RestaurantTables } from "@/components/tables/restaurant-tables";
 import { OrdersBoard } from "@/components/orders/orders-board";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
+import { PublishWizard } from "@/components/menu-editor/publish-wizard";
 import { Dropzone } from "@/components/upload/dropzone";
 import { ExtractionResult, PreviewMenu } from "@/components/upload/extraction-result";
 import { ImagePreview, type PageImage } from "@/components/upload/image-preview";
@@ -56,6 +57,7 @@ import {
 import { usePathname } from "next/navigation";
 
 import type { PublicationStatus } from "@/features/publishing/schema";
+import type { PublishSetupResult } from "@/features/publishing/setup-schema";
 import type { PreviewLayoutId, PreviewThemeId } from "@/features/menu/preview-themes";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -211,6 +213,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   // the whole local-first flow above keeps working untouched.
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const signedIn = session?.user != null;
+  const accountKey = session?.user?.id ?? null;
   // Server-evaluated release decisions (A4). Both assistant flags default
   // off, so the tab and panel appear only for a released account or a
   // preview link; the loading state below avoids flashing “unavailable” while
@@ -232,6 +235,8 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [staffMenus, setStaffMenus] = useState<ReadonlySet<string>>(new Set());
   /** Restaurants the caller owns: the targets for moving menus to the account. */
   const [ownedRestaurants, setOwnedRestaurants] = useState<RestaurantOption[]>([]);
+  /** Which account the list belongs to; a mismatch means it is still loading. */
+  const [ownedRestaurantsFor, setOwnedRestaurantsFor] = useState<string | null>(null);
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
@@ -252,21 +257,29 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   // Moving a single menu needs the owned restaurants up front, so each
   // browser-only row can offer its target without opening the move panel.
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !accountKey) return;
     let cancelled = false;
     void (async () => {
       try {
         const list = await fetchRestaurants();
-        if (!cancelled) setOwnedRestaurants(list.filter((r) => r.role === "owner"));
+        if (cancelled) return;
+        setOwnedRestaurants(list.filter((r) => r.role === "owner"));
+        setOwnedRestaurantsFor(accountKey);
       } catch {
-        // Best-effort: the move panel shows its own load error, and the
-        // server still refuses a move the caller may not make.
+        // Best-effort: the move panel shows its own load error, the wizard
+        // explains a failed create, and the server still refuses a move the
+        // caller may not make. Settle the loading state so the wizard can
+        // still offer the form (the request will surface the real error).
+        if (!cancelled) {
+          setOwnedRestaurants([]);
+          setOwnedRestaurantsFor(accountKey);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [signedIn]);
+  }, [accountKey, signedIn]);
 
   const result: PreviewMenu | null = extracted?.menu ?? demoDoc;
 
@@ -916,6 +929,31 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     }
   }
 
+  /**
+   * The wizard published (or attached) this menu. Make the shell agree with
+   * the server immediately: the library chip, the publication panel and the
+   * next save's conflict baseline.
+   */
+  function handleWizardPublished(result: PublishSetupResult) {
+    const menuId = result.publication.menuId;
+    addServerId(menuId);
+    setPublication(result.publication);
+    setPublicationMenuId(menuId);
+    setPublicationLoaded(true);
+    setPublishError(null);
+    void (async () => {
+      try {
+        const server = await fetchServerMenu(menuId);
+        if (docRef.current?.id === menuId) serverBaseRef.current = server.updatedAt;
+      } catch {
+        // The next editor open reconciles the baseline; publishing already
+        // succeeded, so this must not surface as a failure.
+      }
+    })();
+    void mergeAccountMenus();
+    void refreshLibrary();
+  }
+
   async function handleDeleteMenu(id: string) {
     try {
       // Remove the account copy first when there is one, so a failure is
@@ -1179,43 +1217,66 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   }
 
   /** Save the current result (AI or demo) and open it in the editor. */
+  /**
+   * Persist the current result and open it. The wizard entry point reuses
+   * this without touching the URL, then navigates once to its own mode.
+   */
+  async function saveResultAndOpen(updateRoute = true): Promise<MenuDocument> {
+    if (source === "ai" && extracted) {
+      const firstPage = pages[0];
+      // Reuse the autosaved draft instead of writing a second record.
+      const doc =
+        draftDocRef.current ??
+        extractedMenuToDocument(extracted.menu, {
+          provider: extracted.provider,
+          model: extracted.model,
+          originalFileName: firstPage?.file.name,
+        });
+      const saved = storageDownRef.current ? doc : await saveMenu(doc);
+      if (firstPage && !storageDownRef.current) {
+        try {
+          // One blob per menu: the first page stands in as the source image.
+          await saveImage(saved.id, firstPage.file);
+        } catch {
+          // Image is optional; the menu matters.
+        }
+      }
+      if (!storageDownRef.current) await refreshLibrary();
+      await openDoc(saved, firstPage ? firstPage.file : null, updateRoute);
+      return saved;
+    }
+    const doc = demoDoc ?? createSampleMenuDocument();
+    const saved = storageDownRef.current ? doc : await saveMenu(doc);
+    if (!storageDownRef.current) await refreshLibrary();
+    await openDoc(saved, null, updateRoute);
+    return saved;
+  }
+
+  function showOpenError(error: unknown) {
+    setExtractError(
+      new ExtractClientError(
+        "internal_error",
+        error instanceof StorageError ? error.message : "Could not open the editor. Try again."
+      )
+    );
+    scrollToResult();
+  }
+
   async function handleEditResult() {
     try {
-      if (source === "ai" && extracted) {
-        const firstPage = pages[0];
-        // Reuse the autosaved draft instead of writing a second record.
-        const doc =
-          draftDocRef.current ??
-          extractedMenuToDocument(extracted.menu, {
-            provider: extracted.provider,
-            model: extracted.model,
-            originalFileName: firstPage?.file.name,
-          });
-        const saved = storageDownRef.current ? doc : await saveMenu(doc);
-        if (firstPage && !storageDownRef.current) {
-          try {
-            // One blob per menu: the first page stands in as the source image.
-            await saveImage(saved.id, firstPage.file);
-          } catch {
-            // Image is optional; the menu matters.
-          }
-        }
-        if (!storageDownRef.current) await refreshLibrary();
-        await openDoc(saved, firstPage ? firstPage.file : null);
-      } else {
-        const doc = demoDoc ?? createSampleMenuDocument();
-        const saved = storageDownRef.current ? doc : await saveMenu(doc);
-        if (!storageDownRef.current) await refreshLibrary();
-        await openDoc(saved, null);
-      }
+      await saveResultAndOpen();
     } catch (error) {
-      setExtractError(
-        new ExtractClientError(
-          "internal_error",
-          error instanceof StorageError ? error.message : "Could not open the editor. Try again."
-        )
-      );
-      scrollToResult();
+      showOpenError(error);
+    }
+  }
+
+  /** From the extraction result: save the draft, then open the publish wizard. */
+  async function handleStartPublish() {
+    try {
+      const saved = await saveResultAndOpen(false);
+      navigateTo({ screen: "editor", menuId: saved.id, mode: "publish" });
+    } catch (error) {
+      showOpenError(error);
     }
   }
 
@@ -1261,6 +1322,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const libraryMenus = menus.map((menu) => ({ ...menu, onServer: serverIds.has(menu.id) }));
   const localOnly = libraryMenus.filter((menu) => !menu.onServer);
   const localOnlyCount = localOnly.length;
+  // A list cached from another account is never offered as a move target.
+  const ownedRestaurantsForAccount = ownedRestaurantsFor === accountKey ? ownedRestaurants : [];
+  const restaurantsLoading = signedIn && ownedRestaurantsFor !== accountKey;
   // A name for the first-run "Name your restaurant" field, guessed from the
   // titles of the menus the move would copy (null when they say nothing).
   const suggestedRestaurantName = suggestRestaurantName(localOnly.map((menu) => menu.title));
@@ -1286,11 +1350,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         }`}
       >
         {screen !== "editor" && (
-          <nav
-            data-print-hide
-            aria-label="Sections"
-            className="flex gap-2 overflow-x-auto pb-1"
-          >
+          <nav data-print-hide aria-label="Sections" className="flex gap-2 overflow-x-auto pb-1">
             {(
               [
                 { id: "capture", label: "Capture" },
@@ -1347,7 +1407,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
               loading={libraryLoading}
               highlightMoveId={moveHighlightId}
               accountMode={signedIn}
-              ownedRestaurants={signedIn ? ownedRestaurants : []}
+              ownedRestaurants={signedIn ? ownedRestaurantsForAccount : []}
               onMoveToAccount={handleMoveMenuToAccount}
               unavailable={storageDown}
               onOpen={(id) => void handleOpenMenu(id)}
@@ -1443,39 +1503,64 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 owner to make changes.
               </p>
             )}
-            <MenuEditor
-              doc={activeDoc}
-              selectedItemId={selectedItemId}
-              onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
-              mode={activeMenuIsStaff ? "preview" : editorMode}
-              onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
-              onChange={handleDocChange}
-              saveState={saveState}
-              syncMode={signedIn ? "account" : "local"}
-              onMoveToAccount={() => handleGoToMove(activeDoc.id)}
-              canManage={!activeMenuIsStaff}
-              onServer={serverIds.has(activeDoc.id)}
-              imageUrl={editorImageUrl}
-              onExportJson={handleExportJson}
-              onExportCsv={handleExportCsv}
-              onImportFile={(f) => void handleImportFile(f)}
-              importError={importError}
-              onDeleteMenu={() => void handleDeleteMenu(activeDoc.id)}
-              onBack={() => void handleBackToLibrary()}
-              publishing={{
-                status: activePublication,
-                loaded: activePublicationLoaded,
-                busy: publishBusy,
-                error: publishError,
-                inAccount: serverIds.has(activeDoc.id),
-                onPublish: (theme, layout) => void handlePublish(theme, layout),
-                onUnpublish: () => void handleUnpublish(),
-                onChangeSlug: (slug) => void handleChangeSlug(slug),
-              }}
-              onPreviewOpen={() => {
-                if (docRef.current) void refreshPublication(docRef.current.id);
-              }}
-            />
+            {editorMode === "publish" && !activeMenuIsStaff ? (
+              <PublishWizard
+                key={activeDoc.id}
+                doc={activeDoc}
+                signedIn={signedIn}
+                sessionPending={sessionPending}
+                accountKey={accountKey}
+                ownedRestaurants={ownedRestaurantsForAccount}
+                restaurantsLoading={restaurantsLoading}
+                onPublished={handleWizardPublished}
+                onBack={() => navigateTo({ screen: "editor", menuId: activeDoc.id, mode: "edit" })}
+                onOpenTables={() => navigateTo({ screen: "tables" })}
+                onOpenEditor={() =>
+                  navigateTo({ screen: "editor", menuId: activeDoc.id, mode: "edit" })
+                }
+              />
+            ) : (
+              <MenuEditor
+                doc={activeDoc}
+                selectedItemId={selectedItemId}
+                onOpenItem={(itemId) =>
+                  navigateTo({ screen: "item", menuId: activeDoc.id, itemId })
+                }
+                mode={activeMenuIsStaff ? "preview" : editorMode}
+                onModeChange={(mode) =>
+                  navigateTo({ screen: "editor", menuId: activeDoc.id, mode })
+                }
+                onChange={handleDocChange}
+                saveState={saveState}
+                syncMode={signedIn ? "account" : "local"}
+                onMoveToAccount={() => handleGoToMove(activeDoc.id)}
+                canManage={!activeMenuIsStaff}
+                onServer={serverIds.has(activeDoc.id)}
+                onStartPublish={() =>
+                  navigateTo({ screen: "editor", menuId: activeDoc.id, mode: "publish" })
+                }
+                imageUrl={editorImageUrl}
+                onExportJson={handleExportJson}
+                onExportCsv={handleExportCsv}
+                onImportFile={(f) => void handleImportFile(f)}
+                importError={importError}
+                onDeleteMenu={() => void handleDeleteMenu(activeDoc.id)}
+                onBack={() => void handleBackToLibrary()}
+                publishing={{
+                  status: activePublication,
+                  loaded: activePublicationLoaded,
+                  busy: publishBusy,
+                  error: publishError,
+                  inAccount: serverIds.has(activeDoc.id),
+                  onPublish: (theme, layout) => void handlePublish(theme, layout),
+                  onUnpublish: () => void handleUnpublish(),
+                  onChangeSlug: (slug) => void handleChangeSlug(slug),
+                }}
+                onPreviewOpen={() => {
+                  if (docRef.current) void refreshPublication(docRef.current.id);
+                }}
+              />
+            )}
           </>
         )}
 
@@ -1647,6 +1732,11 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                   source={source}
                   onStartOver={clearCapture}
                   onEdit={() => void handleEditResult()}
+                  onPublish={
+                    source === "demo" || draftSave === "saved"
+                      ? () => void handleStartPublish()
+                      : undefined
+                  }
                   savedNotice={
                     source === "ai" && draftSave === "saved"
                       ? "Draft saved to My menus"

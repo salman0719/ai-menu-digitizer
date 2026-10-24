@@ -6,7 +6,7 @@ export type AppScreen =
  * reorder list, the printable table QR cards, or the customer preview.
  * Mirrors the editor modes, each with its own deep-linkable URL.
  */
-export type EditorMode = "edit" | "reorder" | "qr" | "preview";
+export type EditorMode = "edit" | "reorder" | "qr" | "preview" | "publish";
 
 export type AppRoute =
   | { screen: "capture" | "library" | "orders" | "assistant" | "tables" | "settings" }
@@ -17,13 +17,20 @@ export type AppRoute =
 export function menuSelectionFromPathname(
   pathname: string
 ): { menuId: string; mode?: EditorMode; itemId?: string } | null {
-  const menuMatch = /^\/menus\/([^/]+)(?:\/(reorder|qr|preview)|\/items\/([^/]+))?$/.exec(pathname);
+  const menuMatch = /^\/menus\/([^/]+)(?:\/(reorder|qr|preview|publish)|\/items\/([^/]+))?$/.exec(
+    pathname
+  );
   if (!menuMatch?.[1]) return null;
   try {
     const menuId = decodeURIComponent(menuMatch[1]).trim();
     if (!menuId) return null;
     const [, , modeSegment, rawItemId] = menuMatch;
-    if (modeSegment === "reorder" || modeSegment === "qr" || modeSegment === "preview") {
+    if (
+      modeSegment === "reorder" ||
+      modeSegment === "qr" ||
+      modeSegment === "preview" ||
+      modeSegment === "publish"
+    ) {
       return { menuId, mode: modeSegment };
     }
     if (rawItemId !== undefined) {

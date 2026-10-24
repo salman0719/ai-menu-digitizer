@@ -97,6 +97,8 @@ interface MenuEditorProps {
    * keeps the in-editor QR mode (its codes really are per menu).
    */
   onServer?: boolean;
+  /** Open the publish wizard for a browser-only menu (R1). */
+  onStartPublish?: () => void;
   /**
    * Publishing state and actions (Step 9). Absent when nothing can publish
    * in this context, in which case the preview simply omits the panel.
@@ -164,6 +166,7 @@ export function MenuEditor({
   onMoveToAccount,
   canManage = true,
   onServer = false,
+  onStartPublish,
   imageUrl,
   onExportJson,
   onExportCsv,
@@ -594,6 +597,7 @@ export function MenuEditor({
             themeId={previewThemeId}
             layout={previewLayout}
             controls={publishing}
+            onStartWizard={onStartPublish}
           />
         )}
         <MenuPreview
@@ -767,15 +771,39 @@ export function MenuEditor({
           stays compact and food items show sooner. Kept below (commented out)
           in case it needs to come back. */}
       <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs leading-5 text-stone-600">
-        Once your menu is set,{" "}
-        <button
-          type="button"
-          onClick={() => changeMode("preview")}
-          className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-        >
-          go to Preview
-        </button>{" "}
-        to publish it and get your public link.
+        {onStartPublish && !onServer ? (
+          <>
+            Once your menu is set,{" "}
+            <button
+              type="button"
+              onClick={onStartPublish}
+              className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              get your public link
+            </button>{" "}
+            — we create your café if you don&apos;t have one yet. Or{" "}
+            <button
+              type="button"
+              onClick={() => changeMode("preview")}
+              className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              preview it first
+            </button>
+            .
+          </>
+        ) : (
+          <>
+            Once your menu is set,{" "}
+            <button
+              type="button"
+              onClick={() => changeMode("preview")}
+              className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              go to Preview
+            </button>{" "}
+            to publish it and get your public link.
+          </>
+        )}
       </p>
       {/*
       {publishing && canManage && (
