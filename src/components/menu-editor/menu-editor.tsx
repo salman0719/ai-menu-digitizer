@@ -1001,7 +1001,7 @@ export function MenuEditor({
         </div>
       )}
       {doc.categories.length > 0 && search.categories.length > 0 && (
-        <div className="sticky top-0 z-20 -mx-4 flex items-center gap-3 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm">
+        <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-2 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-3">
           {viewMode === "single" && (
             <div
               role="navigation"
@@ -1042,7 +1042,7 @@ export function MenuEditor({
           <div
             role="group"
             aria-label="Category layout"
-            className="flex shrink-0 rounded-full border border-stone-300 bg-white p-0.5"
+            className="flex shrink-0 self-start rounded-full border border-stone-300 bg-white p-0.5 sm:self-auto"
           >
             <button
               type="button"
