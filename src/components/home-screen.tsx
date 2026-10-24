@@ -1724,7 +1724,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 navigateTo({ screen: tab.id });
               }}
               aria-current={screen === tab.id ? "page" : undefined}
-              className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+              className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
                 screen === tab.id ? "text-amber-800" : "text-stone-500"
               }`}
             >
@@ -1743,7 +1743,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 ? "page"
                 : undefined
             }
-            className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+            className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
               moreOpen ||
               screen === "tables" ||
               screen === "assistant" ||

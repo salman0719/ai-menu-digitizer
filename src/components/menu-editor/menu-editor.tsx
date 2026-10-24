@@ -968,12 +968,12 @@ export function MenuEditor({
             >
               ‹
             </button>
-            <label className="flex min-h-[44px] flex-1 items-center">
+            <label className="flex min-h-[44px] min-w-0 flex-1 items-center">
               <span className="sr-only">Category</span>
               <select
                 value={activeMatch.category.id}
                 onChange={(event) => setActiveCategoryId(event.target.value)}
-                className="w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 focus:border-amber-700 focus:outline-none"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-semibold text-stone-900 focus:border-amber-700 focus:outline-none"
               >
                 {search.categories.map(({ category, items }) => (
                   <option key={category.id} value={category.id}>

@@ -68,12 +68,12 @@ body {
 }
 
 @media (pointer: coarse) {
+  /* Height only: a blanket min-width forces dense rows (reorder arrows,
+  delete buttons, pills) wider than their tracks and that is what pushes
+  the page into horizontal overflow. Width stays with the components. */
   button,
-  [role="button"],
-  input[type="checkbox"],
-  input[type="radio"] {
+  [role="button"] {
     min-height: 44px;
-    min-width: 44px;
   }
 
   input[type="checkbox"],
