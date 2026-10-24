@@ -7,6 +7,11 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
+import {
+  LocalDraftsNotice,
+  LocalDraftsOffer,
+  type LocalDraftClaimNotice,
+} from "@/components/menu-editor/local-drafts-banner";
 import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { RestaurantSettings } from "@/components/settings/restaurant-settings";
@@ -76,8 +81,21 @@ import {
 } from "@/features/navigation/routes";
 import { useFeatureFlags } from "@/features/flags/client";
 import { staffMenuIds } from "@/features/tenancy/access";
-import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
-import { moveLocalMenuToAccount } from "@/features/menus/move-to-account";
+import {
+  createRestaurant,
+  fetchRestaurants,
+  type RestaurantOption,
+} from "@/features/tenancy/client";
+import { moveLocalMenuToAccount, moveLocalMenusToAccount } from "@/features/menus/move-to-account";
+import {
+  decideLocalDraftClaim,
+  dismissLocalDraftClaim,
+  loadBrowserAccount,
+  loadLocalDraftClaim,
+  markLocalDraftsClaimed,
+  rememberBrowserAccount,
+  type LocalDraftClaimStatus,
+} from "@/features/menus/claim-local-drafts";
 
 type Phase = "upload" | "ready" | "extracting" | "done";
 
@@ -179,9 +197,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [menus, setMenus] = useState<MenuSummary[]>([]);
   /** True until the first library read settles (skeleton rows, not the empty state). */
   const [libraryLoading, setLibraryLoading] = useState(true);
-  /** Menu whose "Move to account" button should beep (from the editor's move link). */
-  const [moveHighlightId, setMoveHighlightId] = useState<string | null>(null);
-  const moveHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [storageDown, setStorageDown] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<MenuDocument | null>(null);
@@ -237,6 +252,28 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [ownedRestaurants, setOwnedRestaurants] = useState<RestaurantOption[]>([]);
   /** Which account the list belongs to; a mismatch means it is still loading. */
   const [ownedRestaurantsFor, setOwnedRestaurantsFor] = useState<string | null>(null);
+  /** Every restaurant the caller belongs to, in any role (claim decisions). */
+  const [restaurantCount, setRestaurantCount] = useState(0);
+  /** Which account the restaurant count belongs to; null until it settles. */
+  const [restaurantCountFor, setRestaurantCountFor] = useState<string | null>(null);
+  /** Which account the server menu ids belong to; null until a merge settles. */
+  const [serverMenusFor, setServerMenusFor] = useState<string | null>(null);
+  /** The answer just given here; the stored per-account value is the fallback. */
+  const [claimAnswer, setClaimAnswer] = useState<{
+    accountKey: string;
+    status: LocalDraftClaimStatus;
+  } | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimNotice, setClaimNotice] = useState<LocalDraftClaimNotice | null>(null);
+  /**
+   * The first settled non-editor look at this account decides whether the
+   * automatic import runs. Later local menus (a demo saved mid-session) are
+   * never swept into an account behind the owner's back.
+   */
+  const claimEvaluatedRef = useRef<string | null>(null);
+  /** Whether the last account in this browser is this one (or none yet). */
+  const browserAccountAtSignInRef = useRef(false);
   /** Deduplicates concurrent account merges. */
   const mergeRef = useRef<Promise<void> | null>(null);
 
@@ -265,6 +302,8 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         if (cancelled) return;
         setOwnedRestaurants(list.filter((r) => r.role === "owner"));
         setOwnedRestaurantsFor(accountKey);
+        setRestaurantCount(list.length);
+        setRestaurantCountFor(accountKey);
       } catch {
         // Best-effort: the move panel shows its own load error, the wizard
         // explains a failed create, and the server still refuses a move the
@@ -369,8 +408,18 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     if (!signedIn) {
       replaceServerIds(new Set());
       replaceStaffMenus(new Set());
+      // State is compared with accountKey when read, so a stale value from
+      // the previous session can never authorise an import for this one.
+      claimEvaluatedRef.current = null;
+      browserAccountAtSignInRef.current = false;
       return;
     }
+    // A browser last used by another account must never auto-import its
+    // cached menus into this one. Remember this account only after reading
+    // the previous marker.
+    const previousAccount = loadBrowserAccount();
+    browserAccountAtSignInRef.current = previousAccount === null || previousAccount === accountKey;
+    if (accountKey) rememberBrowserAccount(accountKey);
     // Sign-in: merge account menus into the library, and reconcile a menu
     // that was already open. A menu that was never moved to the account
     // stays local-only (serverBaseRef stays null), so this cannot loop.
@@ -436,6 +485,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
       try {
         const serverMenus = await fetchServerMenus();
         replaceServerIds(new Set(serverMenus.map((menu) => menu.id)));
+        // The claim offer waits for this: an empty set is only trustworthy
+        // once the account has actually been read.
+        if (signedInRef.current) setServerMenusFor(accountKey);
         try {
           replaceStaffMenus(staffMenuIds(serverMenus, await fetchRestaurants()));
         } catch {
@@ -828,6 +880,78 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     return null;
   }
 
+  /**
+   * Copy the rest of this browser's menus into one owned restaurant. Shared
+   * by the one-click offer, the automatic import for a brand-new account,
+   * and the import that follows the wizard creating the account's first
+   * café. The local copies stay put; the notice reports per-batch totals.
+   */
+  async function runLocalDraftClaim(restaurantId: string, restaurantName: string) {
+    setClaimBusy(true);
+    setClaimError(null);
+    try {
+      const report = await moveLocalMenusToAccount(restaurantId);
+      [...report.imported, ...report.skipped].forEach((id) => addServerId(id));
+      setClaimNotice({
+        imported: report.imported.length,
+        failed: report.failed.length,
+        restaurantName,
+      });
+      if (accountKey) {
+        markLocalDraftsClaimed(accountKey);
+        setClaimAnswer({ accountKey, status: "done" });
+      }
+      await refreshLibrary();
+      void mergeAccountMenus();
+    } catch {
+      setClaimError(
+        "We couldn't read the menus saved in this browser. They are still here — try again from My menus."
+      );
+    } finally {
+      setClaimBusy(false);
+    }
+  }
+
+  /**
+   * A brand-new account (no menus, no restaurants) adopts this browser's
+   * drafts in one go. The café name comes from the menu titles, never a
+   * placeholder the owner cannot recognise.
+   */
+  async function handleAutoClaim(titles: string[]) {
+    if (!accountKey) return;
+    setClaimBusy(true);
+    setClaimError(null);
+    try {
+      const name = suggestRestaurantName(titles) ?? "My restaurant";
+      const created = await createRestaurant(name);
+      setOwnedRestaurants((current) =>
+        current.some((restaurant) => restaurant.id === created.id) ? current : [...current, created]
+      );
+      setOwnedRestaurantsFor(accountKey);
+      setRestaurantCount((count) => count + 1);
+      setRestaurantCountFor(accountKey);
+      await runLocalDraftClaim(created.id, created.name);
+    } catch {
+      setClaimError(
+        "We couldn't set up your café automatically. Import your menus from My menus when you're ready."
+      );
+    } finally {
+      setClaimBusy(false);
+    }
+  }
+
+  function handleClaimAdd(restaurantId: string) {
+    const restaurant = ownedRestaurantsForAccount.find((item) => item.id === restaurantId);
+    if (!restaurant) return;
+    void runLocalDraftClaim(restaurant.id, restaurant.name);
+  }
+
+  function handleDismissClaim() {
+    if (!accountKey) return;
+    dismissLocalDraftClaim(accountKey);
+    setClaimAnswer({ accountKey, status: "dismissed" });
+  }
+
   /** Load the open menu's publication state (signed in only). */
   async function refreshPublication(menuId: string) {
     if (!signedInRef.current) {
@@ -952,6 +1076,15 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     })();
     void mergeAccountMenus();
     void refreshLibrary();
+    // The wizard just created the account's first café, so the other drafts
+    // in this browser have a home. This runs after the publish succeeds, so
+    // it cannot race the wizard for “create the restaurant”.
+    if (result.created.restaurant && accountKey) {
+      const otherDrafts = localOnly.filter((menu) => menu.id !== menuId);
+      if (otherDrafts.length > 0) {
+        void runLocalDraftClaim(result.restaurant.id, result.restaurant.name);
+      }
+    }
   }
 
   async function handleDeleteMenu(id: string) {
@@ -1009,17 +1142,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     await refreshLibrary();
     void mergeAccountMenus();
     navigateTo({ screen: "library" }, false, false);
-  }
-
-  /**
-   * "Move this menu to your account" (from the editor's opening-times
-   * panel): go to My menus and beep that menu's move button for a while.
-   */
-  function handleGoToMove(menuId: string) {
-    if (moveHighlightTimer.current) clearTimeout(moveHighlightTimer.current);
-    setMoveHighlightId(menuId);
-    navigateTo({ screen: "library" }, false, false);
-    moveHighlightTimer.current = setTimeout(() => setMoveHighlightId(null), 6000);
   }
 
   // --- Capture flow -------------------------------------------------------
@@ -1329,6 +1451,50 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   // titles of the menus the move would copy (null when they say nothing).
   const suggestedRestaurantName = suggestRestaurantName(localOnly.map((menu) => menu.title));
 
+  // The claim surfaces stay out of the editor: importing the menu that is
+  // open would create a server copy the editor is not synced with. The
+  // wizard's own publish handles the open draft, and the post-publish import
+  // above covers the rest.
+  const storedClaimStatus = accountKey ? loadLocalDraftClaim(accountKey) : "unseen";
+  const claimStatus =
+    claimAnswer?.accountKey === accountKey ? claimAnswer.status : storedClaimStatus;
+  const localDraftsDecision =
+    signedIn &&
+    !sessionPending &&
+    screen !== "editor" &&
+    serverMenusFor === accountKey &&
+    restaurantCountFor === accountKey
+      ? decideLocalDraftClaim({
+          localCount: localOnlyCount,
+          accountMenuCount: serverIds.size,
+          restaurantCount,
+          ownedRestaurantCount: ownedRestaurantsForAccount.length,
+          status: claimStatus,
+          accountSeenInBrowser: browserAccountAtSignInRef.current,
+        })
+      : "none";
+
+  useEffect(() => {
+    if (!signedIn || !accountKey || screen === "editor") return;
+    if (serverMenusFor !== accountKey || restaurantCountFor !== accountKey) return;
+    if (claimEvaluatedRef.current === accountKey) return;
+    claimEvaluatedRef.current = accountKey;
+    if (localDraftsDecision !== "auto-import") return;
+    const titles = localOnly.map((menu) => menu.title);
+    // Deferred: the effect must not set state synchronously while rendering
+    // the frame that made the decision.
+    void Promise.resolve().then(() => handleAutoClaim(titles));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    accountKey,
+    claimStatus,
+    localDraftsDecision,
+    restaurantCountFor,
+    screen,
+    serverMenusFor,
+    signedIn,
+  ]);
+
   // Publish state is only ever shown for the menu it was loaded for; a stale
   // answer for a previously opened menu is never displayed.
   const activePublicationMenuId = activeDoc?.id ?? null;
@@ -1384,6 +1550,42 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           </nav>
         )}
 
+        {signedIn && claimNotice && (
+          <LocalDraftsNotice
+            notice={claimNotice}
+            onOpenLibrary={() => navigateTo({ screen: "library" })}
+            onDismiss={() => setClaimNotice(null)}
+          />
+        )}
+        {!claimNotice &&
+          localDraftsDecision === "offer" &&
+          ownedRestaurantsForAccount.length > 0 && (
+            <LocalDraftsOffer
+              count={localOnlyCount}
+              restaurants={ownedRestaurantsForAccount}
+              busy={claimBusy}
+              onAdd={handleClaimAdd}
+              onDismiss={handleDismissClaim}
+            />
+          )}
+        {signedIn && claimError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p>{claimError}</p>
+              <button
+                type="button"
+                onClick={() => setClaimError(null)}
+                className="text-xs font-medium underline underline-offset-2 hover:text-red-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {screen === "library" && (
           <div className="flex flex-col gap-4">
             {libraryError && (
@@ -1394,18 +1596,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 {libraryError}
               </p>
             )}
-            {signedIn && localOnlyCount > 0 && (
-              <MoveToAccountPanel
-                menuCount={localOnlyCount}
-                suggestedName={suggestedRestaurantName}
-                onMoved={() => void mergeAccountMenus()}
-                onOwnedChange={setOwnedRestaurants}
-              />
-            )}
             <LibraryPanel
               menus={libraryMenus}
               loading={libraryLoading}
-              highlightMoveId={moveHighlightId}
               accountMode={signedIn}
               ownedRestaurants={signedIn ? ownedRestaurantsForAccount : []}
               onMoveToAccount={handleMoveMenuToAccount}
@@ -1415,6 +1608,27 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
               onRename={(id, title) => void handleRenameMenu(id, title)}
               onDelete={(id) => void handleDeleteMenu(id)}
             />
+            {/* The manual route stays available, quietly: the post-sign-in
+                offer handles the common case, and this is where a partial
+                import is retried. */}
+            {signedIn && localOnlyCount > 0 && (
+              <details className="rounded-2xl border border-stone-200 bg-white">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-stone-700 marker:text-stone-400">
+                  Import from this browser
+                  <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600">
+                    {localOnlyCount}
+                  </span>
+                </summary>
+                <div className="border-t border-stone-200">
+                  <MoveToAccountPanel
+                    menuCount={localOnlyCount}
+                    suggestedName={suggestedRestaurantName}
+                    onMoved={() => void mergeAccountMenus()}
+                    onOwnedChange={setOwnedRestaurants}
+                  />
+                </div>
+              </details>
+            )}
           </div>
         )}
 
@@ -1533,7 +1747,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 onChange={handleDocChange}
                 saveState={saveState}
                 syncMode={signedIn ? "account" : "local"}
-                onMoveToAccount={() => handleGoToMove(activeDoc.id)}
                 canManage={!activeMenuIsStaff}
                 onServer={serverIds.has(activeDoc.id)}
                 onStartPublish={() =>
