@@ -12,6 +12,8 @@ import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { RestaurantTables } from "@/components/tables/restaurant-tables";
 import { OrdersBoard } from "@/components/orders/orders-board";
+import { MonitorToasts } from "@/components/orders/monitor-toasts";
+import { OrderMonitorProvider, useOrderMonitor } from "@/features/orders/monitor";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { Dropzone } from "@/components/upload/dropzone";
 import { ExtractionResult, PreviewMenu } from "@/components/upload/extraction-result";
@@ -89,6 +91,40 @@ function stepIndex(phase: Phase, hasResult: boolean): number {
   if (hasResult || phase === "done") return 2;
   if (phase === "ready" || phase === "extracting") return 1;
   return 0;
+}
+
+/** Badge for unseen `new` orders; null when there is nothing to shout about. */
+function NewOrdersBadge({ tone }: { tone: "bar" | "pill" }) {
+  const { newCount } = useOrderMonitor();
+  if (newCount === 0) return null;
+  const label = newCount > 9 ? "9+" : String(newCount);
+  if (tone === "pill") {
+    return (
+      <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="absolute top-1 right-[calc(50%-22px)] flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+      {label}
+    </span>
+  );
+}
+
+/** Tells the monitor whether the board is open (opening it counts as seeing). */
+function ViewingTracker({ viewing }: { viewing: boolean }) {
+  const { setViewingBoard } = useOrderMonitor();
+  useEffect(() => {
+    setViewingBoard(viewing);
+  }, [viewing, setViewingBoard]);
+  return null;
+}
+
+/** New-order toasts above the tab bar; tapping opens the Orders tab. */
+function MonitorToastStack({ onOpen }: { onOpen: () => void }) {
+  const { toasts, dismissToast } = useOrderMonitor();
+  return <MonitorToasts toasts={toasts} onOpen={onOpen} onDismiss={dismissToast} />;
 }
 
 /**
@@ -1285,7 +1321,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const activeMenuIsStaff = activeDoc ? staffMenus.has(activeDoc.id) : false;
 
   return (
+    <OrderMonitorProvider userId={session?.user?.id ?? null}>
     <div className="flex min-h-full flex-1 flex-col">
+      <ViewingTracker viewing={signedIn && screen === "orders"} />
       <SiteHeader />
       <main
         className={`mx-auto flex w-full flex-1 flex-col gap-6 px-4 py-8 ${
@@ -1330,6 +1368,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 }`}
               >
                 {tab.label}
+                {tab.id === "orders" && <NewOrdersBadge tone="pill" />}
               </button>
             ))}
           </nav>
@@ -1732,10 +1771,11 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 navigateTo({ screen: tab.id });
               }}
               aria-current={screen === tab.id ? "page" : undefined}
-              className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+              className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
                 screen === tab.id ? "text-amber-800" : "text-stone-500"
               }`}
             >
+              {tab.id === "orders" && <NewOrdersBadge tone="bar" />}
               <span aria-hidden="true" className="text-lg leading-none">
                 {tab.icon}
               </span>
@@ -1820,6 +1860,8 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           </div>
         </div>
       )}
+      <MonitorToastStack onOpen={() => navigateTo({ screen: "orders" })} />
     </div>
+    </OrderMonitorProvider>
   );
 }
