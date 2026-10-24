@@ -57,6 +57,13 @@ export interface AssistantChatMessage {
   content: string;
 }
 
+/** One function call the model asked for; arguments stay unparsed here. */
+export interface AssistantToolCall {
+  name: string;
+  /** JSON text (or an already-decoded object rendered back to JSON text). */
+  arguments: string;
+}
+
 export interface AssistantTokenUsage {
   inputTokens: number | null;
   outputTokens: number | null;
@@ -65,6 +72,8 @@ export interface AssistantTokenUsage {
 
 export interface AssistantCompletion {
   text: string;
+  /** Empty for a plain chat answer; one entry for a forced tool call. */
+  toolCalls: AssistantToolCall[];
   model: string;
   usage: AssistantTokenUsage;
   latencyMs: number;
@@ -73,6 +82,11 @@ export interface AssistantCompletion {
 export interface CompleteAssistantInput {
   messages: readonly AssistantChatMessage[];
   maxTokens?: number;
+  /** Tool definitions (OpenAI function shape); omitted for a plain answer. */
+  tools?: readonly unknown[];
+  /** `{ type: "function", function: { name } }` to force one tool. */
+  toolChoice?: unknown;
+  temperature?: number;
   /** Test seam; production uses global fetch. */
   fetchImpl?: typeof fetch;
   env?: Record<string, string | undefined>;
@@ -101,11 +115,33 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Extract the answer + metering from either `{ result: … }` or a bare body. */
+/** Pull function calls out of an OpenAI-shaped message. */
+function readToolCalls(raw: unknown): AssistantToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  const calls: AssistantToolCall[] = [];
+  for (const entry of raw) {
+    const call = entry as { function?: { name?: unknown; arguments?: unknown } } | null;
+    const name = call?.function?.name;
+    if (typeof name !== "string" || !name) continue;
+    const args = call?.function?.arguments;
+    const text =
+      typeof args === "string"
+        ? args
+        : args === undefined || args === null
+          ? ""
+          : JSON.stringify(args);
+    calls.push({ name, arguments: text });
+  }
+  return calls;
+}
+
+/** Extract the answer/tool calls + metering from `{ result: … }` or a bare body. */
 function readCompletion(body: unknown, model: string, latencyMs: number): AssistantCompletion {
   const root = body as { result?: unknown } | null;
   const result = (root?.result ?? body) as {
-    choices?: Array<{ message?: { content?: unknown } }>;
+    choices?: Array<{
+      message?: { content?: unknown; tool_calls?: unknown };
+    }>;
     usage?: {
       prompt_tokens?: unknown;
       completion_tokens?: unknown;
@@ -115,7 +151,8 @@ function readCompletion(body: unknown, model: string, latencyMs: number): Assist
 
   const rawContent = result?.choices?.[0]?.message?.content;
   const text = typeof rawContent === "string" ? rawContent.trim() : "";
-  if (!text) {
+  const toolCalls = readToolCalls(result?.choices?.[0]?.message?.tool_calls);
+  if (!text && toolCalls.length === 0) {
     throw new AssistantProviderError(
       "empty_reply",
       "Workers AI returned no answer text (reasoning may have consumed the budget)."
@@ -126,6 +163,7 @@ function readCompletion(body: unknown, model: string, latencyMs: number): Assist
     // Keep the ellipsis inside the 4,000-character contract the response schema
     // enforces; 4,001 characters would fail the browser's Zod parse.
     text: text.length > 4_000 ? `${text.slice(0, 3_999)}…` : text,
+    toolCalls,
     model,
     usage: {
       inputTokens: finiteNumber(result?.usage?.prompt_tokens),
@@ -167,7 +205,10 @@ export async function completeAssistantChat(
       body: JSON.stringify({
         messages: input.messages,
         max_tokens: input.maxTokens ?? ASSISTANT_MAX_OUTPUT_TOKENS,
-        temperature: 0.2,
+        temperature: input.temperature ?? 0.2,
+        ...(input.tools && input.tools.length > 0
+          ? { tools: input.tools, tool_choice: input.toolChoice }
+          : {}),
         // Measured: without this the answer is empty and the budget is spent
         // on hidden reasoning. See the A0 results before removing it.
         chat_template_kwargs: { enable_thinking: false },
