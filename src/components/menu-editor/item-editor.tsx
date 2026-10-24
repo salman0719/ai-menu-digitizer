@@ -148,7 +148,7 @@ export function ItemEditor({
           {item.variants.map((variant, vIndex) => (
             <li
               key={`${variant.name}-${vIndex}`}
-              className="grid grid-cols-[1fr_110px_auto] items-end gap-2"
+              className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_110px_auto]"
             >
               <CommitInput
                 label={vIndex === 0 ? "Name" : `Variant ${vIndex + 1}`}
@@ -230,7 +230,7 @@ export function ItemEditor({
                 {option.choices.map((choice, cIndex) => (
                   <li
                     key={`${choice.name}-${cIndex}`}
-                    className="grid grid-cols-[1fr_110px_auto] items-end gap-2 pl-3"
+                    className="grid grid-cols-1 items-end gap-2 pl-3 sm:grid-cols-[1fr_110px_auto]"
                   >
                     <CommitInput
                       label="Choice"
