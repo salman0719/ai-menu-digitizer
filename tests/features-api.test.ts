@@ -81,6 +81,16 @@ describe("GET /api/features", () => {
     expect(payload.preview).toEqual(["assistantProposals"]);
   });
 
+  it("accepts the proposal preview by default when FEATURE_FLAGS is unset", async () => {
+    holder.user = { id: "user-1", email: "owner@cafe.test" };
+
+    const payload = await (
+      await GET(request({ "x-eateryo-ff-preview": "assistantProposals" }))
+    ).json();
+    expect(payload.flags).toEqual({ assistant: true, assistantProposals: true });
+    expect(payload.preview).toEqual(["assistantProposals"]);
+  });
+
   it("accepts a persisted preview cookie and ignores it when preview is off", async () => {
     holder.user = { id: "user-1", email: "owner@cafe.test" };
     process.env.FEATURE_FLAGS = JSON.stringify({

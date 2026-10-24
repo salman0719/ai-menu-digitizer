@@ -14,9 +14,13 @@ import {
 } from "@/features/flags/registry";
 
 describe("parseFeatureFlagConfig", () => {
-  it("returns an empty config for missing, malformed or non-object values", () => {
-    expect(parseFeatureFlagConfig(undefined)).toEqual({});
-    expect(parseFeatureFlagConfig("   ")).toEqual({});
+  it("uses the proposal preview default for a missing or blank value", () => {
+    const expected = { assistantProposals: { preview: true } };
+    expect(parseFeatureFlagConfig(undefined)).toEqual(expected);
+    expect(parseFeatureFlagConfig("   ")).toEqual(expected);
+  });
+
+  it("returns an empty config for malformed or non-object values", () => {
     expect(parseFeatureFlagConfig("{not json")).toEqual({});
     expect(parseFeatureFlagConfig("[]")).toEqual({});
     expect(parseFeatureFlagConfig("null")).toEqual({});
@@ -42,7 +46,20 @@ describe("parseFeatureFlagConfig", () => {
     expect(readFeatureFlagConfig({ FEATURE_FLAGS: '{"assistant":{"disabled":true}}' })).toEqual({
       assistant: { disabled: true },
     });
-    expect(readFeatureFlagConfig({})).toEqual({});
+  });
+
+  it("uses the proposal preview default when the env var is unset or blank", () => {
+    const expected = { assistantProposals: { preview: true } };
+    expect(readFeatureFlagConfig({})).toEqual(expected);
+    expect(readFeatureFlagConfig({ FEATURE_FLAGS: "   " })).toEqual(expected);
+  });
+
+  it("replaces the default rather than merging when the env var is present", () => {
+    expect(
+      readFeatureFlagConfig({
+        FEATURE_FLAGS: '{"assistantProposals":{"enabled":true}}',
+      })
+    ).toEqual({ assistantProposals: { enabled: true } });
   });
 });
 
@@ -116,6 +133,15 @@ describe("evaluateFeatureFlags", () => {
       {}
     );
     expect(refused.assistantProposals).toBe(false);
+  });
+
+  it("enables the proposal preview from the default config", () => {
+    const flags = evaluateFeatureFlags(
+      { userId: "user-1", previewKeys: ["assistantProposals"] },
+      readFeatureFlagConfig({})
+    );
+    expect(flags.assistant).toBe(true);
+    expect(flags.assistantProposals).toBe(true);
   });
 
   it("does not let a preview turn a released flag off", () => {

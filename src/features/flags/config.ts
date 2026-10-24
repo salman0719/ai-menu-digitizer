@@ -6,6 +6,11 @@
  * preview link without a code change. The browser never sees this config or
  * the allowlists — only `/api/features`' evaluated booleans.
  *
+ * When the env var is unset or blank, `DEFAULT_FEATURE_FLAG_CONFIG` applies:
+ * proposal preview links are available, while the feature itself still needs
+ * a preview link, allowlist or global release. A present value replaces that
+ * default rather than merging with it.
+ *
  * Evaluation order, per flag:
  *   1. `disabled` wins over everything (an emergency stop).
  *   2. `enabled` (or the registry default) releases it to every signed-in user.
@@ -55,6 +60,16 @@ const overrideSchema = z
 export type FeatureFlagOverride = z.infer<typeof overrideSchema>;
 export type FeatureFlagConfig = Partial<Record<FeatureFlagKey, FeatureFlagOverride>>;
 
+/**
+ * Applied only when `FEATURE_FLAGS` is unset or blank, so the A3 review flow
+ * can be shown with `?ff=assistantProposals` without a deploy. The proposals
+ * flag itself stays off until that link (or an allowlist/global release)
+ * turns it on.
+ */
+export const DEFAULT_FEATURE_FLAG_CONFIG = Object.freeze({
+  assistantProposals: Object.freeze({ preview: true }),
+}) satisfies FeatureFlagConfig;
+
 export interface FeatureFlagContext {
   userId: string;
   email?: string | null;
@@ -62,12 +77,13 @@ export interface FeatureFlagContext {
 }
 
 /**
- * Parse the JSON config. A malformed value or an invalid flag block is
- * ignored (the registry default stands) instead of breaking every request:
- * a deployment typo must never take the app down, only fail closed.
+ * Parse the JSON config. A missing or blank variable uses the default config;
+ * a malformed value or an invalid flag block is ignored instead of breaking
+ * every request: a deployment typo must never take the app down, only fail
+ * closed to the registry defaults.
  */
 export function parseFeatureFlagConfig(raw: string | undefined): FeatureFlagConfig {
-  if (!raw?.trim()) return {};
+  if (!raw?.trim()) return DEFAULT_FEATURE_FLAG_CONFIG;
 
   let parsed: unknown;
   try {
