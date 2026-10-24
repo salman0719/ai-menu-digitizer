@@ -61,6 +61,50 @@ export function parseAppRoute(input: string | URL): AppRoute {
   return { screen: "capture" };
 }
 
+/**
+ * R0 phone nav: the bottom tab bar pins Capture · My menus · Orders, so the
+ * R0.3 order monitor keeps a persistent home for its badge. Everything else
+ * lives in the More sheet, led by Tables. Desktop keeps pills. Pure data so
+ * tests can pin the order without rendering the shell.
+ */
+export interface PhoneTab {
+  id: "capture" | "library" | "orders";
+  label: string;
+  icon: string;
+}
+
+export function phoneTabs(): PhoneTab[] {
+  return [
+    { id: "capture", label: "Capture", icon: "📸" },
+    { id: "library", label: "My menus", icon: "📚" },
+    { id: "orders", label: "Orders", icon: "🧾" },
+  ];
+}
+
+export interface MoreSheetRow {
+  id: "tables" | "assistant" | "settings";
+  label: string;
+  why: string;
+}
+
+/**
+ * More-sheet rows in display order: Tables first (R0 promotes tables over
+ * orders everywhere — Orders already has its tab), then the Assistant while
+ * it is available to the viewer, then Settings. The Settings blurb names
+ * Usage so the moved allowance panel stays discoverable.
+ */
+export function moreSheetRows(options: {
+  signedIn: boolean;
+  assistantEnabled: boolean;
+}): MoreSheetRow[] {
+  const rows: MoreSheetRow[] = [{ id: "tables", label: "Tables", why: "QR cards per table" }];
+  if (!options.signedIn || options.assistantEnabled) {
+    rows.push({ id: "assistant", label: "Assistant", why: "Guided fixes and answers" });
+  }
+  rows.push({ id: "settings", label: "Settings", why: "Restaurant · Team · Usage" });
+  return rows;
+}
+
 /** Build the canonical path for an application screen. */
 export function appRouteHref(route: AppRoute): string {
   switch (route.screen) {

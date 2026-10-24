@@ -87,6 +87,10 @@ export function UsagePanel() {
     }
   }
 
+  // No session, no card: the effect above never fetches without a user, so
+  // without this a signed-out visitor would hang on the skeleton forever.
+  if (!sessionPending && !session?.user) return null;
+
   if (sessionPending || state.kind === "loading") {
     return (
       <div

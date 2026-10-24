@@ -69,7 +69,9 @@ import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-cons
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 import {
   appRouteHref,
+  moreSheetRows,
   parseAppRoute,
+  phoneTabs,
   type AppRoute,
   type AppScreen,
   type EditorMode,
@@ -1756,13 +1758,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="grid grid-cols-4 px-2 pt-1">
-          {(
-            [
-              { id: "capture", label: "Capture", icon: "📸" },
-              { id: "library", label: "My menus", icon: "📚" },
-              { id: "orders", label: "Orders", icon: "🧾" },
-            ] as const
-          ).map((tab) => (
+          {phoneTabs().map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -1820,21 +1816,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
             className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-stone-200 bg-white px-4 pt-2 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
           >
             <div aria-hidden="true" className="mx-auto mb-1 h-1.5 w-11 rounded-full bg-stone-200" />
-            {(
-              [
-                { id: "tables", label: "Tables", why: "QR cards per table" },
-                ...(!signedIn || featureFlags.assistant
-                  ? [
-                      {
-                        id: "assistant" as const,
-                        label: "Assistant",
-                        why: "Guided fixes and answers",
-                      },
-                    ]
-                  : []),
-                { id: "settings", label: "Settings", why: "Restaurant · Team · Usage" },
-              ] as const
-            ).map((row) => (
+            {moreSheetRows({ signedIn, assistantEnabled: featureFlags.assistant }).map((row) => (
               <button
                 key={row.id}
                 type="button"
