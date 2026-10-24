@@ -1,5 +1,5 @@
 export type AppScreen =
-  "capture" | "library" | "orders" | "tables" | "settings" | "editor" | "item";
+  "capture" | "library" | "orders" | "assistant" | "tables" | "settings" | "editor" | "item";
 
 /**
  * The surface shown for an open menu: the edit workspace, the compact
@@ -9,7 +9,7 @@ export type AppScreen =
 export type EditorMode = "edit" | "reorder" | "qr" | "preview";
 
 export type AppRoute =
-  | { screen: "capture" | "library" | "orders" | "tables" | "settings" }
+  | { screen: "capture" | "library" | "orders" | "assistant" | "tables" | "settings" }
   | { screen: "editor"; menuId: string; mode: EditorMode }
   | { screen: "item"; menuId: string; itemId: string };
 
@@ -46,6 +46,7 @@ export function parseAppRoute(input: string | URL): AppRoute {
   if (url.pathname === "/") return { screen: "capture" };
   if (url.pathname === "/menus") return { screen: "library" };
   if (url.pathname === "/orders") return { screen: "orders" };
+  if (url.pathname === "/assistant") return { screen: "assistant" };
   if (url.pathname === "/tables") return { screen: "tables" };
   if (url.pathname === "/settings") return { screen: "settings" };
 
@@ -69,6 +70,8 @@ export function appRouteHref(route: AppRoute): string {
       return "/menus";
     case "orders":
       return "/orders";
+    case "assistant":
+      return "/assistant";
     case "tables":
       return "/tables";
     case "settings":

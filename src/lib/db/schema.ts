@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -486,6 +487,42 @@ export const extractionUsage = pgTable(
   })
 );
 
+/**
+ * Assistant usage ledger (A1). One row per model attempt, successful or not.
+ *
+ * `neurons` is the provider's own metering (Workers AI returns `usage.neurons`)
+ * so the cost column is exact rather than rate-guessed; it is null when the
+ * provider omitted the figure. The daily ceiling counts rows across all
+ * accounts because the Workers AI free allocation is shared by the account.
+ */
+export const assistantUsage = pgTable(
+  "assistant_usage",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    /** Fractional neurons are normal (e.g. 0.794 for a 32-token ping). */
+    neurons: doublePrecision("neurons"),
+    /** Paid-equivalent micro-USD at $0.011 / 1,000 neurons; null when unknown. */
+    costMicros: bigint("cost_micros", { mode: "number" }),
+    latencyMs: integer("latency_ms"),
+    status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
+    errorCode: text("error_code"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    userCreatedIdx: index("assistant_usage_user_created_idx").on(t.userId, t.createdAt),
+    createdIdx: index("assistant_usage_created_idx").on(t.createdAt),
+  })
+);
+
 /** Everything the Drizzle adapter and app code share. */
 export const schema = {
   user,
@@ -503,6 +540,7 @@ export const schema = {
   orderLine,
   orderRateLimit,
   extractionUsage,
+  assistantUsage,
 };
 
 /** A restaurant as seen by a member: restaurant fields + that member's role. */

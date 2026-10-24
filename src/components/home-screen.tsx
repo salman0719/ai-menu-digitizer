@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConflictBanner } from "@/components/menu-editor/conflict-banner";
 import { LibraryPanel } from "@/components/menu-editor/library-panel";
 import { MoveToAccountPanel } from "@/components/menu-editor/move-to-account-panel";
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { RestaurantTables } from "@/components/tables/restaurant-tables";
 import { OrdersBoard } from "@/components/orders/orders-board";
@@ -1282,9 +1283,11 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
                 { id: "orders", label: "Orders" },
-                // Tables and Settings only apply to accounts (restaurants live there).
+                // Assistant, Tables and Settings only apply to accounts (they
+                // all read account-scoped data), so signed-out mode hides them.
                 ...(signedIn
                   ? [
+                      { id: "assistant" as const, label: "Assistant" },
                       { id: "tables" as const, label: "Tables" },
                       { id: "settings" as const, label: "Settings" },
                     ]
@@ -1343,6 +1346,10 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         )}
 
         {screen === "orders" && <OrdersBoard />}
+
+        {screen === "assistant" && (
+          <AssistantPanel signedIn={signedIn} sessionPending={sessionPending} />
+        )}
 
         {screen === "tables" && (
           <RestaurantTables signedIn={signedIn} sessionPending={sessionPending} />
