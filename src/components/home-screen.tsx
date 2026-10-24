@@ -105,6 +105,13 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const selectedItemId = route.screen === "item" ? route.itemId : null;
   /** R0 phone nav: the More sheet (Tables · Assistant · Settings · Get started). */
   const [moreOpen, setMoreOpen] = useState(false);
+  /** Desktop pills: keep the active tab scrolled into view on narrow windows. */
+  const pillsRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    pillsRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [screen]);
   // Which editor surface the URL asks for (edit, reorder, table QR,
   // preview); an item deep link is always the edit workspace.
   const editorMode: EditorMode = route.screen === "editor" ? route.mode : "edit";
@@ -1292,6 +1299,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           <nav
             data-print-hide
             aria-label="Sections"
+            ref={pillsRef}
             className="hidden gap-2 overflow-x-auto pb-1 sm:flex"
           >
             {(
