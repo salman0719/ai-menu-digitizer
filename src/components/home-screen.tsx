@@ -1693,11 +1693,14 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           </div>
         )}
       </main>
+      <SiteFooter />
       {/*
         R0 phone nav: bottom tab bar (Capture · My menus · Orders · More).
         Orders stays pinned so the R0.3 order monitor has a persistent home
         for its badge; Tables/Assistant/Settings live in the More sheet and
         each render their own signed-out explanation. Desktop keeps pills.
+        Sits after the footer so it is the last thing on the page and sticks
+        to the viewport bottom instead of floating above the footer links.
       */}
       <nav
         data-print-hide
@@ -1809,7 +1812,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           </div>
         </div>
       )}
-      <SiteFooter />
     </div>
   );
 }

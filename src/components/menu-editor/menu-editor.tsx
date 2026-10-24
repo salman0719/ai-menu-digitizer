@@ -968,12 +968,12 @@ export function MenuEditor({
             >
               ‹
             </button>
-            <label className="relative flex min-h-[44px] flex-1 items-center rounded-xl border border-stone-300 bg-white px-3 transition-colors focus-within:border-amber-700">
+            <label className="flex min-h-[44px] flex-1 items-center">
               <span className="sr-only">Category</span>
               <select
                 value={activeMatch.category.id}
                 onChange={(event) => setActiveCategoryId(event.target.value)}
-                className="w-full appearance-none bg-transparent pr-6 text-sm font-semibold text-stone-900 focus:outline-none"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-900 focus:border-amber-700 focus:outline-none"
               >
                 {search.categories.map(({ category, items }) => (
                   <option key={category.id} value={category.id}>
@@ -981,9 +981,6 @@ export function MenuEditor({
                   </option>
                 ))}
               </select>
-              <span aria-hidden="true" className="pointer-events-none absolute right-3 text-xs text-stone-500">
-                ▾
-              </span>
             </label>
             <button
               type="button"
@@ -994,7 +991,7 @@ export function MenuEditor({
               ›
             </button>
           </div>
-          <p className="mt-1 text-xs text-stone-500">
+          <p className="mt-1 text-center text-xs text-stone-500">
             Category {activeIndex + 1} of {search.categories.length}
           </p>
         </div>
