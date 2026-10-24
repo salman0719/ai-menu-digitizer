@@ -46,7 +46,6 @@ import {
   type PreviewThemeId,
 } from "@/features/menu/preview-themes";
 
-import { TableQrPanel } from "@/components/tables/table-qr-panel";
 
 import { AvailabilityPanel } from "./availability-panel";
 import { CommitInput } from "./fields";
@@ -92,9 +91,9 @@ interface MenuEditorProps {
    */
   canManage?: boolean;
   /**
-   * True when this menu lives on the server. Table cards are restaurant-wide,
-   * so account menus print them from the Tables tab; only a browser-only menu
-   * keeps the in-editor QR mode (its codes really are per menu).
+   * True when this menu lives on the server. Table cards are restaurant-wide
+   * and print from the Tables tab; this only decides whether opening hours
+   * sync to the server copy or stay in this browser.
    */
   onServer?: boolean;
   /**
@@ -438,11 +437,6 @@ export function MenuEditor({
       <span className="flex-1" />
       {!canManage ? (
         <>
-          {!onServer && mode !== "qr" && (
-            <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
-              Table QR
-            </button>
-          )}
           {mode !== "preview" && (
             <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
               Preview menu
@@ -454,11 +448,6 @@ export function MenuEditor({
           <button type="button" onClick={() => changeMode("reorder")} className={smallButton}>
             ↕ Reorder
           </button>
-          {!onServer && (
-            <button type="button" onClick={() => changeMode("qr")} className={smallButton}>
-              Table QR
-            </button>
-          )}
           <button type="button" onClick={() => changeMode("preview")} className={smallButton}>
             Preview menu
           </button>
@@ -470,27 +459,6 @@ export function MenuEditor({
       )}
     </div>
   );
-
-  if (mode === "qr") {
-    return (
-      <div className="flex flex-col gap-4">
-        {headerRow}
-        <TableQrPanel
-          context="menu"
-          doc={doc}
-          // Only a live publication can serve a stranger's phone; an
-          // unpublished menu keeps the browser-scoped Phase 1 codes.
-          publicRestaurantSlug={
-            publishing?.status?.isLive ? publishing.status.restaurantSlug : null
-          }
-          publicSlug={publishing?.status?.isLive ? publishing.status.slug : null}
-          menuId={doc.id}
-          syncMode={syncMode}
-          canManage={canManage}
-        />
-      </div>
-    );
-  }
 
   if (mode === "preview") {
     return (

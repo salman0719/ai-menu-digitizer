@@ -36,11 +36,9 @@ describe("application routes", () => {
       menuId: "menu-1",
       mode: "reorder",
     });
-    expect(parseAppRoute("/menus/menu-1/qr")).toEqual({
-      screen: "editor",
-      menuId: "menu-1",
-      mode: "qr",
-    });
+    // The in-editor Table QR mode is gone: menu pages never print cards.
+    // A stale /qr link lands on the library, never a blank screen.
+    expect(parseAppRoute("/menus/menu-1/qr")).toEqual({ screen: "library" });
     expect(parseAppRoute("/menus/menu-1/preview")).toEqual({
       screen: "editor",
       menuId: "menu-1",
@@ -64,7 +62,6 @@ describe("application routes", () => {
       { screen: "settings" },
       { screen: "editor", menuId: "menu id/&1", mode: "edit" },
       { screen: "editor", menuId: "menu id/&1", mode: "reorder" },
-      { screen: "editor", menuId: "menu id/&1", mode: "qr" },
       { screen: "editor", menuId: "menu id/&1", mode: "preview" },
       { screen: "item", menuId: "menu id/&1", itemId: "item /&2" },
     ] as const;
