@@ -12,8 +12,9 @@ import { CommitInput, CommitNumber } from "./fields";
 
 interface ItemEditorProps {
   doc: MenuDocument;
+  /** Deep-link target: a pasted /menus/<id>/items/<itemId> URL scrolls here
+      and rings it, even though nothing in the UI links to items. */
   isRouteTarget: boolean;
-  onOpenItem: () => void;
   categoryId: string;
   item: MenuItem;
   /** All categories, for the move-to-another-category control. */
@@ -36,7 +37,6 @@ export function ItemEditor({
   doc,
   categoryId,
   isRouteTarget,
-  onOpenItem,
   item,
   categories,
   onChange,
@@ -58,17 +58,10 @@ export function ItemEditor({
       id={`menu-item-${item.id}`}
       className={`rounded-xl border bg-white p-4 ${isRouteTarget ? "border-amber-600 ring-2 ring-amber-200" : "border-stone-200"}`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 border-b border-stone-100 pb-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
+      <div className="mb-3 border-b border-stone-100 pb-2">
+        <p className="truncate text-sm font-semibold text-stone-900">
           {item.name || "Untitled item"}
         </p>
-        <button
-          type="button"
-          onClick={onOpenItem}
-          className="shrink-0 text-xs text-stone-500 underline hover:text-amber-900"
-        >
-          {isRouteTarget ? "Direct link selected" : "Link to item"}
-        </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-[1fr_120px_90px]">
         <CommitInput

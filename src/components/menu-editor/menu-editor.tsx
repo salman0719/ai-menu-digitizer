@@ -61,11 +61,10 @@ export interface SaveState {
 interface MenuEditorProps {
   doc: MenuDocument;
   selectedItemId?: string | null;
-  onOpenItem: (itemId: string) => void;
   /**
-   * Which surface is shown (edit workspace, reorder list, table QR cards,
-   * customer preview). Owned by the URL so each mode is deep-linkable and
-   * works with browser back/forward (see navigation/routes.ts).
+   * Which surface is shown (edit workspace, reorder list, customer
+   * preview). Owned by the URL so each mode is deep-linkable and works
+   * with browser back/forward (see navigation/routes.ts).
    */
   mode: EditorMode;
   onModeChange: (mode: EditorMode) => void;
@@ -138,7 +137,6 @@ function previewEyebrow(
 export function MenuEditor({
   doc,
   selectedItemId = null,
-  onOpenItem,
   mode,
   onModeChange,
   onChange,
@@ -1035,7 +1033,6 @@ export function MenuEditor({
                       <ItemEditor
                         key={item.id}
                         isRouteTarget={selectedItemId === item.id}
-                        onOpenItem={() => onOpenItem(item.id)}
                         doc={doc}
                         categoryId={category.id}
                         item={item}

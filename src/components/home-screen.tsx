@@ -1497,7 +1497,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
             <MenuEditor
               doc={activeDoc}
               selectedItemId={selectedItemId}
-              onOpenItem={(itemId) => navigateTo({ screen: "item", menuId: activeDoc.id, itemId })}
               mode={activeMenuIsStaff ? "preview" : editorMode}
               onModeChange={(mode) => navigateTo({ screen: "editor", menuId: activeDoc.id, mode })}
               onChange={handleDocChange}
