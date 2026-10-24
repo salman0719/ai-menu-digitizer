@@ -1286,24 +1286,25 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         }`}
       >
         {screen !== "editor" && (
-          <nav data-print-hide aria-label="Sections" className="flex gap-2">
+          <nav
+            data-print-hide
+            aria-label="Sections"
+            className="flex gap-2 overflow-x-auto pb-1"
+          >
             {(
               [
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
                 { id: "orders", label: "Orders" },
-                // Assistant, Tables and Settings only apply to accounts (they
-                // all read account-scoped data), so signed-out mode hides them.
-                // The Assistant also has its own kill switch (A4).
-                ...(signedIn
-                  ? [
-                      ...(featureFlags.assistant
-                        ? [{ id: "assistant" as const, label: "Assistant" }]
-                        : []),
-                      { id: "tables" as const, label: "Tables" },
-                      { id: "settings" as const, label: "Settings" },
-                    ]
+                // R0: tabs are always rendered so the app never changes shape
+                // signed out. Assistant/Tables/Settings each render their own
+                // signed-out explanation; the assistant keeps its kill
+                // switch (A4) for signed-in accounts without access.
+                ...(!signedIn || featureFlags.assistant
+                  ? [{ id: "assistant" as const, label: "Assistant" }]
                   : []),
+                { id: "tables" as const, label: "Tables" },
+                { id: "settings" as const, label: "Settings" },
               ] as const
             ).map((tab) => (
               <button
