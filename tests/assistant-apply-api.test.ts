@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as applyProposal } from "@/app/api/assistant/apply/route";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
@@ -19,13 +19,16 @@ import type { TestDb } from "./helpers/pg-test-db";
  * proves: approval is free and deterministic.
  */
 
-const holder: { db: TestDb | null; userId: string | null } = {
+const holder: { db: TestDb | null; userId: string | null; email: string } = {
   db: null,
   userId: null,
+  email: "owner@cafe.test",
 };
 
 vi.mock("@/lib/auth/session", () => ({
-  getSessionUserId: vi.fn(async () => holder.userId),
+  getSessionUser: vi.fn(async () =>
+    holder.userId ? { id: holder.userId, email: holder.email } : null
+  ),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -43,12 +46,21 @@ async function initTestDb(): Promise<TestDb> {
   return db;
 }
 
+const originalFeatureFlags = process.env.FEATURE_FLAGS;
+
 beforeEach(async () => {
   holder.db = await initTestDb();
   holder.userId = null;
+  holder.email = "owner@cafe.test";
+  process.env.FEATURE_FLAGS = JSON.stringify({ assistantProposals: { enabled: true } });
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 }, 30_000);
+
+afterEach(() => {
+  if (originalFeatureFlags === undefined) delete process.env.FEATURE_FLAGS;
+  else process.env.FEATURE_FLAGS = originalFeatureFlags;
+});
 
 function request(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://test.local/api/assistant/apply", {
@@ -72,6 +84,7 @@ async function seedOwnerWithMenu(): Promise<{
   const { seedUser } = await import("./helpers/pg-test-db");
   const userId = await seedUser(holder.db!, "owner@cafe.test", "Owner");
   holder.userId = userId;
+  holder.email = "owner@cafe.test";
   const restaurant = await createRestaurant(holder.db!, userId, "Sunny Side Café");
   const menu = await createMenuForUser(
     holder.db!,
@@ -92,6 +105,45 @@ describe("POST /api/assistant/apply", () => {
     expect(response.status).toBe(401);
     expect((await response.json()).error.code).toBe("unauthorized");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses approvals when the proposals flag is off", async () => {
+    const { userId, menu, breakfastId } = await seedOwnerWithMenu();
+    process.env.FEATURE_FLAGS = JSON.stringify({
+      assistantProposals: { disabled: true },
+    });
+
+    const response = await applyProposal(
+      request({
+        menuId: menu.id,
+        expectedUpdatedAt: menu.updatedAt,
+        operations: [{ op: "add_item", categoryId: breakfastId, name: "Tea", price: 2 }],
+      })
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feature_disabled");
+    const unchanged = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(unchanged.updatedAt).toBe(menu.updatedAt);
+  });
+
+  it("refuses approvals when the assistant is stopped", async () => {
+    const { userId, menu, breakfastId } = await seedOwnerWithMenu();
+    process.env.FEATURE_FLAGS = JSON.stringify({
+      assistant: { disabled: true },
+      assistantProposals: { enabled: true },
+    });
+
+    const response = await applyProposal(
+      request({
+        menuId: menu.id,
+        expectedUpdatedAt: menu.updatedAt,
+        operations: [{ op: "add_item", categoryId: breakfastId, name: "Tea", price: 2 }],
+      })
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feature_disabled");
+    const unchanged = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(unchanged.updatedAt).toBe(menu.updatedAt);
   });
 
   it("refuses a cross-origin approval", async () => {

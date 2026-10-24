@@ -27,6 +27,11 @@ import {
  * approval endpoint with that exact revision. Staff-only menus are filtered
  * out by the shell, and signed-out visitors never see the picker.
  *
+ * `proposalsEnabled` is the server's `assistantProposals` release decision:
+ * when it is off the panel stays a help chat, with no menu picker and no
+ * approval path. The server enforces the same flag, so hiding the UI is not
+ * the only protection.
+ *
  * History lives in component state (bounded, never persisted); reloading
  * clears the conversation. A proposal belongs to one menu and one revision,
  * so changing the target discards it rather than carrying it across.
@@ -45,6 +50,8 @@ interface AssistantPanelProps {
   menus?: readonly AssistantMenuOption[];
   /** The library/account merge is still loading. */
   menusLoading?: boolean;
+  /** A3 review is released per account via the `assistantProposals` flag. */
+  proposalsEnabled?: boolean;
 }
 
 interface ChatTurn {
@@ -83,6 +90,7 @@ export function AssistantPanel({
   sessionPending = false,
   menus = [],
   menusLoading = false,
+  proposalsEnabled = false,
 }: AssistantPanelProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
@@ -102,9 +110,15 @@ export function AssistantPanel({
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedMenu = menus.find((menu) => menu.id === selectedMenuId) ?? null;
+  // A proposal target only exists when the proposal feature is on; keeping
+  // this null is what makes every piece of proposal UI disappear together.
+  const selectedMenu = proposalsEnabled
+    ? (menus.find((menu) => menu.id === selectedMenuId) ?? null)
+    : null;
   /** Chosen id vanished from the account (deleted or moved) while the tab was open. */
-  const menuUnavailable = selectedMenuId !== "" && selectedMenu === null;
+  const menuUnavailable = proposalsEnabled && selectedMenuId !== "" && selectedMenu === null;
+  /** The review is hidden immediately when proposals are switched off. */
+  const proposalVisible = proposalsEnabled && proposal !== null;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -143,7 +157,7 @@ export function AssistantPanel({
       if (!message || sending || proposalBusy || !signedIn) return;
       if (usage !== null && usage.remaining <= 0) return;
       if (
-        proposal &&
+        proposalVisible &&
         !window.confirm(
           "Send this? The proposed change on screen has not been saved and will be discarded."
         )
@@ -155,7 +169,7 @@ export function AssistantPanel({
         role: turn.role,
         content: turn.content,
       }));
-      const menuId = selectedMenu?.id;
+      const menuId = proposalsEnabled ? selectedMenu?.id : undefined;
 
       setSending(true);
       setError(null);
@@ -198,11 +212,11 @@ export function AssistantPanel({
         inputRef.current?.focus();
       }
     },
-    [sending, signedIn, turns, usage, selectedMenu, proposalBusy, proposal]
+    [sending, signedIn, turns, usage, selectedMenu, proposalBusy, proposalVisible, proposalsEnabled]
   );
 
   const approve = useCallback(async () => {
-    if (!proposal || proposalBusy) return;
+    if (!proposal || !proposalVisible || proposalBusy) return;
     const current = proposal;
     if (!menus.some((menu) => menu.id === current.menuId)) {
       setProposalError("This menu is no longer available. Discard this proposal.");
@@ -236,7 +250,7 @@ export function AssistantPanel({
     } finally {
       setProposalBusy(false);
     }
-  }, [proposal, proposalBusy, menus]);
+  }, [proposal, proposalVisible, proposalBusy, menus]);
 
   function discardProposal() {
     setProposal(null);
@@ -254,7 +268,7 @@ export function AssistantPanel({
   }
 
   function chooseMenu(nextId: string) {
-    if (nextId === selectedMenuId) return;
+    if (!proposalsEnabled || nextId === selectedMenuId) return;
     if (proposal && !window.confirm("Discard the proposed change? It has not been saved.")) {
       return;
     }
@@ -295,9 +309,10 @@ export function AssistantPanel({
   }
 
   const resetLabel = formatReset(usage?.periodEnd);
-  const progressLabel = selectedMenu
-    ? "Reading your menu — this can take a few seconds…"
-    : "Thinking…";
+  const progressLabel =
+    proposalsEnabled && selectedMenu
+      ? "Reading your menu — this can take a few seconds…"
+      : "Thinking…";
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="assistant-heading">
@@ -307,14 +322,16 @@ export function AssistantPanel({
             Assistant
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            {selectedMenu ? (
+            {proposalsEnabled && selectedMenu ? (
               <>
                 Ask about Eateryo or request a change to{" "}
                 <span className="font-medium">{selectedMenu.title}</span>. You review every change
                 before it is saved.
               </>
-            ) : (
+            ) : proposalsEnabled ? (
               "Answers come from Eateryo’s own feature list. Pick one of your menus to ask for an edit."
+            ) : (
+              "Answers come from Eateryo’s own feature list. Menu changes are not enabled for this account yet."
             )}
           </p>
         </div>
@@ -326,37 +343,44 @@ export function AssistantPanel({
         )}
       </div>
 
-      <div className="rounded-2xl border border-stone-200 bg-white p-4">
-        <label htmlFor="assistant-menu" className="text-xs font-semibold text-stone-600">
-          Menu to edit <span className="font-normal text-stone-500">(optional)</span>
-        </label>
-        <select
-          id="assistant-menu"
-          value={selectedMenuId}
-          onChange={(event) => chooseMenu(event.target.value)}
-          disabled={sending || proposalBusy || menusLoading}
-          className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
-        >
-          <option value="">Help only — no menu changes</option>
-          {menuUnavailable && <option value={selectedMenuId}>Unavailable menu</option>}
-          {menus.map((menu) => (
-            <option key={menu.id} value={menu.id}>
-              {menu.title}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs leading-5 text-stone-500">
-          {menusLoading
-            ? "Loading your account menus…"
-            : menuUnavailable
-              ? "That menu is no longer in your account. Choose another one."
-              : menus.length === 0
-                ? "No account menus yet. Move a menu to your account to ask the assistant for edits."
-                : selectedMenu
-                  ? "Changes are proposed for review. Nothing is saved until you approve."
-                  : "Pick one of your menus to request a change; leave it on help for how-to questions."}
+      {proposalsEnabled ? (
+        <div className="rounded-2xl border border-stone-200 bg-white p-4">
+          <label htmlFor="assistant-menu" className="text-xs font-semibold text-stone-600">
+            Menu to edit <span className="font-normal text-stone-500">(optional)</span>
+          </label>
+          <select
+            id="assistant-menu"
+            value={selectedMenuId}
+            onChange={(event) => chooseMenu(event.target.value)}
+            disabled={sending || proposalBusy || menusLoading}
+            className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
+          >
+            <option value="">Help only — no menu changes</option>
+            {menuUnavailable && <option value={selectedMenuId}>Unavailable menu</option>}
+            {menus.map((menu) => (
+              <option key={menu.id} value={menu.id}>
+                {menu.title}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            {menusLoading
+              ? "Loading your account menus…"
+              : menuUnavailable
+                ? "That menu is no longer in your account. Choose another one."
+                : menus.length === 0
+                  ? "No account menus yet. Move a menu to your account to ask the assistant for edits."
+                  : selectedMenu
+                    ? "Changes are proposed for review. Nothing is saved until you approve."
+                    : "Pick one of your menus to request a change; leave it on help for how-to questions."}
+          </p>
+        </div>
+      ) : (
+        <p className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs leading-5 text-stone-600">
+          Menu changes are being tested with selected accounts. You can still ask how-to questions
+          here.
         </p>
-      </div>
+      )}
 
       {usageError && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -384,7 +408,7 @@ export function AssistantPanel({
         {turns.length === 0 && !sending ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <p className="text-sm text-stone-600">
-              {selectedMenu
+              {proposalsEnabled && selectedMenu
                 ? "Ask for a change — for example “add a lemonade for 3.50”. The assistant will ask which category if it is unclear, and you will see the exact diff before approving."
                 : "Ask how to do something in Eateryo — publishing, table QR codes, opening hours, team access."}
             </p>
@@ -467,7 +491,7 @@ export function AssistantPanel({
         </div>
       )}
 
-      {proposal && (
+      {proposal && proposalVisible && (
         <ProposalReview
           key={proposalKey}
           proposal={proposal}
@@ -515,7 +539,7 @@ export function AssistantPanel({
             placeholder={
               exhausted
                 ? "Monthly allowance reached"
-                : selectedMenu
+                : proposalsEnabled && selectedMenu
                   ? `Ask for a change to ${selectedMenu.title}…`
                   : "Ask a question…"
             }

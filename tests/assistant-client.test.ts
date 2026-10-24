@@ -81,6 +81,26 @@ describe("sendAssistantMessage", () => {
     expect((error as AssistantError).message).toContain("2026-11-01");
   });
 
+  it("maps a disabled feature to feature_disabled", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: "feature_disabled",
+            message: "The assistant is not available for this account yet.",
+          },
+        },
+        403
+      )
+    );
+
+    const error = await sendAssistantMessage({ message: "hi", history: [] }, fetchImpl).catch(
+      (caught: unknown) => caught
+    );
+    expect(error).toBeInstanceOf(AssistantError);
+    expect((error as AssistantError).code).toBe("feature_disabled");
+  });
+
   it("maps a missing deployment config to not_configured", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       jsonResponse(
@@ -225,6 +245,31 @@ describe("applyAssistantProposal", () => {
       operations: [{ op: "add_category", name: "Desserts" }],
     });
     expect(fetchImpl.mock.calls[0][0]).toBe("/api/assistant/apply");
+  });
+
+  it("maps a disabled proposals feature to feature_disabled", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: "feature_disabled",
+            message: "Menu changes are not available for this account yet.",
+          },
+        },
+        403
+      )
+    );
+
+    const error = await applyAssistantProposal(
+      {
+        menuId: "menu-1",
+        expectedUpdatedAt: "2026-10-24T10:00:00.000Z",
+        operations: [{ op: "add_category", name: "Desserts" }],
+      },
+      fetchImpl
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AssistantApplyError);
+    expect((error as AssistantApplyError).code).toBe("feature_disabled");
   });
 
   it("maps 409 to stale with the server's current revision", async () => {

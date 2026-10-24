@@ -18,13 +18,16 @@ import type { TestDb } from "./helpers/pg-test-db";
  * thinking disabled, a bounded output budget, and the model in the URL.
  */
 
-const holder: { db: TestDb | null; userId: string | null } = {
+const holder: { db: TestDb | null; userId: string | null; email: string } = {
   db: null,
   userId: null,
+  email: "owner@cafe.test",
 };
 
 vi.mock("@/lib/auth/session", () => ({
-  getSessionUserId: vi.fn(async () => holder.userId),
+  getSessionUser: vi.fn(async () =>
+    holder.userId ? { id: holder.userId, email: holder.email } : null
+  ),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -43,6 +46,7 @@ const ENV_KEYS = [
   "ASSISTANT_MONTHLY_MESSAGE_CAP",
   "ASSISTANT_DAILY_CALL_CEILING",
   "RESEND_API_KEY",
+  "FEATURE_FLAGS",
 ] as const;
 const originalEnv: Record<string, string | undefined> = {};
 
@@ -123,6 +127,7 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
 }
 
 async function seedUser(email = "owner@cafe.test"): Promise<string> {
+  holder.email = email;
   const { seedUser: seed } = await import("./helpers/pg-test-db");
   return seed(holder.db!, email, "Owner");
 }
@@ -135,9 +140,12 @@ beforeEach(async () => {
   process.env.CLOUDFLARE_ACCOUNT_ID = "acct-test";
   process.env.CLOUDFLARE_API_TOKEN = "token-test";
   process.env.CLOUDFLARE_DEFAULT_AI_MODEL = "@cf/zai-org/glm-4.7-flash";
+  // Proposal coverage below opts in explicitly; the production default is off.
+  process.env.FEATURE_FLAGS = JSON.stringify({ assistantProposals: { enabled: true } });
 
   holder.db = await initTestDb();
   holder.userId = null;
+  holder.email = "owner@cafe.test";
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 }, 30_000);
@@ -157,6 +165,16 @@ describe("POST /api/assistant", () => {
     expect(await response.json()).toEqual({
       error: { code: "unauthorized", message: expect.any(String) },
     });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses every turn when the assistant kill switch is off", async () => {
+    holder.userId = await seedUser();
+    process.env.FEATURE_FLAGS = JSON.stringify({ assistant: { disabled: true } });
+
+    const response = await POST(request({ message: "How do I publish?" }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feature_disabled");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -354,6 +372,15 @@ describe("GET /api/assistant", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 403 when the assistant kill switch is off", async () => {
+    holder.userId = await seedUser();
+    process.env.FEATURE_FLAGS = JSON.stringify({ assistant: { disabled: true } });
+
+    const response = await GET();
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feature_disabled");
+  });
+
   it("reports the allowance without spending anything", async () => {
     holder.userId = await seedUser();
     const response = await GET();
@@ -368,6 +395,41 @@ describe("GET /api/assistant", () => {
 });
 
 describe("POST /api/assistant with a menu", () => {
+  it("refuses proposals when the proposals flag is off", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu } = await seedMenu(userId);
+    process.env.FEATURE_FLAGS = JSON.stringify({
+      assistantProposals: { disabled: true },
+    });
+
+    const response = await POST(request({ message: "Add a lemonade.", menuId: menu.id }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feature_disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("releases proposals to an allowlisted email", async () => {
+    const userId = await seedUser("owner@cafe.test");
+    holder.userId = userId;
+    const { menu } = await seedMenu(userId);
+    process.env.FEATURE_FLAGS = JSON.stringify({
+      assistantProposals: { emails: ["owner@cafe.test"] },
+    });
+    fetchMock.mockResolvedValueOnce(
+      toolResponse({
+        outcome: "answer",
+        message: "You can rename a category in the editor.",
+        operations: [],
+      })
+    );
+
+    const response = await POST(request({ message: "How do I rename?", menuId: menu.id }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).outcome).toBe("answer");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a server-computed proposal to the owner without writing", async () => {
     const userId = await seedUser();
     holder.userId = userId;

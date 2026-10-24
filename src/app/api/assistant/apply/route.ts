@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { applyProposalOperations, ProposalApplyError } from "@/features/assistant/apply";
 import { applyProposalRequestSchema } from "@/features/assistant/proposal";
+import { resolveFeatureContext } from "@/features/flags/server";
 import { getMenuWithRoleForUser, MenuRepoError, updateMenuForUser } from "@/features/menus/repo";
-import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { rejectCrossOrigin } from "@/lib/http/origin";
 import { logEvent, requestIdFrom } from "@/lib/observability/log";
@@ -33,6 +33,7 @@ const PUBLIC_MESSAGES = {
   invalid_operations: "That change is not valid for this menu. Nothing was saved.",
   stale: "This menu changed since the proposal was made. Review the change again.",
   db_unavailable: "Server data is not available right now. Try again in a moment.",
+  feature_disabled: "Menu changes are not available for this account yet.",
   save_failed: "Could not save the menu. Try again.",
 } as const;
 
@@ -72,15 +73,23 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const requestId = requestIdFrom(request);
 
-  let userId: string | null;
+  let context: Awaited<ReturnType<typeof resolveFeatureContext>>;
   try {
-    userId = await getSessionUserId();
+    context = await resolveFeatureContext(request);
   } catch {
     return errorResponse("server_db_unavailable", PUBLIC_MESSAGES.db_unavailable, 503);
   }
-  if (!userId) {
+  if (!context) {
     return errorResponse("unauthorized", PUBLIC_MESSAGES.unauthorized, 401);
   }
+  if (!context.flags.assistant || !context.flags.assistantProposals) {
+    logEvent("info", "assistant.apply_feature_disabled", {
+      requestId,
+      userId: context.user.id,
+    });
+    return errorResponse("feature_disabled", PUBLIC_MESSAGES.feature_disabled, 403);
+  }
+  const userId = context.user.id;
 
   let body: unknown;
   try {

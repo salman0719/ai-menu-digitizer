@@ -12,6 +12,7 @@ import {
   type AssistantUsageSummary,
 } from "@/features/assistant/schema";
 import type { AssistantProposal } from "@/features/assistant/proposal";
+import { resolveFeatureContext } from "@/features/flags/server";
 import {
   getMenuWithRoleForUser,
   listMenusForUser,
@@ -31,7 +32,6 @@ import {
   type AssistantContextRestaurant,
 } from "@/lib/ai/assistant/prompt";
 import { requestAssistantProposal } from "@/lib/ai/assistant/propose";
-import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { rejectCrossOrigin } from "@/lib/http/origin";
 import { reportError } from "@/lib/observability/alerts";
@@ -63,6 +63,8 @@ const PUBLIC_MESSAGES = {
   unauthorized: "Sign in to use the assistant.",
   not_configured: "The assistant is not configured on this deployment yet.",
   db_unavailable: "Server data is not available right now. Try again in a moment.",
+  feature_disabled: "The assistant is not available for this account yet.",
+  proposals_disabled: "Menu changes are not available for this account yet.",
   invalid_request: "Send a message between 1 and 1,000 characters.",
   unavailable: "The assistant is unavailable right now. Try again in a moment.",
   busy: "The assistant is busy right now. Try again in a minute.",
@@ -76,17 +78,6 @@ function errorResponse(code: AssistantErrorCode, message: string, status: number
 function noStore(response: NextResponse): NextResponse {
   response.headers.set("Cache-Control", "no-store");
   return response;
-}
-
-/** Session lookup that separates "signed out" from "database is down". */
-async function sessionUser(): Promise<
-  { userId: string | null; dbUnavailable: false } | { userId: null; dbUnavailable: true }
-> {
-  try {
-    return { userId: await getSessionUserId(), dbUnavailable: false };
-  } catch {
-    return { userId: null, dbUnavailable: true };
-  }
 }
 
 /** The account block the assistant may see: the caller's own restaurants only. */
@@ -170,17 +161,22 @@ async function loadMenu(
   }
 }
 
-export async function GET(): Promise<NextResponse> {
-  const session = await sessionUser();
-  if (session.dbUnavailable) {
+export async function GET(request?: Request): Promise<NextResponse> {
+  let context: Awaited<ReturnType<typeof resolveFeatureContext>>;
+  try {
+    context = await resolveFeatureContext(request);
+  } catch {
     return errorResponse("server_db_unavailable", PUBLIC_MESSAGES.db_unavailable, 503);
   }
-  if (!session.userId) {
+  if (!context) {
     return errorResponse("unauthorized", PUBLIC_MESSAGES.unauthorized, 401);
+  }
+  if (!context.flags.assistant) {
+    return errorResponse("feature_disabled", PUBLIC_MESSAGES.feature_disabled, 403);
   }
 
   try {
-    const allowance = await readAssistantAllowance(getDb(), session.userId);
+    const allowance = await readAssistantAllowance(getDb(), context.user.id);
     return noStore(NextResponse.json({ usage: allowance.summary }));
   } catch (error) {
     await reportError("assistant.usage_failed", error);
@@ -193,14 +189,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (crossOrigin) return crossOrigin;
 
   const requestId = requestIdFrom(request);
-  const session = await sessionUser();
-  if (session.dbUnavailable) {
+
+  let context: Awaited<ReturnType<typeof resolveFeatureContext>>;
+  try {
+    context = await resolveFeatureContext(request);
+  } catch {
     return errorResponse("server_db_unavailable", PUBLIC_MESSAGES.db_unavailable, 503);
   }
-  if (!session.userId) {
+  if (!context) {
     return errorResponse("unauthorized", PUBLIC_MESSAGES.unauthorized, 401);
   }
-  const userId = session.userId;
+  if (!context.flags.assistant) {
+    logEvent("info", "assistant.feature_disabled", { requestId, userId: context.user.id });
+    return errorResponse("feature_disabled", PUBLIC_MESSAGES.feature_disabled, 403);
+  }
+  const userId = context.user.id;
 
   let payload: unknown;
   try {
@@ -215,6 +218,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       parsed.error.issues[0]?.message ?? PUBLIC_MESSAGES.invalid_request,
       400
     );
+  }
+
+  if (parsed.data.menuId && !context.flags.assistantProposals) {
+    logEvent("info", "assistant.proposals_disabled", { requestId, userId });
+    return errorResponse("feature_disabled", PUBLIC_MESSAGES.proposals_disabled, 403);
   }
 
   if (!readAssistantProviderConfig()) {

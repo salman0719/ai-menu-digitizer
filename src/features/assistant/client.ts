@@ -41,6 +41,7 @@ export type AssistantTurn = z.infer<typeof assistantTurnSchema>;
 
 export type AssistantClientErrorCode =
   | "unauthorized"
+  | "feature_disabled"
   | "cap_reached"
   | "not_configured"
   | "not_found"
@@ -74,6 +75,9 @@ function failureFrom(response: Response, payload: unknown): AssistantError {
       ? "Sign in to use the assistant."
       : "The assistant is unavailable right now. Try again in a moment.");
 
+  if (parsedError?.code === "feature_disabled") {
+    return new AssistantError("feature_disabled", message);
+  }
   if (response.status === 401) return new AssistantError("unauthorized", message);
   if (response.status === 429) return new AssistantError("cap_reached", message);
   if (response.status === 404) return new AssistantError("not_found", message);
@@ -151,6 +155,7 @@ export async function sendAssistantMessage(
 
 export type AssistantApplyErrorCode =
   | "unauthorized"
+  | "feature_disabled"
   | "forbidden"
   | "not_found"
   | "stale"
@@ -231,6 +236,9 @@ export async function applyAssistantProposal(
     const parsedError = errorEnvelope.safeParse(payload).data?.error;
     const message =
       parsedError?.message ?? "The change could not be applied. Try again in a moment.";
+    if (parsedError?.code === "feature_disabled") {
+      throw new AssistantApplyError("feature_disabled", message);
+    }
     if (response.status === 401) throw new AssistantApplyError("unauthorized", message);
     if (response.status === 403) throw new AssistantApplyError("forbidden", message);
     if (response.status === 404) throw new AssistantApplyError("not_found", message);

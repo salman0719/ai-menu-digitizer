@@ -72,6 +72,7 @@ import {
   type AppScreen,
   type EditorMode,
 } from "@/features/navigation/routes";
+import { useFeatureFlags } from "@/features/flags/client";
 import { staffMenuIds } from "@/features/tenancy/access";
 import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
 import { moveLocalMenuToAccount } from "@/features/menus/move-to-account";
@@ -210,6 +211,10 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   // the whole local-first flow above keeps working untouched.
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const signedIn = session?.user != null;
+  // Server-evaluated release decisions (A4). The compiled defaults keep the
+  // released Assistant visible before the first answer; unreleased flags are
+  // off by default and only appear once the server says so.
+  const { flags: featureFlags } = useFeatureFlags(session?.user?.id ?? null);
   const signedInRef = useRef(false);
   /** The server updatedAt the open menu was last synced at; null = don't push. */
   const serverBaseRef = useRef<string | null>(null);
@@ -1285,9 +1290,12 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 { id: "orders", label: "Orders" },
                 // Assistant, Tables and Settings only apply to accounts (they
                 // all read account-scoped data), so signed-out mode hides them.
+                // The Assistant also has its own kill switch (A4).
                 ...(signedIn
                   ? [
-                      { id: "assistant" as const, label: "Assistant" },
+                      ...(featureFlags.assistant
+                        ? [{ id: "assistant" as const, label: "Assistant" }]
+                        : []),
                       { id: "tables" as const, label: "Tables" },
                       { id: "settings" as const, label: "Settings" },
                     ]
@@ -1347,16 +1355,33 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
 
         {screen === "orders" && <OrdersBoard />}
 
-        {screen === "assistant" && (
-          <AssistantPanel
-            signedIn={signedIn}
-            sessionPending={sessionPending}
-            menusLoading={libraryLoading}
-            menus={menus
-              .filter((menu) => serverIds.has(menu.id) && !staffMenus.has(menu.id))
-              .map((menu) => ({ id: menu.id, title: menu.title }))}
-          />
-        )}
+        {screen === "assistant" &&
+          (featureFlags.assistant ? (
+            <AssistantPanel
+              signedIn={signedIn}
+              sessionPending={sessionPending}
+              proposalsEnabled={featureFlags.assistantProposals}
+              menusLoading={libraryLoading}
+              menus={menus
+                .filter((menu) => serverIds.has(menu.id) && !staffMenus.has(menu.id))
+                .map((menu) => ({ id: menu.id, title: menu.title }))}
+            />
+          ) : (
+            <section className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
+              <h1 className="font-medium text-stone-900">Assistant isn’t available</h1>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+                This account doesn’t have access to the assistant yet. Everything else in Eateryo
+                works as usual.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigateTo({ screen: "capture" })}
+                className="mt-4 rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              >
+                Back to capture
+              </button>
+            </section>
+          ))}
 
         {screen === "tables" && (
           <RestaurantTables signedIn={signedIn} sessionPending={sessionPending} />

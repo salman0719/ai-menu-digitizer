@@ -95,6 +95,7 @@ export type AssistantErrorCode =
   | "invalid_request"
   | "unauthorized"
   | "cross_origin_rejected"
+  | "feature_disabled"
   | "assistant_cap_reached"
   | "assistant_budget_exhausted"
   | "assistant_not_configured"
