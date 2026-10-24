@@ -1099,28 +1099,30 @@ export function MenuEditor({
       >
         + Add category
       </button>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
         <span className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Menu</span>
-        <button type="button" onClick={onExportJson} className={smallButton}>
-          Export JSON
-        </button>
-        <button type="button" onClick={onExportCsv} className={smallButton}>
-          Export CSV
-        </button>
-        <label className={`${smallButton} inline-flex cursor-pointer items-center pointer-coarse:min-h-[44px]`}>
-          Import JSON
-          <input
-            type="file"
-            accept="application/json,.json"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onImportFile(file);
-              event.target.value = "";
-            }}
-          />
-        </label>
-        <span className="flex-1" />
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onExportJson} className={smallButton}>
+            Export JSON
+          </button>
+          <button type="button" onClick={onExportCsv} className={smallButton}>
+            Export CSV
+          </button>
+          <label className={`${smallButton} inline-flex cursor-pointer items-center pointer-coarse:min-h-[44px]`}>
+            Import JSON
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onImportFile(file);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <span aria-hidden="true" className="hidden flex-1 sm:block" />
         <button
           type="button"
           onClick={() => {
@@ -1132,7 +1134,7 @@ export function MenuEditor({
               onDeleteMenu();
             }
           }}
-          className="rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="self-start rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 sm:self-auto"
         >
           Delete menu
         </button>
