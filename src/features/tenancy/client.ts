@@ -313,6 +313,45 @@ export async function acceptInvitation(
   );
 }
 
+/** New-order email preference (any member may read, only an owner may write). */
+const alertPrefsSchema = z.object({
+  enabled: z.boolean(),
+  /** Override recipient; null means the owners' account emails. */
+  email: z.string().nullable(),
+});
+
+export type AlertPrefs = z.infer<typeof alertPrefsSchema>;
+
+const alertPrefsEnvelope = z.object({ alerts: alertPrefsSchema });
+const alertPrefsWithRoleEnvelope = z.object({
+  alerts: alertPrefsSchema.extend({ role: z.enum(["owner", "staff"]) }),
+});
+
+export type AlertPrefsWithRole = z.infer<typeof alertPrefsWithRoleEnvelope>["alerts"];
+
+export async function fetchAlertPrefs(restaurantId: string): Promise<AlertPrefsWithRole> {
+  return requestJson(
+    `/api/restaurants/${encodeURIComponent(restaurantId)}/alerts`,
+    undefined,
+    (payload) => alertPrefsWithRoleEnvelope.parse(payload).alerts
+  );
+}
+
+export async function updateAlertPrefs(
+  restaurantId: string,
+  prefs: { enabled: boolean; email: string }
+): Promise<AlertPrefs> {
+  return requestJson(
+    `/api/restaurants/${encodeURIComponent(restaurantId)}/alerts`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(prefs),
+    },
+    (payload) => alertPrefsEnvelope.parse(payload).alerts
+  );
+}
+
 /** Owner-only role change; refuses to leave the restaurant without an owner. */
 export async function updateMemberRole(
   restaurantId: string,

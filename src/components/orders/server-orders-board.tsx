@@ -17,7 +17,7 @@
  * adopts the server's version rather than overwriting.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   nextOrderStatus,
@@ -29,13 +29,11 @@ import {
 } from "@/features/orders/schema";
 import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchStaffOrders, setOrderStatus } from "@/features/orders/client";
+import { setOrderStatus } from "@/features/orders/client";
+import { useOrderMonitor } from "@/features/orders/monitor";
 import { SyncError } from "@/features/menus/sync";
 import { formatTableLabel } from "@/features/orders/table-links";
 import { formatPreviewPrice } from "@/features/menu/preview-utils";
-
-const POLL_MS = 5000;
-const MAX_BACKOFF_MS = 40000;
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
   new: "bg-amber-100 text-amber-900",
@@ -98,113 +96,41 @@ function errorMessage(error: unknown): string {
 }
 
 export function ServerOrdersBoard() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
-  const [connection, setConnection] = useState<"connecting" | "live" | "reconnecting">(
-    "connecting"
-  );
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  // The poller lives in the app-wide monitor (shared cursor with the tab
+  // badge and toasts); the board only guards its own optimistic writes.
+  const {
+    orders,
+    phase,
+    connection,
+    lastSyncedAt,
+    pollError,
+    soundOn,
+    setSoundOn,
+    hasArrived,
+    notificationsAvailable,
+    notificationPermission,
+    requestNotifications,
+    refresh,
+    applyOptimistic,
+    resolveOptimistic,
+    revertOptimistic,
+  } = useOrderMonitor();
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  /** Cursor for the next poll: the server time of the last successful read. */
-  const sinceRef = useRef<string | null>(null);
-  /** Orders with a status change in flight — never overwritten by a poll. */
-  const pendingRef = useRef<Map<string, OrderStatus>>(new Map());
-
-  const mergeOrders = useCallback((current: Order[], incoming: Order[]): Order[] => {
-    const byId = new Map(current.map((order) => [order.id, order]));
-    for (const order of incoming) {
-      if (pendingRef.current.has(order.id)) continue;
-      byId.set(order.id, order);
-    }
-    return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, []);
-
-  const load = useCallback(
-    async (initial: boolean) => {
-      try {
-        const result = await fetchStaffOrders({
-          since: initial ? null : sinceRef.current,
-          limit: 100,
-        });
-        sinceRef.current = result.serverTime;
-        setOrders((current) =>
-          initial ? result.orders : mergeOrders(current, result.orders)
-        );
-        setLastSyncedAt(result.serverTime);
-        setPhase("ready");
-        setConnection("live");
-        setError(null);
-      } catch (loadError) {
-        setPhase((current) => (current === "loading" ? "error" : current));
-        setConnection("reconnecting");
-        setError(errorMessage(loadError));
-        throw loadError;
-      }
-    },
-    [mergeOrders]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    let failures = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const schedule = (delay: number) => {
-      if (cancelled) return;
-      timer = setTimeout(() => void tick(), delay);
-    };
-
-    async function tick() {
-      try {
-        await load(sinceRef.current === null);
-        failures = 0;
-        schedule(POLL_MS);
-      } catch {
-        failures += 1;
-        // Back off on failure, but stay bounded so the board reconnects on
-        // its own when the network returns.
-        schedule(Math.min(POLL_MS * 2 ** Math.min(failures, 3), MAX_BACKOFF_MS));
-      }
-    }
-
-    // Kick the first poll off the effect body (state updates belong to the
-    // async callback), then keep polling until unmount.
-    const initial = setTimeout(() => void tick(), 0);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void load(false).catch(() => undefined);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onVisible);
-    return () => {
-      cancelled = true;
-      clearTimeout(initial);
-      if (timer) clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onVisible);
-    };
-  }, [load]);
 
   async function move(order: Order, target: OrderStatus) {
     if (busyId) return;
     setBusyId(order.id);
     setError(null);
-    pendingRef.current.set(order.id, target);
-    setOrders((current) =>
-      current.map((entry) => (entry.id === order.id ? { ...entry, status: target } : entry))
-    );
+    applyOptimistic(order.id, target);
     try {
       const updated = await setOrderStatus(order.id, target, order.updatedAt);
-      pendingRef.current.delete(order.id);
-      setOrders((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry))
-      );
+      resolveOptimistic(updated);
     } catch (updateError) {
-      pendingRef.current.delete(order.id);
-      setOrders((current) => current.map((entry) => (entry.id === order.id ? order : entry)));
+      revertOptimistic(order);
       if (updateError instanceof SyncError && updateError.code === "conflict") {
         setError("That order changed elsewhere — showing the latest version.");
-        void load(false).catch(() => undefined);
+        refresh();
       } else {
         setError(errorMessage(updateError));
       }
@@ -236,18 +162,47 @@ export function ServerOrdersBoard() {
             <ConnectionPill connection={connection} lastSyncedAt={lastSyncedAt} />
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load(false).catch(() => undefined)}
-          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSoundOn(!soundOn)}
+            aria-pressed={soundOn}
+            title={soundOn ? "New orders play a chime" : "Turn on a chime for new orders"}
+            className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900"
+          >
+            {soundOn ? "🔔 Sound on" : "🔕 Sound off"}
+          </button>
+          <button
+            type="button"
+            onClick={() => refresh()}
+            className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {error && (
+      {notificationsAvailable && notificationPermission === "default" && hasArrived && (
+        <button
+          type="button"
+          onClick={() => void requestNotifications()}
+          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left text-sm text-amber-900 transition-colors hover:border-amber-500"
+        >
+          <span className="font-semibold">Notify me even when you&apos;re on another tab.</span>
+          <span className="mt-0.5 block text-xs">
+            Your browser will ask for permission — alerts work whether this tab is open or not.
+          </span>
+        </button>
+      )}
+      {notificationsAvailable && notificationPermission === "granted" && (
+        <p className="text-xs text-stone-500">
+          Browser notifications are on — new orders alert you even from another tab.
+        </p>
+      )}
+
+      {(error ?? pollError) && (
         <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
+          {error ?? pollError}
         </p>
       )}
 
@@ -359,7 +314,7 @@ function ConnectionPill({
   connection,
   lastSyncedAt,
 }: {
-  connection: "connecting" | "live" | "reconnecting";
+  connection: "idle" | "connecting" | "live" | "reconnecting";
   lastSyncedAt: string | null;
 }) {
   const label =

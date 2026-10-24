@@ -9,6 +9,8 @@ import {
   placeOrderFromSlug,
   placeTableOrder,
 } from "@/features/orders/repo";
+import { maybeEmailNewOrder } from "@/features/orders/order-mailer";
+import { getRestaurantBySlug } from "@/features/tables/repo";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { rejectCrossOrigin } from "@/lib/http/origin";
@@ -191,6 +193,20 @@ export async function POST(request: Request) {
         : null;
     if (!order) {
       return errorResponse("invalid_body", "A menu or restaurant link is required.", 400);
+    }
+    // Best-effort new-order email (R0.4): resolved against the same café
+    // slug the order was placed under, and never allowed to fail the diner's
+    // POST — the hook logs every skip and swallows every failure.
+    try {
+      const slug = parsed.data.restaurantSlug ?? "";
+      if (slug) {
+        const restaurant = await getRestaurantBySlug(getDb(), slug);
+        if (restaurant) {
+          await maybeEmailNewOrder(getDb(), order, restaurant.id, restaurant.name, request);
+        }
+      }
+    } catch {
+      // The hook itself never throws; this guards the lookup above it.
     }
     const response = NextResponse.json({ order }, { status: 201 });
     response.headers.set("Cache-Control", "no-store");

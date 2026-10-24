@@ -454,6 +454,7 @@ export function TableQrPanel(props: TableQrPanelProps) {
               Tables
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={MAX_TABLES}
                 value={count}
