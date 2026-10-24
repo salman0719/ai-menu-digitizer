@@ -6,6 +6,7 @@ import { TableQrPanel } from "@/components/tables/table-qr-panel";
 import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRestaurants, type RestaurantOption } from "@/features/tenancy/client";
+import { selectedRestaurant, showRestaurantPicker } from "@/features/tenancy/picker";
 
 /**
  * Restaurant-level table cards.
@@ -48,7 +49,7 @@ export function RestaurantTables({
     };
   }, [signedIn]);
 
-  const selected = restaurants?.find((restaurant) => restaurant.id === selectedId) ?? null;
+  const selected = selectedRestaurant(restaurants, selectedId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,7 +106,7 @@ export function RestaurantTables({
         />
       )}
 
-      {signedIn && restaurants !== null && restaurants.length > 0 && (
+      {signedIn && showRestaurantPicker(restaurants) && restaurants !== null && (
         <div data-print-hide className="rounded-2xl border border-stone-200 bg-white p-5">
           <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
             Restaurant
