@@ -1107,7 +1107,7 @@ export function MenuEditor({
         <button type="button" onClick={onExportCsv} className={smallButton}>
           Export CSV
         </button>
-        <label className={`${smallButton} cursor-pointer`}>
+        <label className={`${smallButton} inline-flex cursor-pointer items-center pointer-coarse:min-h-[44px]`}>
           Import JSON
           <input
             type="file"
