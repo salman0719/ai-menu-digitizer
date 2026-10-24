@@ -34,6 +34,7 @@ import {
 
 import {
   ASSISTANT_MAX_OPERATIONS,
+  formatProposalPrice,
   type AddItemOperation,
   type AssistantOperation,
   type ProposalChange,
@@ -186,7 +187,7 @@ function resolveCategoryId(
 
 function formatPrice(price: number | null, currency: string | null): string {
   if (price === null) return "no price";
-  return currency ? `${price} ${currency}` : String(price);
+  return formatProposalPrice(price, currency);
 }
 
 function formatDescription(description: string | null): string {
@@ -380,10 +381,7 @@ export function applyProposalOperations(
 
         previewOperations.push({
           op: "add_item",
-          summary: `Add "${created.name}" to "${updatedCategory.name}" — ${formatPrice(
-            created.price,
-            next.currency
-          )}`,
+          summary: `Add "${created.name}" to "${updatedCategory.name}"`,
           changes: changesForAdd(operation, next.currency),
         });
         break;

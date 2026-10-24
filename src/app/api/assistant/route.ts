@@ -299,6 +299,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             operations: applied.operations,
             preview: applied.preview,
             basedOnUpdatedAt: menu.updatedAt,
+            currency: menu.currency,
           };
         } catch (error) {
           const reason = error instanceof ProposalApplyError ? error.code : "unexpected";

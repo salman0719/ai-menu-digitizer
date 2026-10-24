@@ -11,6 +11,8 @@ import {
   applyProposalRequestSchema,
   assistantOperationSchema,
   assistantProposalArgumentsSchema,
+  setProposalOperationPrice,
+  type AssistantProposal,
 } from "@/features/assistant/proposal";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
 import type { MenuDocument, MenuItem } from "@/features/menu/schema";
@@ -313,6 +315,37 @@ describe("applyProposalOperations", () => {
       name: `Category ${index}`,
     }));
     expect(() => applyProposalOperations(before, tooMany)).toThrow(ProposalApplyError);
+  });
+
+  it("edits a proposed price and keeps the preview row in step", () => {
+    const before = menu();
+    const drinks = categoryIdByName(before, "Espresso & Coffee");
+    const applied = applyProposalOperations(before, [
+      { op: "add_item", categoryId: drinks, name: "Lemonade", price: 3.5 },
+    ]);
+    const proposal: AssistantProposal = {
+      menuId: before.id,
+      outcome: "propose",
+      operations: applied.operations,
+      preview: applied.preview,
+      basedOnUpdatedAt: before.updatedAt,
+      currency: before.currency,
+    };
+
+    const edited = setProposalOperationPrice(proposal, 0, 4.25);
+    expect(edited.operations[0]).toMatchObject({ op: "add_item", price: 4.25 });
+    expect(edited.preview.operations[0].changes).toContainEqual({
+      label: "Price",
+      before: null,
+      after: "4.25 USD",
+    });
+    // A price edit never changes the operation list or the counts.
+    expect(edited.preview.operations[0].summary).toBe(
+      proposal.preview.operations[0].summary
+    );
+    expect(edited.preview.before).toEqual(proposal.preview.before);
+    expect(edited.preview.after).toEqual(proposal.preview.after);
+    expect(setProposalOperationPrice(proposal, 0, -1)).toBe(proposal);
   });
 
   it("keeps the menu title, currency and document valid", () => {

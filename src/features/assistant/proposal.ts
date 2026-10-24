@@ -174,6 +174,8 @@ export const assistantProposalSchema = z.object({
   preview: proposalPreviewSchema,
   /** The menu revision the proposal was computed from (staleness guard). */
   basedOnUpdatedAt: z.string().min(1),
+  /** Menu currency, so an edited price can be shown exactly like the server's. */
+  currency: z.string().nullable(),
 });
 
 export type AssistantProposal = z.infer<typeof assistantProposalSchema>;
@@ -204,3 +206,49 @@ export const applyProposalRequestSchema = z
   .strict();
 
 export type ApplyProposalRequest = z.infer<typeof applyProposalRequestSchema>;
+
+/** Format a price the same way the server's preview does. */
+export function formatProposalPrice(price: number, currency: string | null): string {
+  return currency ? `${price} ${currency}` : String(price);
+}
+
+/**
+ * Apply a price edit to a proposal without re-asking the model. The approval
+ * endpoint re-validates the operations and returns the authoritative preview;
+ * this keeps the visible diff in step until then.
+ *
+ * Only operations that carry a price are editable; anything else (or an
+ * invalid number) returns the proposal unchanged.
+ */
+export function setProposalOperationPrice(
+  proposal: AssistantProposal,
+  operationIndex: number,
+  price: number
+): AssistantProposal {
+  const operation = proposal.operations[operationIndex];
+  if (!operation || (operation.op !== "add_item" && operation.op !== "update_item")) {
+    return proposal;
+  }
+  if (!Number.isFinite(price) || price < 0 || price > ASSISTANT_MAX_PRICE) return proposal;
+
+  const operations = proposal.operations.map((entry, index) =>
+    index === operationIndex ? { ...entry, price } : entry
+  );
+  const previewOperations = proposal.preview.operations.map((entry, index) => {
+    if (index !== operationIndex) return entry;
+    return {
+      ...entry,
+      changes: entry.changes.map((change) =>
+        change.label === "Price"
+          ? { ...change, after: formatProposalPrice(price, proposal.currency) }
+          : change
+      ),
+    };
+  });
+
+  return {
+    ...proposal,
+    operations,
+    preview: { ...proposal.preview, operations: previewOperations },
+  };
+}

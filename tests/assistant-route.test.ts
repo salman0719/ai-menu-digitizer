@@ -390,6 +390,7 @@ describe("POST /api/assistant with a menu", () => {
     expect(payload.proposal).toMatchObject({
       menuId: menu.id,
       basedOnUpdatedAt: menu.updatedAt,
+      currency: "USD",
     });
     expect(payload.proposal.operations).toHaveLength(1);
     expect(payload.proposal.preview.before).toMatchObject({ categories: 2, items: 4 });

@@ -129,6 +129,7 @@ describe("sendAssistantMessage with a menu", () => {
       outcome: "propose" as const,
       operations: [{ op: "add_category" as const, name: "Desserts" }],
       basedOnUpdatedAt: "2026-10-24T10:00:00.000Z",
+      currency: "USD",
       preview: {
         before: { title: "Lunch", categories: 2, items: 4 },
         after: { title: "Lunch", categories: 3, items: 4 },
