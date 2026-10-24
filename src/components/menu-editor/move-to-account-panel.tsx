@@ -13,7 +13,7 @@ import {
 } from "@/features/tenancy/client";
 
 /**
- * "Import from this browser" (formerly "Move my menus to my account").
+ * "Import from this browser": the manual fallback for menus saved here.
  * Demoted under My menus for R1: the common case is now claimed by the
  * post-sign-in offer or imported automatically for a brand-new account, and
  * this panel is the honest retry path for partial failures.
@@ -24,19 +24,19 @@ import {
  * or delete the selected restaurant (delete cascades its menus, published
  * pages and orders server-side, so it warns first).
  *
- * Individual rows carry their own "Move to account" action in the library;
+ * Individual rows carry their own "Add to account" action in the library;
  * `onOwnedChange` keeps that action's target list in step with the
  * restaurants created, renamed, or deleted here.
  */
 
 interface MoveToAccountPanelProps {
-  /** How many local-only menus the move would consider (for the button label). */
+  /** How many browser-only menus the add would consider (button label). */
   menuCount: number;
   /** Name guessed from the local menu titles, to prefill the create field. */
   suggestedName?: string | null;
   /** Called after a run that imported at least one menu (refresh the library). */
   onMoved?: () => void;
-  /** The owned restaurants, mirrored up for the per-row move action. */
+  /** The owned restaurants, mirrored up for the per-row add action. */
   onOwnedChange?: (owned: RestaurantOption[]) => void;
 }
 
@@ -85,7 +85,7 @@ export function MoveToAccountPanel({
   const staffOnly = restaurants !== null && owned.length === 0 && restaurants.length > 0;
   const selected = owned.find((r) => r.id === selectedId) ?? null;
 
-  /** Mirror the owned restaurants up for the per-row move action. */
+  /** Mirror the owned restaurants up for the per-row add action. */
   function publishOwned(list: RestaurantOption[]) {
     onOwnedChange?.(list.filter((restaurant) => restaurant.role === "owner"));
   }
@@ -169,11 +169,11 @@ export function MoveToAccountPanel({
       if (result.imported.length > 0) onMoved?.();
     } catch (moveError) {
       // moveLocalMenusToAccount reports per-menu failures itself; a throw
-      // here means even reading the local library failed.
+      // here means even reading the browser library failed.
       setError(
         moveError instanceof Error
           ? moveError.message
-          : "Could not read your local menus. Try refreshing the page."
+          : "Could not read the menus saved in this browser. Try refreshing the page."
       );
     } finally {
       setBusy(false);
@@ -186,8 +186,8 @@ export function MoveToAccountPanel({
         Menus saved in this browser
       </h3>
       <p className="mt-1 text-xs leading-5 text-stone-500">
-        Copies your {menuCount === 1 ? "locally saved menu" : `${menuCount} locally saved menus`}
-        {""} into your account so other devices see them too. This browser keeps its copies —
+        Adds your {menuCount === 1 ? "saved menu" : `${menuCount} saved menus`} to your account so
+        other devices see {menuCount === 1 ? "it" : "them"} too. This browser keeps its copies —
         nothing is deleted.
       </p>
 

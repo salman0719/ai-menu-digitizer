@@ -83,11 +83,7 @@ export function LocalDraftsOffer({
             disabled={busy || !target}
             className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
           >
-            {busy
-              ? "Adding…"
-              : count === 1
-                ? "Add to my account"
-                : `Add all ${count} to my account`}
+            {busy ? "Adding…" : count === 1 ? "Add to account" : `Add all ${count} to account`}
           </button>
           <button
             type="button"

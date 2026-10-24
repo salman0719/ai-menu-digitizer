@@ -101,6 +101,11 @@ type Phase = "upload" | "ready" | "extracting" | "done";
 
 const STEPS = ["Upload image", "Extract menu", "Review draft"] as const;
 
+/** Save status stays one word; `detail` says where the save went. */
+function savedState(detail: string): SaveState {
+  return { kind: "saved", message: "Saved", detail };
+}
+
 function routeMenuId(route: AppRoute): string | null {
   return route.screen === "editor" || route.screen === "item" ? route.menuId : null;
 }
@@ -200,10 +205,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [storageDown, setStorageDown] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<MenuDocument | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>({
-    kind: "saved",
-    message: "Saved locally",
-  });
+  const [saveState, setSaveState] = useState<SaveState>(
+    savedState("Saved in this browser. Sign in to use this menu on other devices.")
+  );
   const [importError, setImportError] = useState<string | null>(null);
   const [editorImageUrl, setEditorImageUrl] = useState<string | null>(null);
 
@@ -527,10 +531,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     if (!doc || storageDownRef.current) return;
     const json = JSON.stringify(doc);
     if (json === lastSavedRef.current) {
-      setSaveState({
-        kind: "saved",
-        message: serverBaseRef.current ? "Synced with your account" : "Saved locally",
-      });
+      setSaveState(
+        savedState(serverBaseRef.current ? "Saved to your account." : "Saved in this browser.")
+      );
       return;
     }
     try {
@@ -538,12 +541,15 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
       lastSavedRef.current = JSON.stringify(saved);
       setMenus(await listMenus());
       if (!(await pushToAccount(saved))) {
-        setSaveState({
-          kind: "saved",
-          message: conflictRef.current
-            ? "Saved locally · resolve “changed elsewhere” above"
-            : `Saved locally · ${new Date(saved.updatedAt).toLocaleTimeString()}`,
-        });
+        setSaveState(
+          conflictRef.current
+            ? {
+                ...savedState("Saved in this browser."),
+                kind: "error",
+                message: "Changed on your other device — choose which version wins above.",
+              }
+            : savedState("Saved in this browser.")
+        );
       }
     } catch (error) {
       setSaveState({
@@ -556,10 +562,10 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
 
   /**
    * Push a just-saved document to the account (Step 8). Returns false when
-   * the save stays local-only — signed out, menu not moved to the account
-   * yet, or a conflict awaiting an explicit decision — in which case the
-   * caller sets the local status message. Otherwise the save state is set
-   * here and true is returned.
+   * the save stays in this browser — signed out, menu not added to the
+   * account yet, or a conflict awaiting an explicit decision — in which
+   * case the caller sets the status. Otherwise the save state is set here
+   * and true is returned.
    */
   async function pushToAccount(saved: MenuDocument): Promise<boolean> {
     if (!signedInRef.current || serverBaseRef.current === null) return false;
@@ -570,10 +576,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     try {
       const pushed = await updateServerMenu(saved.id, saved, serverBaseRef.current);
       serverBaseRef.current = pushed.updatedAt;
-      setSaveState({
-        kind: "saved",
-        message: `Saved to your account · ${new Date(pushed.updatedAt).toLocaleTimeString()}`,
-      });
+      setSaveState(savedState("Saved to your account."));
       return true;
     } catch (error) {
       if (error instanceof SyncError && error.code === "conflict") {
@@ -584,31 +587,32 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         setConflictError(null);
         setSaveState({
           kind: "error",
-          message: "Changed elsewhere — choose which version wins above.",
+          message: "Changed on your other device — choose which version wins above.",
         });
         return true;
       }
       if (error instanceof SyncError && error.code === "unauthorized") {
         serverBaseRef.current = null;
-        setSaveState({ kind: "saved", message: "Saved locally · sign in again to sync" });
+        setSaveState(
+          savedState("Saved in this browser — sign in again to save it to your account.")
+        );
         return true;
       }
       if (error instanceof SyncError && error.code === "forbidden") {
         serverBaseRef.current = null;
-        setSaveState({
-          kind: "saved",
-          message: "Saved locally · you don't have write access to this account's menus",
-        });
+        setSaveState(
+          savedState("Saved in this browser — you don't have write access to this menu.")
+        );
         return true;
       }
       if (error instanceof SyncError && error.code === "not_found") {
         serverBaseRef.current = null;
         removeServerId(saved.id);
-        setSaveState({ kind: "saved", message: "Saved locally · the account copy was removed" });
+        setSaveState(savedState("Saved in this browser — this menu is no longer in your account."));
         return true;
       }
-      // Offline / server down: the local copy is safe and retried next save.
-      setSaveState({ kind: "saved", message: "Saved locally · account sync unavailable" });
+      // Offline / server down: the browser copy is safe and retried next save.
+      setSaveState(savedState("Saved in this browser — your account can't be reached right now."));
       return true;
     }
   }
@@ -656,7 +660,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     setSaveState(
       storageDownRef.current
         ? { kind: "error", message: "Storage unavailable — edits are kept in memory only." }
-        : { kind: "saved", message: "Saved locally" }
+        : savedState("Saved in this browser.")
     );
     setImportError(null);
     setEditorImage(imageBlob ? URL.createObjectURL(imageBlob) : null);
@@ -667,9 +671,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   /**
    * Reconcile a just-opened menu with the account (signed in only). The
    * account is authoritative: when it holds a different revision, adopt it
-   * and keep IndexedDB in step as the cache. Menus that were never moved to
-   * the account stay local-only — "Move my menus to my account" is the
-   * explicit path for those.
+   * and keep IndexedDB in step as the cache. Menus that were never added to
+   * the account stay in this browser — "Add to account" is the explicit path
+   * for those.
    */
   async function syncWithAccount(localDoc: MenuDocument) {
     serverBaseRef.current = null;
@@ -692,23 +696,25 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         docRef.current = next;
         lastSavedRef.current = JSON.stringify(next);
         setActiveDoc(next);
-        setSaveState({ kind: "saved", message: "Loaded the account version" });
+        setSaveState(savedState("Showing the version from your account."));
         await refreshLibrary();
         return;
       }
-      setSaveState({ kind: "saved", message: "Synced with your account" });
+      setSaveState(savedState("Saved to your account."));
     } catch (error) {
       if (docRef.current?.id !== localDoc.id) return;
       if (error instanceof SyncError && error.code === "not_found") {
         removeServerId(localDoc.id);
-        setSaveState({ kind: "saved", message: "Saved locally · not in your account yet" });
+        setSaveState(savedState("Saved in this browser — not in your account yet."));
         return;
       }
       if (error instanceof SyncError && error.code === "unauthorized") {
-        setSaveState({ kind: "saved", message: "Saved locally · sign in again to sync" });
+        setSaveState(
+          savedState("Saved in this browser — sign in again to save it to your account.")
+        );
         return;
       }
-      setSaveState({ kind: "saved", message: "Saved locally · account sync unavailable" });
+      setSaveState(savedState("Saved in this browser — your account can't be reached right now."));
     }
   }
 
@@ -730,16 +736,18 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
       serverBaseRef.current = serverMenu.updatedAt;
       conflictRef.current = null;
       setConflict(null);
-      setSaveState({ kind: "saved", message: "Loaded the account version" });
+      setSaveState(savedState("Showing the version from your account."));
       await refreshLibrary();
     } catch (error) {
       if (error instanceof SyncError && error.code === "not_found") {
         conflictRef.current = { serverUpdatedAt: null };
         setConflict({ serverUpdatedAt: null });
-        setConflictError("The account copy no longer exists — keeping your version is safe.");
+        setConflictError("This menu is no longer in your account — keeping your version is safe.");
         return;
       }
-      setConflictError("Could not load the account version. Check your connection and try again.");
+      setConflictError(
+        "Could not load the version from your account. Check your connection and try again."
+      );
     }
   }
 
@@ -754,10 +762,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
       serverBaseRef.current = pushed.updatedAt;
       conflictRef.current = null;
       setConflict(null);
-      setSaveState({
-        kind: "saved",
-        message: `Saved to your account · ${new Date(pushed.updatedAt).toLocaleTimeString()}`,
-      });
+      setSaveState(savedState("Saved to your account."));
     } catch (error) {
       if (error instanceof SyncError && error.code === "conflict") {
         conflictRef.current = { serverUpdatedAt: error.currentUpdatedAt };
@@ -769,7 +774,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         conflictRef.current = { serverUpdatedAt: null };
         setConflict({ serverUpdatedAt: null });
         setConflictError(
-          "The account copy was removed — your version stays saved in this browser."
+          "This menu is no longer in your account — your version stays saved in this browser."
         );
         return;
       }
@@ -836,17 +841,17 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           removeServerId(renamed.id); // Gone on the server; nothing to push.
         } else if (error instanceof SyncError && error.code === "conflict") {
           setLibraryError(
-            "Renamed in this browser — the account copy changed elsewhere. Open the menu to reconcile."
+            "Renamed in this browser — it changed on your other device. Open the menu to reconcile."
           );
         } else if (error instanceof SyncError && error.code === "forbidden") {
           setLibraryError(
-            "Renamed in this browser — only the restaurant owner can change the account copy."
+            "Renamed in this browser — only the restaurant owner can rename it on your account."
           );
         } else if (error instanceof SyncError && error.code === "unauthorized") {
-          setLibraryError("Renamed in this browser — sign in again to update the account copy.");
+          setLibraryError("Renamed in this browser — sign in again to rename it on your account.");
         } else {
           setLibraryError(
-            "Renamed in this browser — the account copy could not be updated. Try again when online."
+            "Renamed in this browser — the change could not be saved to your account. Try again when online."
           );
         }
       }
@@ -856,15 +861,15 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         return;
       }
       setLibraryError(
-        "Renamed in this browser — the account copy could not be reached. Try again when online."
+        "Renamed in this browser — your account could not be reached. Try again when online."
       );
     }
   }
 
   /**
-   * Move one browser-only menu into an owned restaurant. The library row
-   * shows the returned message on failure; success marks the row as on the
-   * account right away, then reconciles with the server list.
+   * Add one browser-only menu to an owned restaurant. The library row shows
+   * the returned message on failure; success marks the row as on the account
+   * right away, then reconciles with the server list.
    */
   async function handleMoveMenuToAccount(
     menuId: string,
@@ -873,7 +878,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     const title = menus.find((menu) => menu.id === menuId)?.title ?? "That menu";
     const outcome = await moveLocalMenuToAccount(restaurantId, menuId);
     if (outcome.status === "failed") {
-      return `“${title}” could not be moved — ${outcome.reason}`;
+      return `“${title}” could not be added — ${outcome.reason}`;
     }
     addServerId(menuId);
     await mergeAccountMenus();
@@ -986,9 +991,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         case "forbidden":
           return "Only the restaurant owner can publish this menu.";
         case "not_found":
-          return "The account copy of this menu no longer exists. Open it again to reconcile.";
+          return "This menu is no longer in your account. Open it again to reconcile.";
         case "slug_taken":
-          return "That link is already used by another menu — pick another address.";
+          return "That link is already used by another menu at this café — pick another link name.";
         case "not_published":
           return "This menu is not published.";
         case "invalid":
@@ -1012,7 +1017,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     try {
       await flushSave();
       if (!serverIdsRef.current.has(doc.id)) {
-        setPublishError("Move this menu to your account first, then publish it.");
+        setPublishError("Add this menu to your account first, then publish it.");
         return;
       }
       const status = await publishMenu(doc.id, { theme, layout });
@@ -1089,8 +1094,8 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
 
   async function handleDeleteMenu(id: string) {
     try {
-      // Remove the account copy first when there is one, so a failure is
-      // reported before the local menu is gone. The local delete always
+      // Remove it from the account first when it is there, so a failure is
+      // reported before the browser copy is gone. The browser delete always
       // proceeds — it is the user's data and their explicit intent.
       let accountNote: string | null = null;
       if (signedInRef.current && serverIdsRef.current.has(id)) {
@@ -1102,12 +1107,13 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
             removeServerId(id); // Already gone on the server.
           } else if (error instanceof SyncError && error.code === "forbidden") {
             accountNote =
-              "Deleted from this browser — only the restaurant owner can remove the account copy.";
+              "Deleted from this browser — only the restaurant owner can remove it from your account.";
           } else if (error instanceof SyncError && error.code === "unauthorized") {
-            accountNote = "Deleted from this browser — sign in again to remove the account copy.";
+            accountNote =
+              "Deleted from this browser — sign in again to remove it from your account.";
           } else {
             accountNote =
-              "Deleted from this browser — the account copy could not be removed. Try again when online.";
+              "Deleted from this browser — it could not be removed from your account. Try again when online.";
           }
         }
       }
@@ -1452,7 +1458,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const suggestedRestaurantName = suggestRestaurantName(localOnly.map((menu) => menu.title));
 
   // The claim surfaces stay out of the editor: importing the menu that is
-  // open would create a server copy the editor is not synced with. The
+  // open would create an account version the editor is not synced with. The
   // wizard's own publish handles the open draft, and the post-publish import
   // above covers the rest.
   const storedClaimStatus = accountKey ? loadLocalDraftClaim(accountKey) : "unseen";

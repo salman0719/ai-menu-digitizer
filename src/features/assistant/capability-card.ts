@@ -22,10 +22,9 @@ point the owner at the contact address on /privacy. Never promise a feature that
    must review them. Prices the model could not read stay empty rather than guessed.
 
 2. My menus (tab: My menus, path /menus)
-   The library lists menus saved in this browser (local) and, when signed in, menus stored on the account
-   ("On your account"). Local menus can be moved into the account one-way with "Move menus to my account";
-   there is no move-back-down. Rename and delete work from the library; deleting an account menu removes the
-   server copy first.
+   The library lists menus saved in this browser and, when signed in, menus on the account ("On your account").
+   A browser-only menu can be added to the account one-way with "Add to account"; there is no move back down.
+   Rename and delete work from the library; deleting an account menu removes it from the account first.
 
 3. Editor (open a menu from My menus, path /menus/<menuId>)
    Edit categories, items, prices, descriptions, dietary labels, variants, options and per-item availability.
@@ -35,9 +34,9 @@ point the owner at the contact address on /privacy. Never promise a feature that
 
 4. Preview and publish (Editor → Preview)
    The Preview screen shows the customer view, theme and layout. "Publish" creates the public page at
-   /r/<restaurant>/m/<menu>, with an editable slug, a QR code and a cookie-free view count. Later edits stay
-   private until "Publish changes" is pressed. "Unpublish" takes the page offline; republishing reuses the
-   slug and keeps the view count.
+   /r/<restaurant>/m/<menu>, with an editable link name, a QR code and a cookie-free view count. Later edits
+   stay private until "Publish changes" is pressed. "Unpublish" takes the page offline; republishing reuses
+   the link and keeps the view count.
 
 5. Opening hours (Editor → availability)
    Hours are set per menu, not per restaurant: weekday windows in the restaurant's time zone, with overnight

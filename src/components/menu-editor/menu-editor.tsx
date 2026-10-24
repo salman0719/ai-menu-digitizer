@@ -56,7 +56,14 @@ import { PublishPanel, type PublishingControls } from "./publish-panel";
 
 export interface SaveState {
   kind: "saved" | "saving" | "error";
+  /** Short status: "Saved", or the failure/conflict sentence. */
   message: string;
+  /**
+   * Where the save went ("Saved in this browser" / "Saved to your account").
+   * Shown as a tooltip and to screen readers so the main status stays one
+   * word; storage mode is a detail, not a concept to learn.
+   */
+  detail?: string;
 }
 
 interface MenuEditorProps {
@@ -464,6 +471,7 @@ export function MenuEditor({
       )}
       <p
         role="status"
+        title={saveState.detail}
         className={`text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
       >
         {saveState.kind === "saving" ? (
@@ -477,6 +485,7 @@ export function MenuEditor({
         ) : (
           saveState.message
         )}
+        {saveState.detail && <span className="sr-only"> — {saveState.detail}</span>}
       </p>
       <span className="flex-1" />
       {!canManage ? (
@@ -898,8 +907,8 @@ export function MenuEditor({
         <AvailabilityPanel
           key={doc.id}
           menuId={doc.id}
-          // Opening hours live with the server copy: a browser-only menu has
-          // no availability row to fetch, account mode or not.
+          // Opening hours live with the menu in your account: a browser-only
+          // menu has no availability row to fetch, account mode or not.
           syncMode={onServer ? "account" : "local"}
           canManage={canManage}
         />
@@ -1262,9 +1271,11 @@ export function MenuEditor({
         </p>
       )}{" "}
       <p className="text-xs leading-5 text-stone-500">
-        {syncMode === "account"
-          ? "This menu syncs to your account — signing in on another device shows the same data. A local copy stays in this browser as an offline cache."
-          : "Menus are stored locally in this browser on this device — they don't follow you to other devices. Sign in to sync them to your account, or export JSON backups."}
+        {onServer
+          ? "This menu is saved to your account, so signing in on another device shows the same menu. This browser keeps a copy for offline edits."
+          : syncMode === "account"
+            ? "This menu is saved in this browser only. Add it to your account to use it on other devices, or export a JSON backup."
+            : "This menu is saved in this browser only — it doesn't appear on other devices. Sign in to save it to your account, or export a JSON backup."}
       </p>
     </div>
   );

@@ -164,7 +164,7 @@ export function RestaurantSettings({
           title="You don't own a restaurant yet"
           steps={[
             "Open My menus and pick a menu — upload a photo first if you don't have one yet.",
-            "Use “Move my menus to my account” on it: moving a menu creates the restaurant that owns it.",
+            "Use “Import from this browser” in My menus: adding a menu creates the café that owns it.",
             "Come back here to rename it, staff it, or delete it.",
           ]}
           action={{ href: "/menus", label: "Go to My menus" }}

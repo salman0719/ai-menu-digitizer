@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * "Changed elsewhere" banner (PHASE-2.md §4 P2-3). Shown when a server push
- * loses the updatedAt race: the editor keeps the user's edits locally and
- * asks for an explicit decision instead of silently overwriting either side.
+ * "Changed on your other device" banner (PHASE-2.md §4 P2-3). Shown when a
+ * server push loses the updatedAt race: the editor keeps the user's edits in
+ * this browser and asks for an explicit decision instead of silently
+ * overwriting either side.
  */
 
 interface ConflictBannerProps {
-  /** The server's current updatedAt; null means the server copy is gone. */
+  /** The account's current updatedAt; null means the menu is gone from it. */
   serverUpdatedAt: string | null;
   /** Error from the last resolution attempt, if any. */
   error: string | null;
@@ -29,10 +30,10 @@ export function ConflictBanner({
       data-print-hide
       className="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4"
     >
-      <p className="font-medium text-amber-900">This menu was changed elsewhere</p>
+      <p className="font-medium text-amber-900">This menu was changed on your other device</p>
       <p className="mt-1 text-sm leading-6 text-amber-800">
-        Another tab or device saved a newer version while you were editing. Your edits are safe in
-        this browser — choose which version wins.
+        A newer version was saved after the one you have open. Your edits are safe in this browser —
+        choose which version wins.
       </p>
       {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
@@ -41,7 +42,7 @@ export function ConflictBanner({
           onClick={onReloadServer}
           className="rounded-full bg-amber-800 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800"
         >
-          Load the server version
+          Load the newest version
         </button>
         <button
           type="button"
@@ -54,8 +55,8 @@ export function ConflictBanner({
       </div>
       {serverUpdatedAt === null && (
         <p className="mt-2 text-xs text-amber-800">
-          The server copy no longer exists, so there is nothing to overwrite — keep your version,
-          or re-run “Move my menus to my account” from the library.
+          This menu is no longer in your account, so there is nothing to overwrite — keep your
+          version, or add it again from My menus.
         </p>
       )}
     </div>

@@ -4,9 +4,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 
 /**
- * App header. Also the app's one visible storage-mode indicator (PHASE-2.md
- * §4 risk table): signed out = "Local mode" (menus live in this browser),
- * signed in = menus sync to the account.
+ * App header. Storage mode is deliberately not pitched here: signed-out
+ * visitors see an ordinary Sign in action, and signed-in ones see the
+ * account their menus belong to. The editor reports "Saved" and puts where
+ * it went in the tooltip (R1 concept diet).
  */
 export function SiteHeader() {
   const { data, isPending } = authClient.useSession();
@@ -42,8 +43,8 @@ export function SiteHeader() {
             </div>
           ) : user ? (
             <>
-              <span className="hidden text-[11px] text-stone-500 sm:inline" title={user.email}>
-                Syncing to {user.email}
+              <span className="hidden text-[11px] text-stone-500 sm:inline" title="Signed in as">
+                {user.email}
               </span>
               <button
                 type="button"
@@ -54,15 +55,12 @@ export function SiteHeader() {
               </button>
             </>
           ) : (
-            <>
-              <span className="hidden text-[11px] text-stone-400 sm:inline">Local mode</span>
-              <a
-                href="/sign-in"
-                className="rounded-lg border border-stone-300 px-2.5 py-1 text-[11px] font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900"
-              >
-                Sign in
-              </a>
-            </>
+            <a
+              href="/sign-in"
+              className="rounded-lg border border-stone-300 px-2.5 py-1 text-[11px] font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900"
+            >
+              Sign in
+            </a>
           )}
         </div>
       </div>

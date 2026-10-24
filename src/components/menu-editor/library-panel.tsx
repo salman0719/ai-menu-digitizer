@@ -8,7 +8,7 @@ import type { RestaurantOption } from "@/features/tenancy/client";
 
 import { CommitInput } from "./fields";
 
-/** A library row: the local summary plus whether the account holds a copy. */
+/** A library row: the browser summary plus whether the account holds it. */
 export interface LibraryMenu extends MenuSummary {
   onServer: boolean;
 }
@@ -19,11 +19,11 @@ interface LibraryPanelProps {
   loading?: boolean;
   /** Signed in: every row carries an account-status chip. */
   accountMode: boolean;
-  /** Restaurants the caller owns — where a per-row move can put a menu. */
+  /** Restaurants the caller owns — where a per-row add can put a menu. */
   ownedRestaurants?: RestaurantOption[];
   /**
-   * Move one browser-only menu into a restaurant. Resolves to a message to
-   * show on that row, or null when the move succeeded (or was already there).
+   * Add one browser-only menu to a restaurant. Resolves to a message to
+   * show on that row, or null when the add succeeded (or was already there).
    */
   onMoveToAccount?: (menuId: string, restaurantId: string) => Promise<string | null>;
   unavailable: boolean;
@@ -51,7 +51,7 @@ export function LibraryPanel({
   onRename,
   onDelete,
 }: LibraryPanelProps) {
-  /** The row whose restaurant picker is open (one move at a time). */
+  /** The row whose restaurant picker is open (one add at a time). */
   const [pickerMenuId, setPickerMenuId] = useState<string | null>(null);
 
   const [targetId, setTargetId] = useState("");
@@ -63,7 +63,7 @@ export function LibraryPanel({
     setMoveError(null);
     const only = ownedRestaurants.length === 1 ? ownedRestaurants[0] : undefined;
     if (only) {
-      // One restaurant means no choice to make: move straight away.
+      // One restaurant means no choice to make: add straight away.
       setTargetId(only.id);
       void runMove(id, only.id);
       return;
@@ -83,7 +83,7 @@ export function LibraryPanel({
     } catch {
       setMoveError({
         id,
-        message: "Could not move that menu. Check your connection and try again.",
+        message: "Could not add that menu. Check your connection and try again.",
       });
     } finally {
       setMovingId(null);
@@ -196,7 +196,7 @@ export function LibraryPanel({
                         disabled={movingId !== null}
                         className="rounded-full border border-amber-700 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
                       >
-                        {movingId === menu.id ? "Moving…" : "Move to account"}
+                        {movingId === menu.id ? "Adding…" : "Add to account"}
                       </button>
                     )}
                     <button
@@ -227,7 +227,7 @@ export function LibraryPanel({
               {pickerMenuId === menu.id && (
                 <div className="mt-3 flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:flex-row sm:items-end">
                   <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-stone-600">
-                    Move “{menu.title}” into
+                    Add “{menu.title}” to
                     <select
                       value={targetId}
                       onChange={(event) => setTargetId(event.target.value)}
@@ -250,7 +250,7 @@ export function LibraryPanel({
                       disabled={!targetId || movingId !== null}
                       className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
                     >
-                      {movingId === menu.id ? "Moving…" : "Move"}
+                      {movingId === menu.id ? "Adding…" : "Add"}
                     </button>
                     <button
                       type="button"

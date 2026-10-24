@@ -491,7 +491,7 @@ export function PublishWizard({
                   className={`text-xs font-normal ${slugError ? "text-red-700" : "text-stone-500"}`}
                 >
                   {slugError ??
-                    "Lowercase letters, numbers and single hyphens. The café address comes from its name."}
+                    "Lowercase letters, numbers and single hyphens. The café part of the link comes from its name."}
                 </span>
                 {suggestedSlugs.length > 0 && (
                   <span className="flex flex-wrap items-center gap-1.5 text-xs font-normal text-stone-600">

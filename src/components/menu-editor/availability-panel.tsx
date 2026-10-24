@@ -119,8 +119,8 @@ export function AvailabilityPanel({ menuId, syncMode, canManage = true }: Availa
       >
         <h2 className="text-sm font-bold text-stone-900">Opening times</h2>
         <p className="mt-1 text-xs leading-5 text-stone-600">
-          Opening hours are set once this menu is on your account, because that is the copy its
-          table page serves. Get your public link first — until then the menu is served all day.
+          Opening hours are set once this menu is on your account, because that is the version its
+          table page shows. Get your public link first — until then the menu is served all day.
         </p>
       </section>
     );

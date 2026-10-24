@@ -18,7 +18,7 @@ const WHAT_YOU_GET = [
     body: "Upload up to four pages at once. Every name, section, and price is read into a draft you can edit — and anything the AI was unsure about is flagged instead of invented.",
   },
   {
-    title: "Your own public address",
+    title: "Your own public link",
     body: "Publish to a link like /r/your-cafe/m/lunch. It opens on any phone with no login, shows your menu with your chosen theme, and only changes when you press Publish.",
   },
   {
@@ -35,7 +35,7 @@ const WHAT_YOU_GET = [
   },
   {
     title: "Nothing to install",
-    body: "It runs in the browser. The signed-out editor still works offline in local mode for a quick look before you commit to an account.",
+    body: "It runs in the browser. You can try the editor before signing in — the draft stays in that browser until you do.",
   },
 ];
 

@@ -16,7 +16,7 @@ import { QrCode } from "./qr-code";
  *
  * It never overstates the state of things — "Live" only when the page is
  * actually serving, an explicit warning when draft edits (or a style change)
- * are not on the public page yet, and a plain "Unpublished" when the slug is
+ * are not on the public page yet, and a plain "Unpublished" when the link is
  * reserved but the page 404s. Publishing needs an account, so signed-out
  * owners get an explanation and a sign-in link instead of a dead button.
  */
@@ -84,7 +84,7 @@ export function PublishPanel({
   // reading the origin in an initializer is hydration-safe — same pattern as
   // the table QR panel.
   const [origin] = useState(() => (typeof window === "undefined" ? "" : window.location.origin));
-  /** Local edit of the address; null = show the server's current slug. */
+  /** Local edit of the link name; null = show the account's current value. */
   const [slugDraft, setSlugDraft] = useState<string | null>(null);
   const [slugError, setSlugError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -123,7 +123,7 @@ export function PublishPanel({
     return (
       <div className="rounded-2xl border border-stone-200 bg-white p-4" data-print-hide>
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-stone-900">Public link</h3>
+          <h3 className="text-sm font-semibold text-stone-900">Your link</h3>
           <StatusPill status={null} />
         </div>
         <p className="mt-2 text-xs leading-5 text-stone-600">
@@ -154,7 +154,7 @@ export function PublishPanel({
     return (
       <div className="rounded-2xl border border-stone-200 bg-white p-4" data-print-hide>
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-stone-900">Public link</h3>
+          <h3 className="text-sm font-semibold text-stone-900">Your link</h3>
           <StatusPill status={status} />
         </div>
         <p className="mt-2 text-xs leading-5 text-stone-600">
@@ -182,7 +182,7 @@ export function PublishPanel({
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-4" data-print-hide>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-stone-900">Public link</h3>
+        <h3 className="text-sm font-semibold text-stone-900">Your link</h3>
         <StatusPill status={status} />
         {status?.isLive && (
           <span className="text-xs text-stone-500">
@@ -286,7 +286,7 @@ export function PublishPanel({
           {!status.isLive && (
             <p className="text-xs leading-5 text-stone-600">
               This menu is not being served right now. The link is reserved for it, so publishing
-              again reuses the same address.
+              again keeps the same link.
             </p>
           )}
 
@@ -322,7 +322,7 @@ export function PublishPanel({
           )}
 
           <label className="block text-xs font-semibold text-stone-600">
-            Link address
+            Your link name
             <span className="mt-1 flex items-center gap-2">
               <span className="text-xs font-normal text-stone-400">
                 {origin}/r/{status.restaurantSlug}/m/
@@ -362,7 +362,7 @@ export function PublishPanel({
               onClick={() => {
                 if (
                   window.confirm(
-                    "Unpublish this menu? The link stops working for everyone, though the address stays reserved for this menu."
+                    "Unpublish this menu? The link stops working for everyone, though the link stays reserved for this menu."
                   )
                 ) {
                   onUnpublish();

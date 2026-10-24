@@ -375,7 +375,7 @@ export function AssistantPanel({
               : menuUnavailable
                 ? "That menu is no longer in your account. Choose another one."
                 : menus.length === 0
-                  ? "No account menus yet. Move a menu to your account to ask the assistant for edits."
+                  ? "No account menus yet. Add a menu to your account to ask the assistant for edits."
                   : selectedMenu
                     ? "Changes are proposed for review. Nothing is saved until you approve."
                     : "Pick one of your menus to request a change; leave it on help for how-to questions."}

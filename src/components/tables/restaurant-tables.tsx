@@ -98,7 +98,7 @@ export function RestaurantTables({
         <GuidanceCard
           title="No restaurant yet"
           steps={[
-            "Move a menu to your account from My menus — moving it creates the restaurant.",
+            "Add a menu to your account from My menus — adding it creates the restaurant.",
             "Come back here to print one card per table.",
           ]}
           action={{ href: "/menus", label: "Go to My menus" }}
