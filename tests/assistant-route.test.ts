@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "@/app/api/assistant/route";
 import { recordAssistantUsage } from "@/features/assistant/repo";
 import { createSampleMenuDocument } from "@/features/menu/sample-menu";
-import { createMenuForUser } from "@/features/menus/repo";
+import { createMenuForUser, getMenuForUser, type ServerMenu } from "@/features/menus/repo";
 import { createRestaurant } from "@/features/tenancy/repo";
-import { assistantUsage } from "@/lib/db/schema";
+import { assistantUsage, restaurantMembership } from "@/lib/db/schema";
 import type { TestDb } from "./helpers/pg-test-db";
 
 /**
@@ -66,6 +66,47 @@ function chatResponse(text: string | null, usage?: Record<string, unknown>): Res
       usage: usage ?? { prompt_tokens: 486, completion_tokens: 80, neurons: 5.3 },
     },
   });
+}
+
+function toolResponse(args: unknown, usage?: Record<string, unknown>): Response {
+  return providerResponse({
+    result: {
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call-1",
+                type: "function",
+                function: {
+                  name: "propose_menu_change",
+                  arguments: JSON.stringify(args),
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usage: usage ?? { prompt_tokens: 900, completion_tokens: 60, neurons: 8.1 },
+    },
+  });
+}
+
+async function seedMenu(
+  userId: string
+): Promise<{ menu: ServerMenu; restaurantId: string; drinksId: string }> {
+  const { id: restaurantId } = await createRestaurant(holder.db!, userId, "Bistro Four");
+  const menu = await createMenuForUser(
+    holder.db!,
+    userId,
+    restaurantId,
+    createSampleMenuDocument()
+  );
+  const drinks = menu.doc.categories.find((category) => category.name === "Espresso & Coffee");
+  if (!drinks) throw new Error("fixture menu has no drinks category");
+  return { menu, restaurantId, drinksId: drinks.id };
 }
 
 function request(body: unknown, headers: Record<string, string> = {}): Request {
@@ -323,5 +364,196 @@ describe("GET /api/assistant", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await holder.db!.select().from(assistantUsage)).toHaveLength(0);
+  });
+});
+
+describe("POST /api/assistant with a menu", () => {
+  it("returns a server-computed proposal to the owner without writing", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu, drinksId } = await seedMenu(userId);
+    fetchMock.mockResolvedValueOnce(
+      toolResponse({
+        outcome: "propose",
+        message: "Review this change.",
+        operations: [{ op: "add_item", categoryId: drinksId, name: "Lemonade", price: 3.5 }],
+      })
+    );
+
+    const response = await POST(
+      request({ message: "Add a lemonade for 3.50 under drinks.", menuId: menu.id })
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.outcome).toBe("propose");
+    expect(payload.reply).toBe("Review this change.");
+    expect(payload.proposal).toMatchObject({
+      menuId: menu.id,
+      basedOnUpdatedAt: menu.updatedAt,
+    });
+    expect(payload.proposal.operations).toHaveLength(1);
+    expect(payload.proposal.preview.before).toMatchObject({ categories: 2, items: 4 });
+    expect(payload.proposal.preview.after).toMatchObject({ categories: 2, items: 5 });
+    expect(payload.usage).toMatchObject({ cap: 300, used: 1, remaining: 299 });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/ai/run/@cf/zai-org/glm-4.7-flash");
+    const body = JSON.parse(String((init as RequestInit).body)) as {
+      messages: Array<{ role: string; content: string }>;
+      tools: Array<{ function: { name: string } }>;
+      tool_choice: { function: { name: string } };
+      temperature: number;
+      max_tokens: number;
+      chat_template_kwargs: Record<string, unknown>;
+    };
+    expect(body.tools).toHaveLength(1);
+    expect(body.tool_choice.function.name).toBe("propose_menu_change");
+    expect(body.temperature).toBe(0.1);
+    expect(body.max_tokens).toBe(1_400);
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(body.messages[0].content).toContain("<menu-data>");
+    expect(body.messages[0].content).toContain(menu.id);
+    expect(body.messages[0].content).toContain(drinksId);
+
+    const rows = await holder.db!.select().from(assistantUsage);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "succeeded", requestId: "req-assistant-1" });
+
+    // Preview only: the menu row has not moved.
+    const stored = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(stored.updatedAt).toBe(menu.updatedAt);
+    expect(
+      stored.doc.categories
+        .flatMap((category) => category.items)
+        .some((item) => item.name === "Lemonade")
+    ).toBe(false);
+  });
+
+  it("keeps staff on the help surface, with no tool and no proposal", async () => {
+    const ownerId = await seedUser();
+    const { menu, restaurantId } = await seedMenu(ownerId);
+    const staffId = await seedUser("staff@cafe.test");
+    await holder.db!.insert(restaurantMembership).values({
+      restaurantId,
+      userId: staffId,
+      role: "staff",
+    });
+    holder.userId = staffId;
+    fetchMock.mockResolvedValueOnce(chatResponse("Open the menu from My menus."));
+
+    const response = await POST(request({ message: "How do I edit this menu?", menuId: menu.id }));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.reply).toContain("My menus");
+    expect(payload.proposal).toBeUndefined();
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      tools?: unknown;
+      messages: Array<{ content: string }>;
+    };
+    expect(body.tools).toBeUndefined();
+    expect(body.messages[0].content).not.toContain("<menu-data>");
+  });
+
+  it("404s a menu from another tenant before spending a token", async () => {
+    const ownerId = await seedUser();
+    const { menu } = await seedMenu(ownerId);
+    holder.userId = await seedUser("stranger@cafe.test");
+
+    const response = await POST(request({ message: "Add tea.", menuId: menu.id }));
+    expect(response.status).toBe(404);
+    expect((await response.json()).error.code).toBe("not_found");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("asks for the missing price instead of proposing a null one", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu, drinksId } = await seedMenu(userId);
+    fetchMock.mockResolvedValueOnce(
+      toolResponse({
+        outcome: "propose",
+        message: "Adding it now.",
+        operations: [
+          { op: "add_item", categoryId: drinksId, name: "Mystery lemonade", price: null },
+        ],
+      })
+    );
+
+    const response = await POST(request({ message: "Add a mystery lemonade.", menuId: menu.id }));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.outcome).toBe("clarify");
+    expect(payload.proposal).toBeUndefined();
+    expect(payload.reply).toContain("What price");
+    const rows = await holder.db!.select().from(assistantUsage);
+    expect(rows[0]).toMatchObject({ status: "succeeded" });
+    const stored = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(stored.updatedAt).toBe(menu.updatedAt);
+  });
+
+  it("turns an invented category id into a question, not a write", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu } = await seedMenu(userId);
+    fetchMock.mockResolvedValueOnce(
+      toolResponse({
+        outcome: "propose",
+        message: "Added to desserts.",
+        operations: [{ op: "add_item", categoryId: "cat_desserts", name: "Tiramisu", price: 9 }],
+      })
+    );
+
+    const response = await POST(request({ message: "Add tiramisu.", menuId: menu.id }));
+    const payload = await response.json();
+    expect(payload.outcome).toBe("clarify");
+    expect(payload.proposal).toBeUndefined();
+    expect(payload.reply).toContain("category");
+    const stored = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(stored.updatedAt).toBe(menu.updatedAt);
+  });
+
+  it("clarifies and records a failed attempt when both model calls are invalid", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu } = await seedMenu(userId);
+    const bad = () =>
+      toolResponse({
+        outcome: "propose",
+        message: "Bad.",
+        operations: [{ op: "add_item", name: "No category", price: 1 }],
+      });
+    fetchMock.mockResolvedValueOnce(bad()).mockResolvedValueOnce(bad());
+
+    const response = await POST(request({ message: "Add something.", menuId: menu.id }));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.outcome).toBe("clarify");
+    expect(payload.proposal).toBeUndefined();
+    expect(payload.reply).toContain("safe menu change");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const rows = await holder.db!.select().from(assistantUsage);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "failed", errorCode: "invalid_proposal" });
+  });
+
+  it("drops operations attached to an answer or refusal", async () => {
+    const userId = await seedUser();
+    holder.userId = userId;
+    const { menu } = await seedMenu(userId);
+    fetchMock.mockResolvedValueOnce(
+      toolResponse({
+        outcome: "answer",
+        message: "You can rename a category in the editor.",
+        operations: [{ op: "add_category", name: "Not approved" }],
+      })
+    );
+
+    const response = await POST(request({ message: "How do I rename?", menuId: menu.id }));
+    const payload = await response.json();
+    expect(payload.outcome).toBe("answer");
+    expect(payload.proposal).toBeUndefined();
+    const stored = await getMenuForUser(holder.db!, userId, menu.id);
+    expect(stored.doc.categories.map((category) => category.name)).not.toContain("Not approved");
   });
 });

@@ -62,6 +62,12 @@ export type AssistantHistoryMessage = z.infer<typeof assistantHistoryMessageSche
 export const assistantRequestSchema = z.object({
   message: z.string().trim().min(1).max(ASSISTANT_MAX_MESSAGE_CHARS),
   history: z.array(assistantHistoryMessageSchema).max(ASSISTANT_MAX_HISTORY_MESSAGES).default([]),
+  /**
+   * Optional target menu. With a menu the owner may get a proposal; without
+   * one the assistant is the A1 help surface. Staff and signed-out callers
+   * never get a proposal, whatever they send here.
+   */
+  menuId: z.string().trim().min(1).max(200).optional(),
 });
 
 export type AssistantRequest = z.infer<typeof assistantRequestSchema>;
@@ -93,4 +99,5 @@ export type AssistantErrorCode =
   | "assistant_budget_exhausted"
   | "assistant_not_configured"
   | "assistant_unavailable"
+  | "not_found"
   | "server_db_unavailable";

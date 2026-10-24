@@ -4,10 +4,7 @@ import { menu, restaurant, restaurantMembership } from "@/lib/db/schema";
 import type { RestaurantRole } from "@/lib/db/schema";
 import type { TenancyDb } from "@/features/tenancy/repo";
 import { menuDocumentSchema, type MenuDocument } from "@/features/menu/schema";
-import {
-  menuAvailabilitySchema,
-  type MenuAvailability,
-} from "@/features/availability/schema";
+import { menuAvailabilitySchema, type MenuAvailability } from "@/features/availability/schema";
 
 /**
  * Server repository for menu documents (Step 8 — server-backed menus).
@@ -149,7 +146,10 @@ function stampRowValues(doc: MenuDocument, updatedAt: Date) {
 }
 
 /** All menus across the restaurants the user belongs to, most recent first. */
-export async function listMenusForUser(db: TenancyDb, userId: string): Promise<ServerMenuSummary[]> {
+export async function listMenusForUser(
+  db: TenancyDb,
+  userId: string
+): Promise<ServerMenuSummary[]> {
   const rows = await menuJoin(db)
     .where(eq(restaurantMembership.userId, userId))
     .orderBy(desc(menu.updatedAt), asc(menu.id));
@@ -208,12 +208,24 @@ export async function getMenuForUser(
   userId: string,
   menuId: string
 ): Promise<ServerMenu> {
+  return (await getMenuWithRoleForUser(db, userId, menuId)).menu;
+}
+
+/**
+ * The menu plus the caller's role on its restaurant. The assistant needs the
+ * role to decide whether a proposal is allowed at all; staff are read-only.
+ */
+export async function getMenuWithRoleForUser(
+  db: TenancyDb,
+  userId: string,
+  menuId: string
+): Promise<{ menu: ServerMenu; role: RestaurantRole }> {
   const rows = await menuJoin(db).where(
     and(eq(menu.id, menuId), eq(restaurantMembership.userId, userId))
   );
   const row = rows[0];
   if (!row) throw new MenuRepoError("not_found", "That menu does not exist.");
-  return toMenu(row);
+  return { menu: toMenu(row), role: row.role };
 }
 
 /**

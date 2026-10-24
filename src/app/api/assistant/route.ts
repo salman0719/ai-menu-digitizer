@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { applyProposalOperations, ProposalApplyError } from "@/features/assistant/apply";
 import {
   readAssistantAllowance,
   recordAssistantUsage,
@@ -10,8 +11,15 @@ import {
   type AssistantErrorCode,
   type AssistantUsageSummary,
 } from "@/features/assistant/schema";
-import { listMenusForUser } from "@/features/menus/repo";
+import type { AssistantProposal } from "@/features/assistant/proposal";
+import {
+  getMenuWithRoleForUser,
+  listMenusForUser,
+  MenuRepoError,
+  type ServerMenu,
+} from "@/features/menus/repo";
 import { listRestaurantsForUser, type TenancyDb } from "@/features/tenancy/repo";
+import type { RestaurantRole } from "@/lib/db/schema";
 import {
   AssistantProviderError,
   completeAssistantChat,
@@ -22,6 +30,7 @@ import {
   buildAssistantSystemPrompt,
   type AssistantContextRestaurant,
 } from "@/lib/ai/assistant/prompt";
+import { requestAssistantProposal } from "@/lib/ai/assistant/propose";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { rejectCrossOrigin } from "@/lib/http/origin";
@@ -29,11 +38,18 @@ import { reportError } from "@/lib/observability/alerts";
 import { logEvent, requestIdFrom } from "@/lib/observability/log";
 
 /**
- * POST /api/assistant — one chat turn, signed-in only (A1).
+ * POST /api/assistant — one chat turn, signed-in only (A1 + A2).
  *
- * The assistant explains the product; it cannot change anything yet, so this
- * route has no write path into menus and never calls a provider tool. The
- * model's answer is returned as plain text, bounded by the schema.
+ * Without `menuId` this is the help surface: a plain answer from the
+ * capability card. With the id of a menu the caller owns, the model may
+ * return a proposal (validated, dry-run, and diffed here) that the browser can
+ * approve through `POST /api/assistant/apply`. Staff get the help surface
+ * only, and a menu id from another tenant is a 404, never a hint that it
+ * exists.
+ *
+ * Nothing in this route writes a menu. The dry run applies operations to an
+ * in-memory clone purely to prove they are valid and to compute the preview
+ * the owner will approve; the approval endpoint is the only write path.
  *
  * Guard order matters: same-origin, then the session, then the request body,
  * then the cost brakes, then the provider. A cap hit must never spend a
@@ -50,6 +66,7 @@ const PUBLIC_MESSAGES = {
   invalid_request: "Send a message between 1 and 1,000 characters.",
   unavailable: "The assistant is unavailable right now. Try again in a moment.",
   busy: "The assistant is busy right now. Try again in a minute.",
+  menu_not_found: "That menu does not exist.",
 } as const;
 
 function errorResponse(code: AssistantErrorCode, message: string, status: number): NextResponse {
@@ -107,6 +124,49 @@ async function record(
       requestId: input.requestId,
       error,
     });
+  }
+}
+
+/**
+ * A proposal can be schema-valid and still reference something that is not on
+ * this menu (the A0 spike caught the model inventing a category id). That is
+ * a clarifying question, not an error page — nothing has been written.
+ */
+function clarifyFromApplyError(error: unknown): string {
+  if (!(error instanceof ProposalApplyError)) {
+    return "I couldn't apply that change safely. Try rephrasing it.";
+  }
+  switch (error.code) {
+    case "missing_price":
+      return error.message;
+    case "unknown_item":
+      return "I couldn't match that to an item on this menu. Which item did you mean?";
+    case "unknown_category":
+      return "I couldn't match that to a category on this menu. Which category should it go in?";
+    case "duplicate_category":
+    case "invalid_move":
+      return error.message;
+    case "no_operations":
+      return "What exactly would you like to change?";
+    default:
+      return "I couldn't apply that change safely. Try rephrasing it.";
+  }
+}
+
+async function loadMenu(
+  db: TenancyDb,
+  userId: string,
+  menuId: string,
+  requestId: string
+): Promise<{ menu: ServerMenu; role: RestaurantRole } | NextResponse> {
+  try {
+    return await getMenuWithRoleForUser(db, userId, menuId);
+  } catch (error) {
+    if (error instanceof MenuRepoError && error.code === "not_found") {
+      return errorResponse("not_found", PUBLIC_MESSAGES.menu_not_found, 404);
+    }
+    await reportError("assistant.menu_failed", error, { requestId, userId });
+    return errorResponse("server_db_unavailable", PUBLIC_MESSAGES.db_unavailable, 503);
   }
 }
 
@@ -197,6 +257,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  let targetMenu: ServerMenu | null = null;
+  if (parsed.data.menuId) {
+    const loaded = await loadMenu(db, userId, parsed.data.menuId, requestId);
+    if (loaded instanceof NextResponse) return loaded;
+    // Staff are read-only for menus by design, so they only get the help
+    // surface even when the browser sends a menu id.
+    targetMenu = loaded.role === "owner" ? loaded.menu : null;
+  }
+
   let restaurants: AssistantContextRestaurant[];
   try {
     restaurants = await buildContext(db, userId);
@@ -206,12 +275,83 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const messages = buildAssistantMessages({
-    system: buildAssistantSystemPrompt(restaurants),
+    system: buildAssistantSystemPrompt(restaurants, targetMenu?.doc),
     history: parsed.data.history,
     message: parsed.data.message,
   });
 
   try {
+    if (targetMenu) {
+      const menu = targetMenu;
+      const result = await requestAssistantProposal({ messages });
+      const usage = usageEnvelope(allowance.summary, allowance.monthlyUsed + 1);
+
+      let outcome = result.args.outcome;
+      let reply = result.args.message;
+      let proposal: AssistantProposal | null = null;
+
+      if (outcome === "propose") {
+        try {
+          const applied = applyProposalOperations(menu.doc, result.args.operations);
+          proposal = {
+            menuId: menu.id,
+            outcome: "propose",
+            operations: applied.operations,
+            preview: applied.preview,
+            basedOnUpdatedAt: menu.updatedAt,
+          };
+        } catch (error) {
+          const reason = error instanceof ProposalApplyError ? error.code : "unexpected";
+          logEvent("warn", "assistant.proposal_rejected", {
+            requestId,
+            userId,
+            menuId: menu.id,
+            reason,
+          });
+          outcome = "clarify";
+          reply = clarifyFromApplyError(error);
+        }
+      }
+
+      if (result.invalid) {
+        logEvent("warn", "assistant.proposal_invalid", {
+          requestId,
+          userId,
+          menuId: menu.id,
+          repaired: result.repaired,
+        });
+      }
+
+      await record(db, {
+        userId,
+        requestId,
+        model: result.model,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        neurons: result.usage.neurons,
+        latencyMs: result.latencyMs,
+        status: result.invalid ? "failed" : "succeeded",
+        errorCode: result.invalid ? "invalid_proposal" : null,
+      });
+      logEvent("info", "assistant.proposal", {
+        requestId,
+        userId,
+        menuId: menu.id,
+        outcome,
+        operations: proposal?.operations.length ?? 0,
+        repaired: result.repaired,
+      });
+
+      const body: {
+        outcome: typeof outcome;
+        reply: string;
+        usage: AssistantUsageSummary;
+        proposal?: AssistantProposal;
+      } = { outcome, reply, usage };
+      if (proposal) body.proposal = proposal;
+      return noStore(NextResponse.json(body));
+    }
+
     const completion = await completeAssistantChat({ messages });
     await record(db, {
       userId,
