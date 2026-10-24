@@ -103,6 +103,8 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [route, setRoute] = useState<AppRoute>(initialRoute);
   const screen: AppScreen = route.screen === "item" ? "editor" : route.screen;
   const selectedItemId = route.screen === "item" ? route.itemId : null;
+  /** R0 phone nav: the More sheet (Tables · Assistant · Settings · Get started). */
+  const [moreOpen, setMoreOpen] = useState(false);
   // Which editor surface the URL asks for (edit, reorder, table QR,
   // preview); an item deep link is always the edit workspace.
   const editorMode: EditorMode = route.screen === "editor" ? route.mode : "edit";
@@ -1285,11 +1287,12 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           screen === "editor" ? "max-w-6xl" : "max-w-3xl"
         }`}
       >
+        {/* Desktop pill row. Phones use the bottom tab bar below. */}
         {screen !== "editor" && (
           <nav
             data-print-hide
             aria-label="Sections"
-            className="flex gap-2 overflow-x-auto pb-1"
+            className="hidden gap-2 overflow-x-auto pb-1 sm:flex"
           >
             {(
               [
@@ -1690,6 +1693,122 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           </div>
         )}
       </main>
+      {/*
+        R0 phone nav: bottom tab bar (Capture · My menus · Orders · More).
+        Orders stays pinned so the R0.3 order monitor has a persistent home
+        for its badge; Tables/Assistant/Settings live in the More sheet and
+        each render their own signed-out explanation. Desktop keeps pills.
+      */}
+      <nav
+        data-print-hide
+        aria-label="Sections"
+        className="sticky bottom-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur-sm sm:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="grid grid-cols-4 px-2 pt-1">
+          {(
+            [
+              { id: "capture", label: "Capture", icon: "📸" },
+              { id: "library", label: "My menus", icon: "📚" },
+              { id: "orders", label: "Orders", icon: "🧾" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                navigateTo({ screen: tab.id });
+              }}
+              aria-current={screen === tab.id ? "page" : undefined}
+              className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+                screen === tab.id ? "text-amber-800" : "text-stone-500"
+              }`}
+            >
+              <span aria-hidden="true" className="text-lg leading-none">
+                {tab.icon}
+              </span>
+              {tab.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((open) => !open)}
+            aria-expanded={moreOpen}
+            aria-current={
+              screen === "tables" || screen === "assistant" || screen === "settings"
+                ? "page"
+                : undefined
+            }
+            className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+              moreOpen ||
+              screen === "tables" ||
+              screen === "assistant" ||
+              screen === "settings"
+                ? "text-amber-800"
+                : "text-stone-500"
+            }`}
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              ⋯
+            </span>
+            More
+          </button>
+        </div>
+      </nav>
+      {moreOpen && (
+        <div className="sm:hidden">
+          <div
+            aria-hidden="true"
+            onClick={() => setMoreOpen(false)}
+            className="fixed inset-0 z-40 bg-black/35"
+          />
+          <div
+            role="dialog"
+            aria-label="More"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-stone-200 bg-white px-4 pt-2 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          >
+            <div aria-hidden="true" className="mx-auto mb-1 h-1.5 w-11 rounded-full bg-stone-200" />
+            {(
+              [
+                { id: "tables", label: "Tables", why: "QR cards per table" },
+                ...(!signedIn || featureFlags.assistant
+                  ? [
+                      {
+                        id: "assistant" as const,
+                        label: "Assistant",
+                        why: "Guided fixes and answers",
+                      },
+                    ]
+                  : []),
+                { id: "settings", label: "Settings", why: "Restaurant · Team · Usage" },
+              ] as const
+            ).map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  navigateTo({ screen: row.id });
+                }}
+                className="flex min-h-[52px] w-full flex-col justify-center rounded-xl px-2 text-left transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              >
+                <span className="text-sm font-semibold text-stone-900">{row.label}</span>
+                <span className="text-xs font-normal text-stone-500">{row.why}</span>
+              </button>
+            ))}
+            <a
+              href="/launch"
+              className="flex min-h-[52px] w-full flex-col justify-center rounded-xl px-2 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              <span className="text-sm font-semibold text-stone-900">Get started</span>
+              <span className="text-xs font-normal text-stone-500">
+                The launch checklist and offer
+              </span>
+            </a>
+          </div>
+        </div>
+      )}
       <SiteFooter />
     </div>
   );
