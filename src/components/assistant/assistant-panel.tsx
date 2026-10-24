@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ProposalReview } from "@/components/assistant/proposal-review";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  AssistantApplyError,
   AssistantError,
+  applyAssistantProposal,
   fetchAssistantUsage,
   sendAssistantMessage,
 } from "@/features/assistant/client";
+import { setProposalOperationPrice, type AssistantProposal } from "@/features/assistant/proposal";
 import {
   ASSISTANT_MAX_MESSAGE_CHARS,
   type AssistantHistoryMessage,
@@ -15,23 +19,44 @@ import {
 } from "@/features/assistant/schema";
 
 /**
- * Assistant tab (A1) — help only.
+ * Assistant tab (A1 help + A3 review).
  *
- * The panel is deliberately a small chat, not an editor: the route cannot
- * write, so the UI must not imply it can. History lives in component state
- * (bounded, never persisted); reloading clears the conversation.
+ * The panel is still a chat, but an owner can point it at one of their
+ * account menus. The model then returns a proposal, which is shown as the
+ * server-computed diff; nothing is written until "Approve and save" calls the
+ * approval endpoint with that exact revision. Staff-only menus are filtered
+ * out by the shell, and signed-out visitors never see the picker.
+ *
+ * History lives in component state (bounded, never persisted); reloading
+ * clears the conversation. A proposal belongs to one menu and one revision,
+ * so changing the target discards it rather than carrying it across.
  */
+
+export interface AssistantMenuOption {
+  id: string;
+  title: string;
+}
 
 interface AssistantPanelProps {
   signedIn: boolean;
   /** Session still resolving: show a loading shape, never the sign-in card. */
   sessionPending?: boolean;
+  /** Account menus the caller owns; staff-only menus are excluded upstream. */
+  menus?: readonly AssistantMenuOption[];
+  /** The library/account merge is still loading. */
+  menusLoading?: boolean;
 }
 
 interface ChatTurn {
   id: string;
   role: "user" | "assistant";
   content: string;
+}
+
+interface AppliedChange {
+  menuId: string;
+  title: string;
+  updatedAt: string;
 }
 
 const QUICK_PROMPTS = [
@@ -53,15 +78,33 @@ function formatReset(iso: string | undefined): string | null {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPanelProps) {
+export function AssistantPanel({
+  signedIn,
+  sessionPending = false,
+  menus = [],
+  menusLoading = false,
+}: AssistantPanelProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<AssistantUsageSummary | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
+  const [selectedMenuId, setSelectedMenuId] = useState("");
+  const [proposal, setProposal] = useState<AssistantProposal | null>(null);
+  /** Bumped for each new proposal so price inputs start from the new values. */
+  const [proposalKey, setProposalKey] = useState(0);
+  const [proposalBusy, setProposalBusy] = useState(false);
+  const [proposalStale, setProposalStale] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [applied, setApplied] = useState<AppliedChange | null>(null);
+  const [lastRequest, setLastRequest] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const selectedMenu = menus.find((menu) => menu.id === selectedMenuId) ?? null;
+  /** Chosen id vanished from the account (deleted or moved) while the tab was open. */
+  const menuUnavailable = selectedMenuId !== "" && selectedMenu === null;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -89,36 +132,57 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
     const log = logRef.current;
     if (!log) return;
     log.scrollTop = log.scrollHeight;
-  }, [turns, sending]);
+  }, [turns, sending, proposal]);
 
   const exhausted = usage !== null && usage.remaining <= 0;
-  const disabled = !signedIn || sending || exhausted;
+  const disabled = !signedIn || sending || proposalBusy || exhausted;
 
   const ask = useCallback(
     async (raw: string) => {
       const message = raw.trim();
-      if (!message || sending || !signedIn) return;
+      if (!message || sending || proposalBusy || !signedIn) return;
       if (usage !== null && usage.remaining <= 0) return;
+      if (
+        proposal &&
+        !window.confirm(
+          "Send this? The proposed change on screen has not been saved and will be discarded."
+        )
+      ) {
+        return;
+      }
 
       const history: AssistantHistoryMessage[] = turns.slice(-6).map((turn) => ({
         role: turn.role,
         content: turn.content,
       }));
+      const menuId = selectedMenu?.id;
 
       setSending(true);
       setError(null);
       setDraft("");
+      setLastRequest(message);
       const userTurn: ChatTurn = { id: nextTurnId(), role: "user", content: message };
       setTurns((current) => [...current, userTurn]);
 
       try {
-        const reply = await sendAssistantMessage({ message, history });
+        const reply = await sendAssistantMessage({
+          message,
+          history,
+          ...(menuId ? { menuId } : {}),
+        });
         setTurns((current) => [
           ...current,
           { id: nextTurnId(), role: "assistant", content: reply.reply },
         ]);
         setUsage(reply.usage);
         setUsageError(null);
+        if (reply.proposal) {
+          setProposal(reply.proposal);
+          setProposalKey((value) => value + 1);
+          setProposalStale(false);
+          setProposalError(null);
+          setApplied(null);
+        }
       } catch (sendError) {
         // The optimistic turn is removed so the conversation never shows a
         // question the server did not answer; the draft is restored for retry.
@@ -134,8 +198,72 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
         inputRef.current?.focus();
       }
     },
-    [sending, signedIn, turns, usage]
+    [sending, signedIn, turns, usage, selectedMenu, proposalBusy, proposal]
   );
+
+  const approve = useCallback(async () => {
+    if (!proposal || proposalBusy) return;
+    const current = proposal;
+    if (!menus.some((menu) => menu.id === current.menuId)) {
+      setProposalError("This menu is no longer available. Discard this proposal.");
+      return;
+    }
+    setProposalBusy(true);
+    setProposalError(null);
+    setProposalStale(false);
+    try {
+      const result = await applyAssistantProposal({
+        menuId: current.menuId,
+        expectedUpdatedAt: current.basedOnUpdatedAt,
+        operations: current.operations,
+      });
+      const title = menus.find((menu) => menu.id === current.menuId)?.title ?? result.menu.title;
+      setApplied({ menuId: current.menuId, title, updatedAt: result.menu.updatedAt });
+      setProposal(null);
+      setProposalStale(false);
+      setError(null);
+      inputRef.current?.focus();
+    } catch (applyError) {
+      if (applyError instanceof AssistantApplyError) {
+        if (applyError.code === "stale") {
+          setProposalStale(true);
+        } else {
+          setProposalError(applyError.message);
+        }
+      } else {
+        setProposalError("Could not save the change. Try again in a moment.");
+      }
+    } finally {
+      setProposalBusy(false);
+    }
+  }, [proposal, proposalBusy, menus]);
+
+  function discardProposal() {
+    setProposal(null);
+    setProposalStale(false);
+    setProposalError(null);
+    inputRef.current?.focus();
+  }
+
+  function reviewAgain() {
+    setProposal(null);
+    setProposalStale(false);
+    setProposalError(null);
+    setDraft(lastRequest);
+    inputRef.current?.focus();
+  }
+
+  function chooseMenu(nextId: string) {
+    if (nextId === selectedMenuId) return;
+    if (proposal && !window.confirm("Discard the proposed change? It has not been saved.")) {
+      return;
+    }
+    setSelectedMenuId(nextId);
+    setProposal(null);
+    setProposalStale(false);
+    setProposalError(null);
+    setApplied(null);
+  }
 
   if (sessionPending) {
     return (
@@ -167,6 +295,9 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
   }
 
   const resetLabel = formatReset(usage?.periodEnd);
+  const progressLabel = selectedMenu
+    ? "Reading your menu — this can take a few seconds…"
+    : "Thinking…";
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="assistant-heading">
@@ -176,7 +307,15 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
             Assistant
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Answers come from Eateryo&rsquo;s own feature list. It cannot make changes yet.
+            {selectedMenu ? (
+              <>
+                Ask about Eateryo or request a change to{" "}
+                <span className="font-medium">{selectedMenu.title}</span>. You review every change
+                before it is saved.
+              </>
+            ) : (
+              "Answers come from Eateryo’s own feature list. Pick one of your menus to ask for an edit."
+            )}
           </p>
         </div>
         {usage && (
@@ -185,6 +324,38 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
             {resetLabel ? ` · resets ${resetLabel}` : ""}
           </p>
         )}
+      </div>
+
+      <div className="rounded-2xl border border-stone-200 bg-white p-4">
+        <label htmlFor="assistant-menu" className="text-xs font-semibold text-stone-600">
+          Menu to edit <span className="font-normal text-stone-500">(optional)</span>
+        </label>
+        <select
+          id="assistant-menu"
+          value={selectedMenuId}
+          onChange={(event) => chooseMenu(event.target.value)}
+          disabled={sending || proposalBusy || menusLoading}
+          className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
+        >
+          <option value="">Help only — no menu changes</option>
+          {menuUnavailable && <option value={selectedMenuId}>Unavailable menu</option>}
+          {menus.map((menu) => (
+            <option key={menu.id} value={menu.id}>
+              {menu.title}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs leading-5 text-stone-500">
+          {menusLoading
+            ? "Loading your account menus…"
+            : menuUnavailable
+              ? "That menu is no longer in your account. Choose another one."
+              : menus.length === 0
+                ? "No account menus yet. Move a menu to your account to ask the assistant for edits."
+                : selectedMenu
+                  ? "Changes are proposed for review. Nothing is saved until you approve."
+                  : "Pick one of your menus to request a change; leave it on help for how-to questions."}
+        </p>
       </div>
 
       {usageError && (
@@ -213,21 +384,24 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
         {turns.length === 0 && !sending ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <p className="text-sm text-stone-600">
-              Ask how to do something in Eateryo — publishing, table QR codes, opening hours, team
-              access.
+              {selectedMenu
+                ? "Ask for a change — for example “add a lemonade for 3.50”. The assistant will ask which category if it is unclear, and you will see the exact diff before approving."
+                : "Ask how to do something in Eateryo — publishing, table QR codes, opening hours, team access."}
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {QUICK_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => void ask(prompt)}
-                  className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
+            {!selectedMenu && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {QUICK_PROMPTS.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => void ask(prompt)}
+                    className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           turns.map((turn) => (
@@ -251,7 +425,7 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
             role="status"
             className="self-start rounded-2xl bg-stone-100 px-4 py-2.5 text-sm text-stone-600"
           >
-            Thinking…
+            {progressLabel}
           </p>
         )}
       </div>
@@ -263,6 +437,54 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
         >
           {error}
         </p>
+      )}
+
+      {applied && (
+        <div
+          role="status"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Change saved to “{applied.title}”.</p>
+          <p className="mt-1 text-xs leading-5 text-emerald-800">
+            The draft is updated. Diners keep seeing the published version until you publish
+            changes.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs font-medium">
+            <a
+              href={`/menus/${encodeURIComponent(applied.menuId)}`}
+              className="underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+            >
+              Open in editor
+            </a>
+            <button
+              type="button"
+              onClick={() => setApplied(null)}
+              className="underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {proposal && (
+        <ProposalReview
+          key={proposalKey}
+          proposal={proposal}
+          menuTitle={menus.find((menu) => menu.id === proposal.menuId)?.title ?? "your menu"}
+          editorHref={`/menus/${encodeURIComponent(proposal.menuId)}`}
+          busy={proposalBusy}
+          stale={proposalStale}
+          error={proposalError}
+          onPriceChange={(index, price) =>
+            setProposal((current) =>
+              current ? setProposalOperationPrice(current, index, price) : current
+            )
+          }
+          onApprove={() => void approve()}
+          onDiscard={discardProposal}
+          onReviewAgain={reviewAgain}
+        />
       )}
 
       <form
@@ -290,7 +512,13 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
             rows={2}
             maxLength={ASSISTANT_MAX_MESSAGE_CHARS}
             disabled={disabled}
-            placeholder={exhausted ? "Monthly allowance reached" : "Ask a question…"}
+            placeholder={
+              exhausted
+                ? "Monthly allowance reached"
+                : selectedMenu
+                  ? `Ask for a change to ${selectedMenu.title}…`
+                  : "Ask a question…"
+            }
             className="min-h-14 flex-1 resize-y rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
           />
           <button
@@ -298,7 +526,7 @@ export function AssistantPanel({ signedIn, sessionPending = false }: AssistantPa
             disabled={disabled || draft.trim().length === 0}
             className="rounded-full bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            {sending ? "Sending…" : "Send"}
+            {sending ? "Sending…" : proposalBusy ? "Saving…" : "Send"}
           </button>
         </div>
         <p className="text-xs text-stone-500">

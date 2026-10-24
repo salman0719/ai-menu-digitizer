@@ -1348,7 +1348,14 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         {screen === "orders" && <OrdersBoard />}
 
         {screen === "assistant" && (
-          <AssistantPanel signedIn={signedIn} sessionPending={sessionPending} />
+          <AssistantPanel
+            signedIn={signedIn}
+            sessionPending={sessionPending}
+            menusLoading={libraryLoading}
+            menus={menus
+              .filter((menu) => serverIds.has(menu.id) && !staffMenus.has(menu.id))
+              .map((menu) => ({ id: menu.id, title: menu.title }))}
+          />
         )}
 
         {screen === "tables" && (
