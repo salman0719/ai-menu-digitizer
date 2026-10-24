@@ -406,7 +406,7 @@ export function MenuEditor({
   }
 
   const headerRow = (
-    <div data-print-hide className="flex items-center gap-3">
+    <div data-print-hide className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <button type="button" onClick={onBack} className={smallButton}>
         ← All menus
       </button>
@@ -421,7 +421,7 @@ export function MenuEditor({
       )}
       <p
         role="status"
-        className={`text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
+        className={`min-w-0 text-xs font-medium ${saveState.kind === "error" ? "text-red-700" : "text-stone-500"}`}
       >
         {saveState.kind === "saving" ? (
           <span>
