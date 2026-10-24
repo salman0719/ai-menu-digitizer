@@ -552,6 +552,7 @@ export function AssistantPanel({
             rows={2}
             maxLength={ASSISTANT_MAX_MESSAGE_CHARS}
             disabled={disabled}
+            enterKeyHint="send"
             placeholder={
               !configured
                 ? "Assistant not configured"
@@ -561,7 +562,7 @@ export function AssistantPanel({
                     ? `Ask for a change to ${selectedMenu.title}…`
                     : "Ask a question…"
             }
-            className="min-h-14 flex-1 resize-y rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
+            className="min-h-14 flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100 sm:resize-y"
           />
           <button
             type="submit"
