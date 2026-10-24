@@ -163,10 +163,16 @@ describe("GET /api/launch", () => {
     const body = (await response.json()) as {
       launch: LaunchSnapshot & {
         usage: { requests: number; cap: number; remaining: number } | null;
+        assistant: { messages: number; cap: number; remaining: number; costMicros: number | null };
       };
     };
     expect(body.launch).toMatchObject({ menuCount: 0, publishedCount: 0, orderCount: 0 });
     expect(body.launch.usage).toMatchObject({ requests: 0, remaining: body.launch.usage?.cap });
+    expect(body.launch.assistant).toMatchObject({
+      messages: 0,
+      remaining: body.launch.assistant.cap,
+      costMicros: 0,
+    });
   }, 30_000);
 
   it("answers 401 when signed out", async () => {

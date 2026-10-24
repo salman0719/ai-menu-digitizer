@@ -307,6 +307,25 @@ function UsageCard({ status }: { status: LaunchStatus }) {
       <p className="mt-1 text-xs text-stone-400">
         Failed attempts that reached the AI still count: the provider bills them.
       </p>
+
+      {status.assistant.messages > 0 ? (
+        <div className="mt-4 border-t border-stone-100 pt-3">
+          <h3 className="text-sm font-semibold text-stone-900">Assistant this month</h3>
+          <p className="mt-1 text-xs text-stone-600">
+            {status.assistant.messages} of {status.assistant.cap} messages used
+            {status.assistant.neurons !== null
+              ? ` · ${Math.round(status.assistant.neurons).toLocaleString()} neurons`
+              : " · neuron use not reported"}
+            {status.assistant.costMicros !== null
+              ? ` · ${formatMicroUsd(status.assistant.costMicros)}`
+              : " · cost unknown"}
+          </p>
+          <p className="mt-1 text-xs text-stone-400">
+            Assistant calls come from the same free Workers AI allocation as extraction; the
+            message cap resets each UTC month.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -83,6 +83,28 @@ export const assistantUsageSummarySchema = z.object({
 
 export type AssistantUsageSummary = z.infer<typeof assistantUsageSummarySchema>;
 
+/**
+ * The assistant half of the spend panel (A4), read from the ledger rather
+ * than from an in-memory counter. Cost is null as soon as one call omitted
+ * `usage.neurons`, because a partial sum would read like a complete one.
+ */
+export const assistantSpendSummarySchema = z.object({
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  /** Every model call this month, failed ones included: they are billed too. */
+  messages: z.number().int().nonnegative(),
+  cap: z.number().int().positive(),
+  remaining: z.number().int().nonnegative(),
+  /** Sum of reported neurons; null when no call reported any. */
+  neurons: z.number().nonnegative().nullable(),
+  /** Micro-USD from reported neurons; null when any call omitted them. */
+  costMicros: z.number().int().nonnegative().nullable(),
+  /** Calls whose neuron count was missing (so their cost is unknown). */
+  unpricedMessages: z.number().int().nonnegative(),
+});
+
+export type AssistantSpendSummary = z.infer<typeof assistantSpendSummarySchema>;
+
 export const assistantReplySchema = z.object({
   reply: z.string().min(1).max(ASSISTANT_MAX_REPLY_CHARS),
   usage: assistantUsageSummarySchema,

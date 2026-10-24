@@ -11,13 +11,21 @@
  * by the whole Cloudflare account.
  */
 
-import { and, count, eq, gte, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 
 import type { TenancyDb } from "@/features/tenancy/repo";
 import { monthWindow } from "@/features/usage/schema";
 import { assistantUsage } from "@/lib/db/schema";
-import { assistantDailyCeiling, assistantMonthlyCap, type AssistantUsageSummary } from "./schema";
+import {
+  assistantDailyCeiling,
+  assistantMonthlyCap,
+  type AssistantSpendSummary,
+  type AssistantUsageSummary,
+} from "./schema";
 import { MICRO_USD_PER_NEURON } from "@/lib/ai/assistant/worker-ai";
+
+/** The monthly cap can reach 5,000; a spend read never scans far past it. */
+export const MAX_ASSISTANT_SPEND_ROWS = 5_000;
 
 export interface RecordAssistantUsageInput {
   userId: string;
@@ -106,6 +114,61 @@ export async function getAssistantUsageSummary(
     used,
     remaining: Math.max(0, cap - used),
     periodEnd: end.toISOString(),
+  };
+}
+
+/** The ledger summary shown in the spend panel; never a second counter. */
+export async function getAssistantSpendSummary(
+  db: TenancyDb,
+  userId: string,
+  now: Date = new Date(),
+  env: Record<string, string | undefined> = process.env
+): Promise<AssistantSpendSummary> {
+  const { start, end } = monthWindow(now);
+  const rows = await db
+    .select({ neurons: assistantUsage.neurons, costMicros: assistantUsage.costMicros })
+    .from(assistantUsage)
+    .where(
+      and(
+        eq(assistantUsage.userId, userId),
+        gte(assistantUsage.createdAt, start),
+        lt(assistantUsage.createdAt, end)
+      )
+    )
+    .orderBy(desc(assistantUsage.createdAt))
+    .limit(MAX_ASSISTANT_SPEND_ROWS);
+
+  let neurons = 0;
+  let sawNeurons = false;
+  let costTotal = 0;
+  let unpricedMessages = 0;
+  for (const row of rows) {
+    if (row.neurons === null) {
+      unpricedMessages += 1;
+    } else {
+      neurons += row.neurons;
+      sawNeurons = true;
+    }
+    if (row.costMicros === null) {
+      // A row with neurons but no cost would be a storage bug; counting it as
+      // unpriced is safer than quietly dropping it from the total.
+      if (row.neurons !== null) unpricedMessages += 1;
+    } else {
+      costTotal += Number(row.costMicros);
+    }
+  }
+
+  const cap = assistantMonthlyCap(env);
+  return {
+    periodStart: start.toISOString(),
+    periodEnd: end.toISOString(),
+    messages: rows.length,
+    cap,
+    remaining: Math.max(0, cap - rows.length),
+    neurons: sawNeurons ? neurons : null,
+    // Empty month = a real $0.00; one unreported call = unknown, not partial.
+    costMicros: unpricedMessages > 0 ? null : costTotal,
+    unpricedMessages,
   };
 }
 

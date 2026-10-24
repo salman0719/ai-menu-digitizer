@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAssistantSpendSummary } from "@/features/assistant/repo";
 import { getLaunchSnapshot } from "@/features/launch/repo";
 import { getMonthlyUsageSummary } from "@/features/usage/repo";
 import { getSessionUserId } from "@/lib/auth/session";
@@ -9,7 +10,7 @@ import { reportError } from "@/lib/observability/alerts";
 /**
  * GET /api/launch — the signed-in account's onboarding state: how many menus
  * exist, whether one is live, how many orders have arrived, what still needs
- * a price, and this month's extraction usage against the cap.
+ * a price, and this month's extraction + assistant spend against their caps.
  *
  * One request feeds the whole checklist; personalized, so never cached.
  */
@@ -37,11 +38,12 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const db = getDb();
-    const [snapshot, usage] = await Promise.all([
+    const [snapshot, usage, assistant] = await Promise.all([
       getLaunchSnapshot(db, userId),
       getMonthlyUsageSummary(db, userId),
+      getAssistantSpendSummary(db, userId),
     ]);
-    const response = NextResponse.json({ launch: { ...snapshot, usage } });
+    const response = NextResponse.json({ launch: { ...snapshot, usage, assistant } });
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {
