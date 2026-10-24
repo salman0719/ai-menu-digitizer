@@ -75,9 +75,12 @@ below 12px on phones (print keeps its 10px QR captions — this is screen-only).
 @media (pointer: coarse) {
   /* Height only: a blanket min-width forces dense rows (reorder arrows,
   delete buttons, pills) wider than their tracks and that is what pushes
-  the page into horizontal overflow. Width stays with the components. */
-  button,
-  [role="button"] {
+  the page into horizontal overflow. Width stays with the components.
+  Pills (rounded-full) keep their designed rhythm: compact tabs like the
+  diner's "All" pill stay compact, while form controls, list rows and
+  other full-size targets keep the 44px minimum so phone taps land. */
+  button:not(.rounded-full),
+  [role="button"]:not(.rounded-full) {
     min-height: 44px;
   }
 
