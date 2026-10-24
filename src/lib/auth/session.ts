@@ -9,11 +9,23 @@ export async function getSession() {
 
 export type Session = NonNullable<Awaited<ReturnType<typeof getSession>>>;
 
+/** The signed-in account, as feature access and audit code need it. */
+export type SessionUser = {
+  id: string;
+  email: string;
+};
+
+/** The signed-in account, or null for anonymous visitors. */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const session = await getSession();
+  if (!session?.user) return null;
+  return { id: session.user.id, email: session.user.email };
+}
+
 /**
  * Server guard for API routes: returns the authenticated user or null.
  * Callers must respond 401 themselves so each route owns its error shape.
  */
 export async function getSessionUserId(): Promise<string | null> {
-  const session = await getSession();
-  return session?.user.id ?? null;
+  return (await getSessionUser())?.id ?? null;
 }
