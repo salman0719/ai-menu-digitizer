@@ -1381,12 +1381,28 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 .filter((menu) => serverIds.has(menu.id) && !staffMenus.has(menu.id))
                 .map((menu) => ({ id: menu.id, title: menu.title }))}
             />
+          ) : !signedIn ? (
+            // The flag endpoint needs a session, so a signed-out visitor would
+            // otherwise be told this account lacks access it never had.
+            <section className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
+              <h1 className="font-medium text-stone-900">Sign in to use the Assistant</h1>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+                The assistant answers with your own restaurants and menus, so it needs an account.
+                The offline editor still works without one.
+              </p>
+              <a
+                href="/sign-in"
+                className="mt-4 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              >
+                Sign in
+              </a>
+            </section>
           ) : (
             <section className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
               <h1 className="font-medium text-stone-900">Assistant isn’t available</h1>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
-                This account doesn’t have access to the assistant yet. Everything else in Eateryo
-                works as usual.
+                The assistant isn’t released to this account yet. Everything else in Eateryo works
+                as usual.
               </p>
               <button
                 type="button"
