@@ -388,9 +388,18 @@ describe("GET /api/assistant", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toEqual({
       usage: { cap: 300, used: 0, remaining: 300, periodEnd: expect.any(String) },
+      configured: true,
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await holder.db!.select().from(assistantUsage)).toHaveLength(0);
+  });
+
+  it("reports an unconfigured deployment before the owner types", async () => {
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    holder.userId = await seedUser();
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ configured: false });
   });
 });
 

@@ -112,6 +112,14 @@ export const assistantReplySchema = z.object({
 
 export type AssistantReply = z.infer<typeof assistantReplySchema>;
 
+/** The panel's first load: allowance plus whether this deployment has keys. */
+export const assistantStatusSchema = z.object({
+  usage: assistantUsageSummarySchema,
+  configured: z.boolean(),
+});
+
+export type AssistantStatus = z.infer<typeof assistantStatusSchema>;
+
 /** Error codes the route may return; the browser client maps them to copy. */
 export type AssistantErrorCode =
   | "invalid_request"

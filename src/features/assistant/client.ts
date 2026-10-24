@@ -16,8 +16,9 @@ import {
 } from "./proposal";
 import {
   assistantReplySchema,
-  assistantUsageSummarySchema,
+  assistantStatusSchema,
   type AssistantHistoryMessage,
+  type AssistantStatus,
   type AssistantUsageSummary,
 } from "./schema";
 
@@ -29,7 +30,6 @@ const errorEnvelope = z.object({
   }),
 });
 
-const usageEnvelope = z.object({ usage: assistantUsageSummarySchema });
 
 /** A help answer, or a proposal the owner can review (A2). */
 const assistantTurnSchema = assistantReplySchema.extend({
@@ -87,10 +87,14 @@ function failureFrom(response: Response, payload: unknown): AssistantError {
   return new AssistantError("unavailable", message);
 }
 
-/** This account's assistant allowance for the current UTC month. */
-export async function fetchAssistantUsage(
+/**
+ * The panel's first load: this account's allowance plus whether the server
+ * has the Workers AI keys it needs. A tab with missing configuration explains
+ * itself instead of accepting questions it can never answer.
+ */
+export async function fetchAssistantStatus(
   fetchImpl: typeof fetch = fetch
-): Promise<AssistantUsageSummary> {
+): Promise<AssistantStatus> {
   let response: Response;
   try {
     response = await fetchImpl("/api/assistant", { cache: "no-store" });
@@ -102,13 +106,20 @@ export async function fetchAssistantUsage(
   if (!response.ok) throw failureFrom(response, payload);
 
   try {
-    return usageEnvelope.parse(payload).usage;
+    return assistantStatusSchema.parse(payload);
   } catch {
     throw new AssistantError(
       "invalid_response",
-      "The server sent allowance data this app could not understand."
+      "The server sent assistant data this app could not understand."
     );
   }
+}
+
+/** This account's assistant allowance for the current UTC month. */
+export async function fetchAssistantUsage(
+  fetchImpl: typeof fetch = fetch
+): Promise<AssistantUsageSummary> {
+  return (await fetchAssistantStatus(fetchImpl)).usage;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   AssistantApplyError,
   AssistantError,
   applyAssistantProposal,
-  fetchAssistantUsage,
+  fetchAssistantStatus,
   sendAssistantMessage,
 } from "@/features/assistant/client";
 import { setProposalOperationPrice, type AssistantProposal } from "@/features/assistant/proposal";
@@ -98,6 +98,8 @@ export function AssistantPanel({
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<AssistantUsageSummary | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
+  /** False when this deployment is missing its Workers AI keys (A4 fallback). */
+  const [configured, setConfigured] = useState(true);
   const [selectedMenuId, setSelectedMenuId] = useState("");
   const [proposal, setProposal] = useState<AssistantProposal | null>(null);
   /** Bumped for each new proposal so price inputs start from the new values. */
@@ -125,8 +127,11 @@ export function AssistantPanel({
     let cancelled = false;
     void (async () => {
       try {
-        const summary = await fetchAssistantUsage();
-        if (!cancelled) setUsage(summary);
+        const status = await fetchAssistantStatus();
+        if (!cancelled) {
+          setUsage(status.usage);
+          setConfigured(status.configured);
+        }
       } catch (loadError) {
         if (!cancelled) {
           setUsageError(
@@ -149,12 +154,12 @@ export function AssistantPanel({
   }, [turns, sending, proposal]);
 
   const exhausted = usage !== null && usage.remaining <= 0;
-  const disabled = !signedIn || sending || proposalBusy || exhausted;
+  const disabled = !signedIn || sending || proposalBusy || exhausted || !configured;
 
   const ask = useCallback(
     async (raw: string) => {
       const message = raw.trim();
-      if (!message || sending || proposalBusy || !signedIn) return;
+      if (!message || sending || proposalBusy || !signedIn || !configured) return;
       if (usage !== null && usage.remaining <= 0) return;
       if (
         proposalVisible &&
@@ -202,17 +207,18 @@ export function AssistantPanel({
         // question the server did not answer; the draft is restored for retry.
         setTurns((current) => current.filter((turn) => turn.id !== userTurn.id));
         setDraft(message);
-        setError(
-          sendError instanceof AssistantError
-            ? sendError.message
-            : "The assistant is unavailable right now. Try again in a moment."
-        );
+        if (sendError instanceof AssistantError) {
+          if (sendError.code === "not_configured") setConfigured(false);
+          setError(sendError.message);
+        } else {
+          setError("The assistant is unavailable right now. Try again in a moment.");
+        }
       } finally {
         setSending(false);
         inputRef.current?.focus();
       }
     },
-    [sending, signedIn, turns, usage, selectedMenu, proposalBusy, proposalVisible, proposalsEnabled]
+    [sending, signedIn, turns, usage, configured, selectedMenu, proposalBusy, proposalVisible, proposalsEnabled]
   );
 
   const approve = useCallback(async () => {
@@ -398,6 +404,16 @@ export function AssistantPanel({
         </p>
       )}
 
+      {!configured && (
+        <p
+          role="alert"
+          className="rounded-xl border border-stone-300 bg-stone-100 px-4 py-3 text-sm text-stone-800"
+        >
+          The assistant isn’t configured on this deployment yet. Ask an operator to finish the
+          Workers AI setup; the rest of Eateryo works as usual.
+        </p>
+      )}
+
       <div
         ref={logRef}
         role="log"
@@ -537,11 +553,13 @@ export function AssistantPanel({
             maxLength={ASSISTANT_MAX_MESSAGE_CHARS}
             disabled={disabled}
             placeholder={
-              exhausted
-                ? "Monthly allowance reached"
-                : proposalsEnabled && selectedMenu
-                  ? `Ask for a change to ${selectedMenu.title}…`
-                  : "Ask a question…"
+              !configured
+                ? "Assistant not configured"
+                : exhausted
+                  ? "Monthly allowance reached"
+                  : proposalsEnabled && selectedMenu
+                    ? `Ask for a change to ${selectedMenu.title}…`
+                    : "Ask a question…"
             }
             className="min-h-14 flex-1 resize-y rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:bg-stone-100"
           />

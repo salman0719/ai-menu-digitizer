@@ -4,6 +4,7 @@ import {
   AssistantApplyError,
   AssistantError,
   applyAssistantProposal,
+  fetchAssistantStatus,
   fetchAssistantUsage,
   sendAssistantMessage,
 } from "@/features/assistant/client";
@@ -331,8 +332,17 @@ describe("applyAssistantProposal", () => {
 });
 
 describe("fetchAssistantUsage", () => {
-  it("reads the allowance envelope", async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ usage }));
+  it("reads the allowance envelope and the deployment state", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ usage, configured: false }));
+    expect(await fetchAssistantStatus(fetchImpl)).toEqual({ usage, configured: false });
+  });
+
+  it("still exposes just the allowance for callers that only need it", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ usage, configured: true }));
     expect(await fetchAssistantUsage(fetchImpl)).toEqual(usage);
   });
 

@@ -177,7 +177,14 @@ export async function GET(request?: Request): Promise<NextResponse> {
 
   try {
     const allowance = await readAssistantAllowance(getDb(), context.user.id);
-    return noStore(NextResponse.json({ usage: allowance.summary }));
+    // `configured` lets the tab explain a missing deployment key before the
+    // owner types a question into a chat box that cannot answer.
+    return noStore(
+      NextResponse.json({
+        usage: allowance.summary,
+        configured: readAssistantProviderConfig() !== null,
+      })
+    );
   } catch (error) {
     await reportError("assistant.usage_failed", error);
     return errorResponse("server_db_unavailable", PUBLIC_MESSAGES.db_unavailable, 503);
