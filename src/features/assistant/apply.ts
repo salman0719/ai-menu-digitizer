@@ -53,6 +53,7 @@ export type ProposalApplyErrorCode =
   | "missing_price"
   | "empty_update"
   | "invalid_move"
+  | "unsupported_operation"
   | "invalid_result";
 
 export class ProposalApplyError extends Error {
@@ -501,6 +502,15 @@ export function applyProposalOperations(
         });
         break;
       }
+
+      default:
+        // The Zod allowlist is the real gate; this catches a future operation
+        // added to the union without an implementation, and refuses to treat
+        // an unknown op as a silent no-op.
+        throw new ProposalApplyError(
+          "unsupported_operation",
+          "That change is not something this assistant can apply."
+        );
     }
   }
 

@@ -38,10 +38,16 @@ export const MAX_CONTEXT_MENUS = 40;
 export const MAX_MENU_CONTEXT_CATEGORIES = 40;
 export const MAX_MENU_CONTEXT_ITEMS = 300;
 
-/** Defensive cleanup for user-supplied text placed in the prompt. */
+/**
+ * Defensive cleanup for user-supplied text placed in the prompt. Besides
+ * control characters, zero-width and bidirectional formatting marks are
+ * removed: they can make one line render as another, which is a spoofing
+ * trick rather than menu content.
+ */
 export function sanitizePromptText(value: string, maxLength: number): string {
   return value
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
@@ -60,10 +66,10 @@ export function buildAccountContext(restaurants: readonly AssistantContextRestau
   const lines: string[] = [];
   let menuBudget = MAX_CONTEXT_MENUS;
   for (const restaurant of restaurants.slice(0, MAX_CONTEXT_RESTAURANTS)) {
-    const name = sanitizePromptText(restaurant.name, 120);
+    const name = sanitizeDelimitedText(restaurant.name, 120);
     const menus = restaurant.menus
       .slice(0, Math.max(0, menuBudget))
-      .map((menu) => sanitizePromptText(menu.title, 120));
+      .map((menu) => sanitizeDelimitedText(menu.title, 120));
     menuBudget -= menus.length;
     lines.push(
       `- ${name} (${restaurant.role}) — ${menus.length === 0 ? "no menus" : `menus: ${menus.map((title) => `"${title}"`).join(", ")}`}`
@@ -81,11 +87,12 @@ export function buildAccountContext(restaurants: readonly AssistantContextRestau
  * never treated as commands — the rules say menu content is data.
  */
 /**
- * Menu text goes inside a delimited block, so angle brackets are neutralized:
- * an item named `</menu-data>` must not be able to close the block and turn
- * the rest of the menu into instructions.
+ * Text placed inside a delimited block: angle brackets are neutralized so an
+ * item name or restaurant name such as `</menu-data>` cannot close the block
+ * and turn the rest of the prompt into instructions. The block's own tags are
+ * the only ones left in the assembled prompt.
  */
-function sanitizeMenuText(value: string, maxLength: number): string {
+function sanitizeDelimitedText(value: string, maxLength: number): string {
   return sanitizePromptText(value, maxLength).replace(/</g, "‹").replace(/>/g, "›");
 }
 
@@ -95,7 +102,7 @@ export function buildMenuContext(menu: MenuDocument): string {
   const totalItems = menu.categories.reduce((total, category) => total + category.items.length, 0);
 
   lines.push(
-    `Menu: "${sanitizeMenuText(menu.title, 120)}" — id ${menu.id}, currency ${
+    `Menu: "${sanitizeDelimitedText(menu.title, 120)}" — id ${menu.id}, currency ${
       menu.currency ?? "none"
     }`
   );
@@ -104,7 +111,7 @@ export function buildMenuContext(menu: MenuDocument): string {
       categories.length === 0
         ? "none"
         : categories
-            .map((category) => `${category.id} "${sanitizeMenuText(category.name, 120)}"`)
+            .map((category) => `${category.id} "${sanitizeDelimitedText(category.name, 120)}"`)
             .join(", ")
     }`
   );
@@ -116,7 +123,7 @@ export function buildMenuContext(menu: MenuDocument): string {
     for (const item of category.items) {
       if (budget <= 0) break;
       lines.push(
-        `- ${item.id} | "${sanitizeMenuText(item.name, 120)}" | ${
+        `- ${item.id} | "${sanitizeDelimitedText(item.name, 120)}" | ${
           item.price === null ? "no price" : item.price
         } | ${category.id} | ${
           item.available === false
