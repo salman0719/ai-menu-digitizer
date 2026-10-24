@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   addCategory,
@@ -136,22 +136,6 @@ function previewEyebrow(
     : "Live page preview";
 }
 
-/**
- * Category layout: "single" shows one category at a time behind a horizontal
- * chip carousel; "all" is the legacy vertical stack of every category. The
- * choice is a tiny UI preference, so it is remembered in localStorage.
- */
-type CategoryViewMode = "single" | "all";
-
-const VIEW_MODE_STORAGE_KEY = "menu-editor-category-view";
-
-function viewModeButton(active: boolean): string {
-  return (
-    "rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 " +
-    (active ? "bg-amber-800 text-white" : "text-stone-600 hover:text-amber-900")
-  );
-}
-
 export function MenuEditor({
   doc,
   selectedItemId = null,
@@ -186,27 +170,30 @@ export function MenuEditor({
   const search = searchMenu(doc, query);
   const isFiltering = query.trim().length > 0;
 
-  // Category carousel. The active category resolves against the visible
-  // (search-filtered) list, so a deleted category — or one filtered out of a
-  // search — falls back to the first visible category instead of blanking.
-  // Restore the persisted layout preference. The editor only ever mounts
-  // client-side (the page opens it after user interaction), so reading
-  // localStorage in the initializer is hydration-safe; if storage is blocked
-  // or empty, default to the carousel.
-  const [viewMode, setViewMode] = useState<CategoryViewMode>(() => {
-    if (typeof window === "undefined") return "single";
-    try {
-      return window.localStorage.getItem(VIEW_MODE_STORAGE_KEY) === "all" ? "all" : "single";
-    } catch {
-      return "single";
-    }
-  });
+  // Category navigation (R0: the One-at-a-time/All toggle is deleted).
+  // Phones show one section behind the stepper; larger screens show the full
+  // menu and search covers everything. The active category resolves against
+  // the visible (search-filtered) list, so a deleted category — or one
+  // filtered out of a search — falls back to the first visible category
+  // instead of blanking.
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
-  const activeChipRef = useRef<HTMLButtonElement | null>(null);
   const activeMatch =
     search.categories.find((match) => match.category.id === activeCategoryId) ??
     search.categories[0] ??
     null;
+  const activeIndex = Math.max(
+    0,
+    search.categories.findIndex((match) => match.category.id === activeMatch?.category.id)
+  );
+
+  /** Step through the visible categories from the phone stepper. */
+  function stepCategory(delta: 1 | -1) {
+    const ids = search.categories.map((match) => match.category.id);
+    if (ids.length === 0) return;
+    const current = ids.indexOf(activeMatch?.category.id ?? "");
+    const next = ids[(current + delta + ids.length) % ids.length];
+    if (next) setActiveCategoryId(next);
+  }
 
   useEffect(() => {
     if (!selectedItemId) return;
@@ -218,36 +205,6 @@ export function MenuEditor({
     );
     return () => cancelAnimationFrame(frame);
   }, [selectedItemId]);
-
-  // Keep the active chip visible inside the horizontally scrolling row.
-  useEffect(() => {
-    activeChipRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeMatch?.category.id, viewMode, query]);
-
-  function changeViewMode(mode: CategoryViewMode) {
-    setViewMode(mode);
-    try {
-      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
-    } catch {
-      /* storage unavailable — the session default is fine */
-    }
-  }
-
-  /** Left/Right/Home/End navigation across the category chips. */
-  function handleChipListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const ids = search.categories.map((match) => match.category.id);
-    const currentIndex = ids.indexOf(activeMatch?.category.id ?? "");
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % ids.length;
-    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + ids.length) % ids.length;
-    else if (event.key === "Home") nextIndex = 0;
-    else if (event.key === "End") nextIndex = ids.length - 1;
-    if (nextIndex === null || !ids[nextIndex]) return;
-    event.preventDefault();
-    const nextId = ids[nextIndex];
-    setActiveCategoryId(nextId);
-    requestAnimationFrame(() => document.getElementById(`category-chip-${nextId}`)?.focus());
-  }
 
   // Duplicate review (flags only, never auto-deletes — see duplicates.ts).
   // Dismissals are remembered per document, in session state and localStorage.
@@ -297,13 +254,13 @@ export function MenuEditor({
     }
     const next = deleteCategory(doc, category.id);
     setUndo(captureDeleteUndo(doc, next, `deleted category “${category.name}”`));
-    // Keep the carousel on the category that takes this one's place (or the
+    // Keep the stepper on the category that takes this one's place (or the
     // new last one); null when the menu is now empty.
     setActiveCategoryId(next.categories[Math.min(index, next.categories.length - 1)]?.id ?? null);
     onChange(next);
   }
 
-  /** Add a category and, in single view, open it straight away. */
+  /** Add a category and open it straight away. */
   function handleAddCategory() {
     const next = addCategory(doc, { name: "New category" });
     setActiveCategoryId(next.categories[next.categories.length - 1]?.id ?? null);
@@ -1000,67 +957,46 @@ export function MenuEditor({
           </button>
         </div>
       )}
-      {doc.categories.length > 0 && search.categories.length > 0 && (
-        <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-2 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-3">
-          {viewMode === "single" && (
-            <div
-              role="navigation"
-              aria-label="Menu categories"
-              onKeyDown={handleChipListKeyDown}
-              className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1"
-            >
-              {search.categories.map(({ category, items }) => {
-                const isActive = category.id === activeMatch?.category.id;
-                return (
-                  <button
-                    key={category.id}
-                    id={`category-chip-${category.id}`}
-                    type="button"
-                    aria-current={isActive ? "true" : undefined}
-                    ref={isActive ? activeChipRef : null}
-                    onClick={() => setActiveCategoryId(category.id)}
-                    className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
-                      isActive
-                        ? "border-amber-800 bg-amber-800 text-white"
-                        : "border-stone-300 bg-white text-stone-600 hover:border-amber-700 hover:text-amber-900"
-                    }`}
-                  >
-                    {category.name}
-                    <span
-                      className={`ml-1.5 rounded-full px-1.5 text-xs ${
-                        isActive ? "bg-white/20" : "bg-stone-100 text-stone-500"
-                      }`}
-                    >
-                      {items.length}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {viewMode === "all" && <span className="flex-1" />}
-          <div
-            role="group"
-            aria-label="Category layout"
-            className="flex shrink-0 self-start rounded-full border border-stone-300 bg-white p-0.5 sm:self-auto"
-          >
+      {doc.categories.length > 0 && search.categories.length > 0 && activeMatch && (
+        <div className="sticky top-0 z-20 -mx-4 bg-[#faf8f5]/95 px-4 py-2 backdrop-blur-sm sm:hidden">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              aria-pressed={viewMode === "single"}
-              onClick={() => changeViewMode("single")}
-              className={viewModeButton(viewMode === "single")}
+              onClick={() => stepCategory(-1)}
+              aria-label="Previous category"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-stone-300 bg-white text-lg font-bold text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
             >
-              One at a time
+              ‹
             </button>
+            <label className="relative flex min-h-[44px] flex-1 items-center rounded-xl border border-stone-300 bg-white px-3 transition-colors focus-within:border-amber-700">
+              <span className="sr-only">Category</span>
+              <select
+                value={activeMatch.category.id}
+                onChange={(event) => setActiveCategoryId(event.target.value)}
+                className="w-full appearance-none bg-transparent pr-6 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                {search.categories.map(({ category, items }) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name} ({items.length})
+                  </option>
+                ))}
+              </select>
+              <span aria-hidden="true" className="pointer-events-none absolute right-3 text-xs text-stone-500">
+                ▾
+              </span>
+            </label>
             <button
               type="button"
-              aria-pressed={viewMode === "all"}
-              onClick={() => changeViewMode("all")}
-              className={viewModeButton(viewMode === "all")}
+              onClick={() => stepCategory(1)}
+              aria-label="Next category"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-stone-300 bg-white text-lg font-bold text-stone-700 transition-colors hover:border-amber-700 hover:text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
             >
-              All categories
+              ›
             </button>
           </div>
+          <p className="mt-1 text-xs text-stone-500">
+            Category {activeIndex + 1} of {search.categories.length}
+          </p>
         </div>
       )}
       {doc.categories.length === 0 ? (
@@ -1079,15 +1015,16 @@ export function MenuEditor({
           </button>
         </div>
       ) : (
-        search.categories
-          .filter((match) => viewMode === "all" || match.category.id === activeMatch?.category.id)
-          .map(({ category, items }) => {
+        search.categories.map(({ category, items }) => {
             const index = doc.categories.findIndex((c) => c.id === category.id);
+            // R0: phones show the stepper's category only; sm+ shows every section.
+            const phoneOnly =
+              category.id === activeMatch?.category.id ? "" : "hidden sm:block ";
             return (
               <section
                 key={category.id}
                 aria-label={`Category ${category.name}`}
-                className="rounded-2xl border border-stone-200 bg-stone-50/60 p-4"
+                className={`${phoneOnly}rounded-2xl border border-stone-200 bg-stone-50/60 p-4`}
               >
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <CommitInput
