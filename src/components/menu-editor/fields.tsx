@@ -21,7 +21,8 @@ interface CommitInputProps {
 
 const baseInput =
   "w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-900 " +
-  "focus:border-amber-700 focus:outline-none";
+  // Textareas get no resize handle on touch (undraggable); desktop keeps vertical resize.
+  "resize-none focus:border-amber-700 focus:outline-none sm:resize-y";
 
 export function CommitInput({
   label,

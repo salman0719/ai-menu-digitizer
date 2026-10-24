@@ -105,9 +105,9 @@ renders and fails gracefully without a DB; anonymous flow untouched.
 **Verified 2026-10-18 (all done-when criteria met):** credentials landed —
 migration applied to the real Neon DB (6 tables), endpoints verified live
 (anonymous 401, signed-out mode untouched). Magic-link sign-in ran end to
-end: link delivered by Resend through the **sandbox sender
-`onboarding@resend.dev`** (clearly marked in `.env.local`; swaps to a
-verified domain later — `.env.example` documents both), clicked → session
+end: link delivered by Resend through `EMAIL_FROM` (then the sandbox
+`onboarding@resend.dev`; `.env.local` has since moved to
+`notifications@send.eateryo.com` — `.env.example` documents both), clicked → session
 → `POST /api/restaurants` 201 → owner-role restaurant listed scoped to
 that session, against Neon through the real API. Tenancy isolation tests
 pass (PGlite, real generated DDL); gates green (lint, typecheck, 128
@@ -391,8 +391,9 @@ it live.
 - [x] **Neon project** — created; migration applied and sign-in verified
       against it locally (2026-10-18). Env vars land in Vercel at deploy.
 - [ ] **Resend sending domain** — account + API key are live and sending
-      (sandbox `onboarding@resend.dev`, marked in `.env.local`); add a
-      verified domain before anything beyond throwaway testing.
+      (`.env.local` now uses `notifications@send.eateryo.com`); confirm the
+      domain shows Verified in Resend and the same sender is set in Vercel
+      before relying on it beyond throwaway testing.
 - [ ] **Sentry project** — Step 11 ships structured logs + email alerts;
       the Sentry DSN is still needed for a third-party error dashboard.
 - [ ] **Contact address** — `CONTACT_EMAIL` for `/privacy` and `/terms`.

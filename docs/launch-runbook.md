@@ -82,15 +82,15 @@ Target: under ten minutes from photo to first order.
 7. **First order**: scan a table card, order one item, confirm it lands on the
    board. Run `docs/two-device-test.md` if this is the first café.
 
-Then check `/launch`: five verifiable steps should read done, and the usage
-panel should show one or two extractions against the cap.
+Then check `/launch`: five verifiable steps should read done. Check Settings →
+Usage for one or two extractions against the cap.
 
 Nothing in this flow asks for a card. If any screen does, that is a bug and the
 launch must not be advertised until it is fixed.
 
 ## 4. First week watch list
 
-- `/launch` usage: requests against `EXTRACTION_MONTHLY_CAP` per café.
+- Settings → Usage: requests against `EXTRACTION_MONTHLY_CAP` per café.
 - Orders per day per café (the Orders board is the source; the launch snapshot
   counts them too).
 - 429s in the logs (`orders.rate_limited`, `extract.rate_limited`,

@@ -186,8 +186,8 @@ export function LibraryPanel({
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="w-full min-w-0 flex-1 sm:w-auto">
                     <CommitInput
                       label={`Rename menu “${menu.title}”`}
                       value={menu.title}

@@ -120,6 +120,12 @@ export const restaurant = pgTable(
      * for restaurants that have never saved hours).
      */
     timeZone: text("time_zone"),
+    /**
+     * New-order email alerts (R0.4): on by default; a null address means
+     * the owners' account emails. Owners flip both in Settings.
+     */
+    orderAlertsEnabled: boolean("order_alerts_enabled").notNull().default(true),
+    orderAlertEmail: text("order_alert_email"),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -442,6 +448,34 @@ export const orderRateLimit = pgTable("order_rate_limit", {
 });
 
 /**
+ * New-order email receipts (R0.4): one row per emailed order. The unique
+ * order id makes sends idempotent (a retry never double-emails), and the
+ * restaurant+time index backs the digest guard that skips the chatter when
+ * a rush would otherwise fire an email per order every minute.
+ */
+export const orderEmailLog = pgTable(
+  "order_email_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurant.id, { onDelete: "cascade" }),
+    orderId: text("order_id").notNull(),
+    email: text("email").notNull(),
+    sentAt: createdAt(),
+  },
+  (t) => ({
+    orderUnique: uniqueIndex("order_email_log_order_unique").on(t.orderId),
+    restaurantSentIdx: index("order_email_log_restaurant_sent_idx").on(
+      t.restaurantId,
+      t.sentAt
+    ),
+  })
+);
+
+/**
  * One Gemini extraction, recorded for the free-launch cost brake (Step 11).
  *
  * `user_id` is null for the anonymous local-first flow, which is instead
@@ -539,6 +573,7 @@ export const schema = {
   order,
   orderLine,
   orderRateLimit,
+  orderEmailLog,
   extractionUsage,
   assistantUsage,
 };

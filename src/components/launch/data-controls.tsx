@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * Export and delete, on the launch page (Step 11).
+ * Export and delete, in Settings "Data & privacy" (Step 11, moved off
+ * `/launch` in R0.5).
  *
  * Export is a plain JSON download of everything the account can see. Delete
  * requires typing the confirmation phrase, because it also removes the
  * restaurants the account created — menus, published pages, and order history
  * included — and there is no undo.
+ *
+ * The card renders nothing unless signed in, so it never shows dead buttons
+ * to a visitor — Settings only mounts it for signed-in accounts anyway.
  */
 
 import { useRouter } from "next/navigation";
@@ -20,11 +24,15 @@ const CONFIRM_PHRASE = "delete my account";
 
 export function DataControls() {
   const router = useRouter();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const [busy, setBusy] = useState<"export" | "delete" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  // Below the hooks: a signed-out visitor (or a still-resolving session)
+  // sees nothing rather than buttons whose APIs would 401.
+  if (!sessionPending && !session?.user) return null;
 
   function describeFailure(failure: unknown): string {
     if (failure instanceof SyncError) return failure.message;
@@ -71,8 +79,8 @@ export function DataControls() {
 
   return (
     <section id="data" className="rounded-2xl border border-stone-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-stone-900">Your data</h2>
-      <p className="mt-1 text-sm text-stone-600">
+      <h3 className="text-sm font-bold tracking-tight text-stone-900">Data & privacy</h3>
+      <p className="mt-1 text-xs leading-5 text-stone-500">
         Download everything as JSON, or delete the account and the restaurants it created.
       </p>
 
