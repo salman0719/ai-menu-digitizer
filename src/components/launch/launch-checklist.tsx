@@ -16,7 +16,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchLaunchStatus } from "@/features/launch/client";
 import type { LaunchStatus } from "@/features/launch/schema";
 import { launchSteps, verifiedProgress, type LaunchStep } from "@/features/launch/steps";
-import { formatMicroUsd } from "@/features/usage/pricing";
 import { SyncError } from "@/features/menus/sync";
 
 const CARDS_PRINTED_KEY = "eateryo:launch:cards-printed";
@@ -261,71 +260,6 @@ export function LaunchChecklist() {
           </p>
         ) : null}
       </section>
-
-      <UsageCard status={status} />
     </div>
-  );
-}
-
-function UsageCard({ status }: { status: LaunchStatus }) {
-  const usage = status.usage;
-  if (!usage) return null;
-
-  const used = usage.requests;
-  const percent = Math.min(100, Math.round((used / usage.cap) * 100));
-
-  return (
-    <section className="rounded-2xl border border-stone-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-stone-900">AI extraction this month</h2>
-      <p className="mt-1 text-sm text-stone-600">
-        {used} of {usage.cap} free extractions used · {usage.remaining} left
-      </p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100">
-        <div className="h-full rounded-full bg-stone-500" style={{ width: `${percent}%` }} />
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-stone-600">
-        <dt>Successful</dt>
-        <dd className="text-right tabular-nums">{usage.succeeded}</dd>
-        <dt>Failed attempts</dt>
-        <dd className="text-right tabular-nums">{usage.failed}</dd>
-        <dt>Pages read</dt>
-        <dd className="text-right tabular-nums">{usage.pages}</dd>
-        <dt>Tokens</dt>
-        <dd className="text-right tabular-nums">
-          {usage.inputTokens === null && usage.outputTokens === null
-            ? "not reported"
-            : `${usage.inputTokens ?? "?"} in / ${usage.outputTokens ?? "?"} out`}
-        </dd>
-      </dl>
-      <p className="mt-3 text-xs text-stone-500">
-        {usage.costMicros !== null
-          ? `Provider cost this month: ${formatMicroUsd(usage.costMicros)}.`
-          : usage.ratesConfigured
-            ? "Cost is unknown for this month because some calls did not report token counts or used a vendor without configured rates."
-            : "Provider cost is not configured on this server yet, so only usage is counted."}
-      </p>
-      <p className="mt-1 text-xs text-stone-400">
-        Failed attempts that reached the AI still count: the provider bills them.
-      </p>
-
-      {status.assistant.messages > 0 ? (
-        <div className="mt-4 border-t border-stone-100 pt-3">
-          <h3 className="text-sm font-semibold text-stone-900">Assistant this month</h3>
-          <p className="mt-1 text-xs text-stone-600">
-            {status.assistant.messages} of {status.assistant.cap} messages used
-            {status.assistant.neurons !== null
-              ? ` · ${Math.round(status.assistant.neurons).toLocaleString()} neurons`
-              : " · neuron use not reported"}
-            {status.assistant.costMicros !== null
-              ? ` · ${formatMicroUsd(status.assistant.costMicros)}`
-              : " · cost unknown"}
-          </p>
-          <p className="mt-1 text-xs text-stone-400">
-            Assistant calls come from the same free Workers AI allocation as extraction; the
-            message cap resets each UTC month.
-          </p>
-        </div>
-      ) : null}
-    </section>
   );
 }

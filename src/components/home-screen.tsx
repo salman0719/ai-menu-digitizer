@@ -17,6 +17,8 @@ import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { RestaurantSettings } from "@/components/settings/restaurant-settings";
 import { RestaurantTables } from "@/components/tables/restaurant-tables";
 import { OrdersBoard } from "@/components/orders/orders-board";
+import { MonitorToasts } from "@/components/orders/monitor-toasts";
+import { OrderMonitorProvider, useOrderMonitor } from "@/features/orders/monitor";
 import { MenuEditor, SaveState } from "@/components/menu-editor/menu-editor";
 import { PublishWizard } from "@/components/menu-editor/publish-wizard";
 import { Dropzone } from "@/components/upload/dropzone";
@@ -75,7 +77,9 @@ import { SUPPORTED_IMAGE_MIME_TYPES, validateImageBatch } from "@/lib/image-cons
 import { PrepareImageError, prepareImageForUpload } from "@/lib/prepare-image";
 import {
   appRouteHref,
+  moreSheetRows,
   parseAppRoute,
+  phoneTabs,
   type AppRoute,
   type AppScreen,
   type EditorMode,
@@ -117,6 +121,40 @@ function stepIndex(phase: Phase, hasResult: boolean): number {
   return 0;
 }
 
+/** Badge for unseen `new` orders; null when there is nothing to shout about. */
+function NewOrdersBadge({ tone }: { tone: "bar" | "pill" }) {
+  const { newCount } = useOrderMonitor();
+  if (newCount === 0) return null;
+  const label = newCount > 9 ? "9+" : String(newCount);
+  if (tone === "pill") {
+    return (
+      <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="absolute top-1 right-[calc(50%-22px)] flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+      {label}
+    </span>
+  );
+}
+
+/** Tells the monitor whether the board is open (opening it counts as seeing). */
+function ViewingTracker({ viewing }: { viewing: boolean }) {
+  const { setViewingBoard } = useOrderMonitor();
+  useEffect(() => {
+    setViewingBoard(viewing);
+  }, [viewing, setViewingBoard]);
+  return null;
+}
+
+/** New-order toasts above the tab bar; tapping opens the Orders tab. */
+function MonitorToastStack({ onOpen }: { onOpen: () => void }) {
+  const { toasts, dismissToast } = useOrderMonitor();
+  return <MonitorToasts toasts={toasts} onOpen={onOpen} onDismiss={dismissToast} />;
+}
+
 /**
  * The whole signed-in/out app shell (capture → library → editor → …).
  * Every screen URL has its own route file that hands us its parsed route,
@@ -129,8 +167,17 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const [route, setRoute] = useState<AppRoute>(initialRoute);
   const screen: AppScreen = route.screen === "item" ? "editor" : route.screen;
   const selectedItemId = route.screen === "item" ? route.itemId : null;
-  // Which editor surface the URL asks for (edit, reorder, table QR,
-  // preview); an item deep link is always the edit workspace.
+  /** R0 phone nav: the More sheet (Tables · Assistant · Settings · Get started). */
+  const [moreOpen, setMoreOpen] = useState(false);
+  /** Desktop pills: keep the active tab scrolled into view on narrow windows. */
+  const pillsRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    pillsRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [screen]);
+  // Which editor surface the URL asks for (edit, reorder, preview);
+  // an item deep link is always the edit workspace.
   const editorMode: EditorMode = route.screen === "editor" ? route.mode : "edit";
   const routeRef = useRef<AppRoute>(route);
   const navigationReadyRef = useRef(false);
@@ -185,6 +232,16 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
     window.addEventListener("popstate", syncFromLocation);
     return () => window.removeEventListener("popstate", syncFromLocation);
   }, [pathname]);
+
+  // The assistant needs an account in every mode: a signed-out visitor who
+  // lands on /assistant (typed URL, old bookmark) goes back to capture
+  // instead of meeting an assistant-branded sign-in prompt. Runs every
+  // render by design; the guard goes quiet once the screen moves on.
+  useEffect(() => {
+    if (!sessionPending && !signedIn && routeRef.current.screen === "assistant") {
+      navigateTo({ screen: "capture" }, true);
+    }
+  });
 
   const [pages, setPages] = useState<PageImage[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -1551,7 +1608,9 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   const activeMenuIsStaff = activeDoc ? staffMenus.has(activeDoc.id) : false;
 
   return (
+    <OrderMonitorProvider userId={session?.user?.id ?? null}>
     <div className="flex min-h-full flex-1 flex-col">
+      <ViewingTracker viewing={signedIn && screen === "orders"} />
       <SiteHeader />
       <main
         className={`mx-auto flex w-full flex-1 flex-col gap-6 px-4 py-8 ${
@@ -1560,18 +1619,24 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
           screen === "editor" ? "max-w-6xl" : "max-w-3xl"
         }`}
       >
+        {/* Desktop pill row. Phones use the bottom tab bar below. */}
         {screen !== "editor" && (
-          <nav data-print-hide aria-label="Sections" className="flex gap-2 overflow-x-auto pb-1">
+          <nav
+            data-print-hide
+            aria-label="Sections"
+            ref={pillsRef}
+            className="hidden gap-2 overflow-x-auto pb-1 sm:flex"
+          >
             {(
               [
                 { id: "capture", label: "Capture" },
                 { id: "library", label: `My menus${menus.length ? ` (${menus.length})` : ""}` },
                 { id: "orders", label: "Orders" },
                 // R0: tabs are always rendered so the app never changes shape
-                // signed out. Assistant/Tables/Settings each render their own
-                // signed-out explanation; the assistant keeps its kill
-                // switch (A4) for signed-in accounts without access.
-                ...(!signedIn || featureFlags.assistant
+                // signed out. Tables/Settings render their own signed-out
+                // explanation; the assistant is never offered signed out
+                // (its kill switch, A4, only gates signed-in accounts).
+                ...(signedIn && featureFlags.assistant
                   ? [{ id: "assistant" as const, label: "Assistant" }]
                   : []),
                 { id: "tables" as const, label: "Tables" },
@@ -1590,6 +1655,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 }`}
               >
                 {tab.label}
+                {tab.id === "orders" && <NewOrdersBadge tone="pill" />}
               </button>
             ))}
           </nav>
@@ -1702,21 +1768,10 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
                 .map((menu) => ({ id: menu.id, title: menu.title }))}
             />
           ) : !signedIn ? (
-            // The flag endpoint needs a session, so a signed-out visitor would
-            // otherwise be told this account lacks access it never had.
-            <section className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
-              <h1 className="font-medium text-stone-900">Sign in to use the Assistant</h1>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
-                The assistant answers with your own restaurants and menus, so it needs an account.
-                The offline editor still works without one.
-              </p>
-              <a
-                href="/sign-in"
-                className="mt-4 inline-block rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-              >
-                Sign in
-              </a>
-            </section>
+            // Unreachable through the UI — both navs hide the assistant when
+            // signed out and the effect below bounces a typed /assistant URL
+            // back to capture — so render nothing while the bounce lands.
+            null
           ) : (
             <section className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center">
               <h1 className="font-medium text-stone-900">Assistant isn’t available</h1>
@@ -1782,9 +1837,6 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
               <MenuEditor
                 doc={activeDoc}
                 selectedItemId={selectedItemId}
-                onOpenItem={(itemId) =>
-                  navigateTo({ screen: "item", menuId: activeDoc.id, itemId })
-                }
                 mode={activeMenuIsStaff ? "preview" : editorMode}
                 onModeChange={(mode) =>
                   navigateTo({ screen: "editor", menuId: activeDoc.id, mode })
@@ -2029,6 +2081,107 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         )}
       </main>
       <SiteFooter />
+      {/*
+        R0 phone nav: bottom tab bar (Capture · My menus · Orders · More).
+        Orders stays pinned so the R0.3 order monitor has a persistent home
+        for its badge; Tables/Assistant/Settings live in the More sheet and
+        each render their own signed-out explanation. Desktop keeps pills.
+        Sits after the footer so it is the last thing on the page and sticks
+        to the viewport bottom instead of floating above the footer links.
+      */}
+      <nav
+        data-print-hide
+        aria-label="Sections"
+        className="sticky bottom-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur-sm sm:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="grid grid-cols-4 px-2 pt-1">
+          {phoneTabs().map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                navigateTo({ screen: tab.id });
+              }}
+              aria-current={screen === tab.id ? "page" : undefined}
+              className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+                screen === tab.id ? "text-amber-800" : "text-stone-500"
+              }`}
+            >
+              {tab.id === "orders" && <NewOrdersBadge tone="bar" />}
+              <span aria-hidden="true" className="text-lg leading-none">
+                {tab.icon}
+              </span>
+              {tab.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((open) => !open)}
+            aria-expanded={moreOpen}
+            aria-current={
+              screen === "tables" || screen === "assistant" || screen === "settings"
+                ? "page"
+                : undefined
+            }
+            className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 ${
+              moreOpen ||
+              screen === "tables" ||
+              screen === "assistant" ||
+              screen === "settings"
+                ? "text-amber-800"
+                : "text-stone-500"
+            }`}
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              ⋯
+            </span>
+            More
+          </button>
+        </div>
+      </nav>
+      {moreOpen && (
+        <div className="sm:hidden">
+          <div
+            aria-hidden="true"
+            onClick={() => setMoreOpen(false)}
+            className="fixed inset-0 z-40 bg-black/35"
+          />
+          <div
+            role="dialog"
+            aria-label="More"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-stone-200 bg-white px-4 pt-2 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          >
+            <div aria-hidden="true" className="mx-auto mb-1 h-1.5 w-11 rounded-full bg-stone-200" />
+            {moreSheetRows({ signedIn, assistantEnabled: featureFlags.assistant }).map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  navigateTo({ screen: row.id });
+                }}
+                className="flex min-h-[52px] w-full flex-col justify-center rounded-xl px-2 text-left transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+              >
+                <span className="text-sm font-semibold text-stone-900">{row.label}</span>
+                <span className="text-xs font-normal text-stone-500">{row.why}</span>
+              </button>
+            ))}
+            <a
+              href="/launch"
+              className="flex min-h-[52px] w-full flex-col justify-center rounded-xl px-2 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+            >
+              <span className="text-sm font-semibold text-stone-900">Get started</span>
+              <span className="text-xs font-normal text-stone-500">
+                The launch checklist and offer
+              </span>
+            </a>
+          </div>
+        </div>
+      )}
+      <MonitorToastStack onOpen={() => navigateTo({ screen: "orders" })} />
     </div>
+    </OrderMonitorProvider>
   );
 }

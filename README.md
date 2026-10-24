@@ -207,7 +207,7 @@ npm run secrets:check   # needs the build output above
   setup, caps, feature flags, failure copy and acceptance results.
 
 The launch promotion is free, with no payment step anywhere; the app enforces
-per-account extraction caps instead, and shows them on `/launch`.
+per-account extraction caps instead, and shows them in Settings → Usage.
 
 **Parked:** automatic order purging. Scheduling needs a paid Vercel cron plan,
 so `/api/cron/retention` is a secret-gated maintenance endpoint that nothing

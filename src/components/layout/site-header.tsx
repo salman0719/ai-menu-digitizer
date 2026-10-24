@@ -43,6 +43,14 @@ export function SiteHeader() {
             </div>
           ) : user ? (
             <>
+              {/* R0 phone identity: a compact avatar chip, since the email is desktop-only. */}
+              <span
+                aria-hidden="true"
+                title={user.email}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-700 text-xs font-bold text-white sm:hidden"
+              >
+                {(user.name ?? user.email ?? "?").trim().charAt(0).toUpperCase() || "?"}
+              </span>
               <span className="hidden text-[11px] text-stone-500 sm:inline" title="Signed in as">
                 {user.email}
               </span>

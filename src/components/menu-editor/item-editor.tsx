@@ -12,8 +12,9 @@ import { CommitInput, CommitNumber } from "./fields";
 
 interface ItemEditorProps {
   doc: MenuDocument;
+  /** Deep-link target: a pasted /menus/<id>/items/<itemId> URL scrolls here
+      and rings it, even though nothing in the UI links to items. */
   isRouteTarget: boolean;
-  onOpenItem: () => void;
   categoryId: string;
   item: MenuItem;
   /** All categories, for the move-to-another-category control. */
@@ -36,7 +37,6 @@ export function ItemEditor({
   doc,
   categoryId,
   isRouteTarget,
-  onOpenItem,
   item,
   categories,
   onChange,
@@ -58,17 +58,10 @@ export function ItemEditor({
       id={`menu-item-${item.id}`}
       className={`rounded-xl border bg-white p-4 ${isRouteTarget ? "border-amber-600 ring-2 ring-amber-200" : "border-stone-200"}`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 border-b border-stone-100 pb-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
+      <div className="mb-3 border-b border-stone-100 pb-2">
+        <p className="truncate text-sm font-semibold text-stone-900">
           {item.name || "Untitled item"}
         </p>
-        <button
-          type="button"
-          onClick={onOpenItem}
-          className="shrink-0 text-xs text-stone-500 underline hover:text-amber-900"
-        >
-          {isRouteTarget ? "Direct link selected" : "Link to item"}
-        </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-[1fr_120px_90px]">
         <CommitInput
@@ -325,83 +318,93 @@ export function ItemEditor({
         </ul>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3">
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggle}
-            aria-label={`Select ${item.name} for bulk move`}
-            className="h-4 w-4 rounded border-stone-300 accent-amber-700"
-          />
-          Select for bulk move
-        </label>
-        <button
-          type="button"
-          disabled={index <= 0}
-          onClick={() => onChange(moveItem(doc, categoryId, item.id, index - 1))}
-          className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-        >
-          ↑ Move up
-        </button>
-        <button
-          type="button"
-          disabled={category === undefined || index === -1 || index >= category.items.length - 1}
-          onClick={() => onChange(moveItem(doc, categoryId, item.id, index + 1))}
-          className={`${smallButton} disabled:cursor-not-allowed disabled:opacity-40`}
-        >
-          ↓ Move down
-        </button>
+      {/* One control group per row on phones (sm:contents dissolves the rows
+          back into today's single wrapping row, so desktop is unchanged). */}
+      <div className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex gap-2 sm:contents">
+          <button
+            type="button"
+            disabled={index <= 0}
+            onClick={() => onChange(moveItem(doc, categoryId, item.id, index - 1))}
+            className={`${smallButton} flex-1 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none`}
+          >
+            ↑ Move up
+          </button>
+          <button
+            type="button"
+            disabled={category === undefined || index === -1 || index >= category.items.length - 1}
+            onClick={() => onChange(moveItem(doc, categoryId, item.id, index + 1))}
+            className={`${smallButton} flex-1 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none`}
+          >
+            ↓ Move down
+          </button>
+        </div>
         {categories.length > 1 && (
-          <label className="flex items-center gap-1.5 text-xs text-stone-500">
-            Move to
-            <select
-              aria-label={`Move ${item.name} to another category`}
-              defaultValue=""
-              onChange={(event) => {
-                if (event.target.value) {
-                  onChange(moveItemToCategory(doc, categoryId, event.target.value, item.id));
-                  event.target.value = "";
-                }
-              }}
-              className="rounded-full border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 focus:border-amber-700 focus:outline-none"
-            >
-              <option value="">Category…</option>
-              {categories
-                .filter((c) => c.id !== categoryId)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-            </select>
+          <div className="sm:contents">
+            <label className="flex w-full flex-col gap-1 text-xs text-stone-500 sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
+              Move to
+              <select
+                aria-label={`Move ${item.name} to another category`}
+                defaultValue=""
+                onChange={(event) => {
+                  if (event.target.value) {
+                    onChange(moveItemToCategory(doc, categoryId, event.target.value, item.id));
+                    event.target.value = "";
+                  }
+                }}
+                className="w-full rounded-full border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 focus:border-amber-700 focus:outline-none sm:w-auto"
+              >
+                <option value="">Category…</option>
+                {categories
+                  .filter((c) => c.id !== categoryId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2 sm:contents">
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggle}
+              aria-label={`Select ${item.name} for bulk move`}
+              className="h-4 w-4 rounded border-stone-300 accent-amber-700"
+            />
+            Select for bulk move
           </label>
-        )}
-        <span className="flex-1" />
-        {needsReview && (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
-            Needs review
-          </span>
-        )}
-        {duplicate && (
-          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
-            Possible duplicate
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => onChange(duplicateItem(doc, categoryId, item.id))}
-          className={smallButton}
-        >
-          Duplicate
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-        >
-          Delete
-        </button>
+          {needsReview && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+              Needs review
+            </span>
+          )}
+          {duplicate && (
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
+              Possible duplicate
+            </span>
+          )}
+        </div>
+        <span className="hidden flex-1 sm:block" />
+        <div className="flex gap-2 sm:contents">
+          <button
+            type="button"
+            onClick={() => onChange(duplicateItem(doc, categoryId, item.id))}
+            className={`${smallButton} flex-1 sm:flex-none`}
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex-1 rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-red-700 hover:text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 sm:flex-none"
+          >
+            Delete
+          </button>
+        </div>
       </div>
     </li>
   );

@@ -50,10 +50,12 @@ point the owner at the contact address on /privacy. Never promise a feature that
    this browser as a local fallback.
 
 7. Orders (tab: Orders, path /orders)
-   Diners order from the published snapshot without an account. The board shows orders, moving forward only:
+   Diners order   from the published snapshot without an account. The board shows orders, moving forward only:
    new → preparing → served, with cancel while working. Names, prices and totals are resolved server-side
-   from the published menu. There are no payments, no diner accounts, no notifications and no printing beyond
-   the browser's own print dialog.
+   from the published menu. Staff get in-app order alerts anywhere in the app: a badge on the Orders
+   tab, a toast, and an optional chime (plus browser notifications once enabled on the board).
+   There are no payments, no diner accounts, no email/SMS alerts and no printing beyond the
+   browser's own print dialog.
 
 8. Team (Settings → Team, path /settings)
    Owners invite staff by email with a one-time link valid for 7 days, and can resend or revoke it. Roles are

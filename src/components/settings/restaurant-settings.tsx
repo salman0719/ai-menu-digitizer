@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 
+import { DataControls } from "@/components/launch/data-controls";
 import { CommitInput } from "@/components/menu-editor/fields";
+import { OrderAlertsCard } from "@/components/settings/order-alerts";
 import { TeamActivity } from "@/components/settings/team-activity";
+import { UsagePanel } from "@/components/settings/usage-panel";
 import { GuidanceCard } from "@/components/ui/guidance-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -230,6 +233,12 @@ export function RestaurantSettings({
             refreshKey={teamVersion}
           />
 
+          <OrderAlertsCard
+            key={`alerts-${selected.id}`}
+            restaurantId={selected.id}
+            restaurantName={selected.name}
+          />
+
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
             <h3 className="text-sm font-bold tracking-tight text-red-900">Danger zone</h3>
             <p className="mt-1 text-xs leading-5 text-red-800">
@@ -245,6 +254,17 @@ export function RestaurantSettings({
               {deleting ? "Deleting…" : `Delete ${selected.name}`}
             </button>
           </div>
+        </>
+      )}
+
+      {/* Account-level, not restaurant-level: usage allowances and the account
+          export/delete live here for every signed-in user, including staff
+          and owners who have not picked a restaurant. Both cards self-gate
+          on the session, so there is no dead UI while it resolves. */}
+      {signedIn && (
+        <>
+          <UsagePanel />
+          <DataControls />
         </>
       )}
     </div>

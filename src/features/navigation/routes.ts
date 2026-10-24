@@ -3,10 +3,11 @@ export type AppScreen =
 
 /**
  * The surface shown for an open menu: the edit workspace, the compact
- * reorder list, the printable table QR cards, or the customer preview.
- * Mirrors the editor modes, each with its own deep-linkable URL.
+ * reorder list, the customer preview, or the get-your-link publish wizard
+ * (R1). Table QR cards moved to the Tables tab (R0), so there is no `qr`
+ * mode. Each mode has its own deep-linkable URL.
  */
-export type EditorMode = "edit" | "reorder" | "qr" | "preview" | "publish";
+export type EditorMode = "edit" | "reorder" | "preview" | "publish";
 
 export type AppRoute =
   | { screen: "capture" | "library" | "orders" | "assistant" | "tables" | "settings" }
@@ -17,7 +18,7 @@ export type AppRoute =
 export function menuSelectionFromPathname(
   pathname: string
 ): { menuId: string; mode?: EditorMode; itemId?: string } | null {
-  const menuMatch = /^\/menus\/([^/]+)(?:\/(reorder|qr|preview|publish)|\/items\/([^/]+))?$/.exec(
+  const menuMatch = /^\/menus\/([^/]+)(?:\/(reorder|preview|publish)|\/items\/([^/]+))?$/.exec(
     pathname
   );
   if (!menuMatch?.[1]) return null;
@@ -27,7 +28,6 @@ export function menuSelectionFromPathname(
     const [, , modeSegment, rawItemId] = menuMatch;
     if (
       modeSegment === "reorder" ||
-      modeSegment === "qr" ||
       modeSegment === "preview" ||
       modeSegment === "publish"
     ) {
@@ -66,6 +66,51 @@ export function parseAppRoute(input: string | URL): AppRoute {
   }
   if (url.pathname.startsWith("/menus/")) return { screen: "library" };
   return { screen: "capture" };
+}
+
+/**
+ * R0 phone nav: the bottom tab bar pins Capture · My menus · Orders, so the
+ * R0.3 order monitor keeps a persistent home for its badge. Everything else
+ * lives in the More sheet, led by Tables. Desktop keeps pills. Pure data so
+ * tests can pin the order without rendering the shell.
+ */
+export interface PhoneTab {
+  id: "capture" | "library" | "orders";
+  label: string;
+  icon: string;
+}
+
+export function phoneTabs(): PhoneTab[] {
+  return [
+    { id: "capture", label: "Capture", icon: "📸" },
+    { id: "library", label: "My menus", icon: "📚" },
+    { id: "orders", label: "Orders", icon: "🧾" },
+  ];
+}
+
+export interface MoreSheetRow {
+  id: "tables" | "assistant" | "settings";
+  label: string;
+  why: string;
+}
+
+/**
+ * More-sheet rows in display order: Tables first (R0 promotes tables over
+ * orders everywhere — Orders already has its tab), then the Assistant for
+ * signed-in accounts where the flag is on (never signed out, whatever the
+ * flag says), then Settings. The Settings blurb names Usage so the moved
+ * allowance panel stays discoverable.
+ */
+export function moreSheetRows(options: {
+  signedIn: boolean;
+  assistantEnabled: boolean;
+}): MoreSheetRow[] {
+  const rows: MoreSheetRow[] = [{ id: "tables", label: "Tables", why: "QR cards per table" }];
+  if (options.signedIn && options.assistantEnabled) {
+    rows.push({ id: "assistant", label: "Assistant", why: "Guided fixes and answers" });
+  }
+  rows.push({ id: "settings", label: "Settings", why: "Restaurant · Team · Usage" });
+  return rows;
 }
 
 /** Build the canonical path for an application screen. */

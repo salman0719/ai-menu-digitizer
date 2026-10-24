@@ -54,11 +54,9 @@ body {
   .added-flash {
     animation-duration: 0.01s;
   }
-}
-
-/* R0 mobile floor: 16px form text stops iOS focus-zoom; coarse-pointer
-   targets get a 44px minimum so phone taps land. Text floors stay in
-   components (12px secondary / 14-16px body on mobile). */
+}/* R0 mobile floor: 16px form text stops iOS focus-zoom; coarse-pointer
+targets get a 44px minimum so phone taps land; secondary copy never drops
+below 12px on phones (print keeps its 10px QR captions — this is screen-only). */
 @media (max-width: 640px) {
   input,
   select,
@@ -67,13 +65,23 @@ body {
   }
 }
 
+@media screen and (max-width: 640px) {
+  [class*="text-[10px]"],
+  [class*="text-[11px]"] {
+    font-size: 12px !important;
+  }
+}
+
 @media (pointer: coarse) {
-  button,
-  [role="button"],
-  input[type="checkbox"],
-  input[type="radio"] {
+  /* Height only: a blanket min-width forces dense rows (reorder arrows,
+  delete buttons, pills) wider than their tracks and that is what pushes
+  the page into horizontal overflow. Width stays with the components.
+  Pills (rounded-full) keep their designed rhythm: compact tabs like the
+  diner's "All" pill stay compact, while form controls, list rows and
+  other full-size targets keep the 44px minimum so phone taps land. */
+  button:not(.rounded-full),
+  [role="button"]:not(.rounded-full) {
     min-height: 44px;
-    min-width: 44px;
   }
 
   input[type="checkbox"],
