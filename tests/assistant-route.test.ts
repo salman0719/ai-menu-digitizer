@@ -400,6 +400,7 @@ describe("POST /api/assistant with a menu", () => {
     holder.userId = userId;
     const { menu } = await seedMenu(userId);
     process.env.FEATURE_FLAGS = JSON.stringify({
+      assistant: { enabled: true },
       assistantProposals: { disabled: true },
     });
 

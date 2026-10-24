@@ -14,8 +14,11 @@ import {
 } from "@/features/flags/registry";
 
 describe("parseFeatureFlagConfig", () => {
-  it("uses the proposal preview default for a missing or blank value", () => {
-    const expected = { assistantProposals: { preview: true } };
+  it("uses the assistant preview defaults for a missing or blank value", () => {
+    const expected = {
+      assistant: { preview: true },
+      assistantProposals: { preview: true },
+    };
     expect(parseFeatureFlagConfig(undefined)).toEqual(expected);
     expect(parseFeatureFlagConfig("   ")).toEqual(expected);
   });
@@ -48,8 +51,11 @@ describe("parseFeatureFlagConfig", () => {
     });
   });
 
-  it("uses the proposal preview default when the env var is unset or blank", () => {
-    const expected = { assistantProposals: { preview: true } };
+  it("uses the assistant preview defaults when the env var is unset or blank", () => {
+    const expected = {
+      assistant: { preview: true },
+      assistantProposals: { preview: true },
+    };
     expect(readFeatureFlagConfig({})).toEqual(expected);
     expect(readFeatureFlagConfig({ FEATURE_FLAGS: "   " })).toEqual(expected);
   });
@@ -64,18 +70,19 @@ describe("parseFeatureFlagConfig", () => {
 });
 
 describe("evaluateFeatureFlags", () => {
-  it("uses the conservative registry defaults", () => {
+  it("hides both assistant flags with no config and no preview", () => {
     const flags = evaluateFeatureFlags({ userId: "user-1" }, {});
-    expect(flags.assistant).toBe(true);
+    expect(flags.assistant).toBe(false);
     expect(flags.assistantProposals).toBe(false);
   });
 
-  it("releases a flag to every signed-in account when enabled", () => {
+  it("releases proposals to every signed-in account, and the Assistant with them", () => {
     const flags = evaluateFeatureFlags(
       { userId: "user-1" },
       { assistantProposals: { enabled: true } }
     );
     expect(flags.assistantProposals).toBe(true);
+    expect(flags.assistant).toBe(true);
   });
 
   it("lets an emergency stop override enabled and every allowlist", () => {
@@ -127,15 +134,26 @@ describe("evaluateFeatureFlags", () => {
       { assistantProposals: { preview: true } }
     );
     expect(allowed.assistantProposals).toBe(true);
+    expect(allowed.assistant).toBe(true);
 
     const refused = evaluateFeatureFlags(
       { userId: "user-1", previewKeys: ["assistantProposals"] },
       {}
     );
     expect(refused.assistantProposals).toBe(false);
+    expect(refused.assistant).toBe(false);
   });
 
-  it("enables the proposal preview from the default config", () => {
+  it("opens only the help Assistant with the assistant preview", () => {
+    const flags = evaluateFeatureFlags(
+      { userId: "user-1", previewKeys: ["assistant"] },
+      readFeatureFlagConfig({})
+    );
+    expect(flags.assistant).toBe(true);
+    expect(flags.assistantProposals).toBe(false);
+  });
+
+  it("enables the full Assistant preview from the default config", () => {
     const flags = evaluateFeatureFlags(
       { userId: "user-1", previewKeys: ["assistantProposals"] },
       readFeatureFlagConfig({})
@@ -144,10 +162,19 @@ describe("evaluateFeatureFlags", () => {
     expect(flags.assistantProposals).toBe(true);
   });
 
+  it("takes both flags down with the Assistant kill switch", () => {
+    const flags = evaluateFeatureFlags(
+      { userId: "user-1", previewKeys: ["assistantProposals"] },
+      { assistant: { disabled: true }, assistantProposals: { enabled: true } }
+    );
+    expect(flags.assistant).toBe(false);
+    expect(flags.assistantProposals).toBe(false);
+  });
+
   it("does not let a preview turn a released flag off", () => {
     const flags = evaluateFeatureFlags(
       { userId: "user-1", previewKeys: [] },
-      { assistant: { preview: true } }
+      { assistant: { enabled: true, preview: true } }
     );
     expect(flags.assistant).toBe(true);
   });

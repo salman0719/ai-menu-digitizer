@@ -5,9 +5,9 @@
  * the app knows: adding one here makes it configurable, and an env entry for
  * an unknown key is ignored so a typo cannot silently create a flag.
  *
- * Defaults are deliberately conservative: released features default on, work
- * in progress defaults off. Only the server evaluates a flag; the browser
- * receives the result from `/api/features`.
+ * Defaults are deliberately conservative: nothing is released by default;
+ * preview links are how work in progress is checked. Only the server
+ * evaluates a flag; the browser receives the result from `/api/features`.
  */
 
 export interface FeatureFlagDefinition {
@@ -21,12 +21,14 @@ export interface FeatureFlagDefinition {
 
 export const FEATURE_FLAGS = {
   assistant: {
-    description: "The signed-in Assistant tab and help chat (A1).",
-    defaultEnabled: true,
+    description:
+      "The signed-in Assistant tab and help chat (A1). Off by default; preview it with ?ff=assistant (help only) or ?ff=assistantProposals (help plus proposals).",
+    defaultEnabled: false,
     defaultPreview: false,
   },
   assistantProposals: {
-    description: "AI-proposed menu edits with review and approval (A2/A3).",
+    description:
+      "AI-proposed menu edits with review and approval (A2/A3). Releasing it also releases the Assistant it lives in.",
     defaultEnabled: false,
     defaultPreview: false,
   },

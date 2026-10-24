@@ -110,6 +110,7 @@ describe("POST /api/assistant/apply", () => {
   it("refuses approvals when the proposals flag is off", async () => {
     const { userId, menu, breakfastId } = await seedOwnerWithMenu();
     process.env.FEATURE_FLAGS = JSON.stringify({
+      assistant: { enabled: true },
       assistantProposals: { disabled: true },
     });
 

@@ -7,8 +7,8 @@
  * the allowlists — only `/api/features`' evaluated booleans.
  *
  * When the env var is unset or blank, `DEFAULT_FEATURE_FLAG_CONFIG` applies:
- * proposal preview links are available, while the feature itself still needs
- * a preview link, allowlist or global release. A present value replaces that
+ * both the help Assistant and its proposal review are off for everyone, but
+ * each can be checked with a preview link. A present value replaces that
  * default rather than merging with it.
  *
  * Evaluation order, per flag:
@@ -17,6 +17,10 @@
  *   3. `userIds` / `emails` release it to named accounts while `enabled` is false.
  *   4. `preview` + a `?ff=<key>` preview releases it to that signed-in browser.
  *   5. Otherwise it is off.
+ *
+ * Proposal review lives inside the Assistant, so a released or previewed
+ * `assistantProposals` also releases `assistant`. The Assistant's `disabled`
+ * switch is a hard stop that takes both down.
  *
  * A URL preview is a convenience for review, never an authorization boundary:
  * the server still applies the feature's own ownership and usage checks.
@@ -61,12 +65,13 @@ export type FeatureFlagOverride = z.infer<typeof overrideSchema>;
 export type FeatureFlagConfig = Partial<Record<FeatureFlagKey, FeatureFlagOverride>>;
 
 /**
- * Applied only when `FEATURE_FLAGS` is unset or blank, so the A3 review flow
- * can be shown with `?ff=assistantProposals` without a deploy. The proposals
- * flag itself stays off until that link (or an allowlist/global release)
- * turns it on.
+ * Applied only when `FEATURE_FLAGS` is unset or blank: nothing is released,
+ * but both the help Assistant (`?ff=assistant`) and the proposal review
+ * (`?ff=assistantProposals`, which also unlocks the Assistant) can be checked
+ * without a deploy.
  */
 export const DEFAULT_FEATURE_FLAG_CONFIG = Object.freeze({
+  assistant: Object.freeze({ preview: true }),
   assistantProposals: Object.freeze({ preview: true }),
 }) satisfies FeatureFlagConfig;
 
@@ -142,6 +147,15 @@ export function evaluateFeatureFlags(
       continue;
     }
     flags[key] = false;
+  }
+
+  // The proposal surface cannot exist without the Assistant. This also makes
+  // `?ff=assistantProposals` open the whole Assistant, not a hidden page.
+  if (config.assistant?.disabled) {
+    flags.assistant = false;
+    flags.assistantProposals = false;
+  } else if (flags.assistantProposals) {
+    flags.assistant = true;
   }
   return flags;
 }

@@ -211,10 +211,13 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   // the whole local-first flow above keeps working untouched.
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const signedIn = session?.user != null;
-  // Server-evaluated release decisions (A4). The compiled defaults keep the
-  // released Assistant visible before the first answer; unreleased flags are
-  // off by default and only appear once the server says so.
-  const { flags: featureFlags } = useFeatureFlags(session?.user?.id ?? null);
+  // Server-evaluated release decisions (A4). Both assistant flags default
+  // off, so the tab and panel appear only for a released account or a
+  // preview link; the loading state below avoids flashing “unavailable” while
+  // the server answers.
+  const { flags: featureFlags, loading: featureFlagsLoading } = useFeatureFlags(
+    session?.user?.id ?? null
+  );
   const signedInRef = useRef(false);
   /** The server updatedAt the open menu was last synced at; null = don't push. */
   const serverBaseRef = useRef<string | null>(null);
@@ -1251,6 +1254,7 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
   }
 
   const activeStep = stepIndex(phase, result !== null);
+  const assistantPending = sessionPending || (signedIn && featureFlagsLoading);
 
   // Library rows carry their account state: menus on the server show as
   // synced; the rest are browser-only until moved (or downloaded).
@@ -1356,7 +1360,18 @@ export function HomeScreen({ initialRoute }: { initialRoute: AppRoute }) {
         {screen === "orders" && <OrdersBoard />}
 
         {screen === "assistant" &&
-          (featureFlags.assistant ? (
+          (assistantPending ? (
+            <section
+              role="status"
+              aria-busy="true"
+              aria-label="Loading the assistant"
+              className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6"
+            >
+              <span className="sr-only">Loading the assistant…</span>
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-24 w-full" />
+            </section>
+          ) : featureFlags.assistant ? (
             <AssistantPanel
               signedIn={signedIn}
               sessionPending={sessionPending}

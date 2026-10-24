@@ -37,18 +37,28 @@ describe("GET /api/features", () => {
     expect((await response.json()).error.code).toBe("unauthorized");
   });
 
-  it("returns the conservative defaults and never caches", async () => {
+  it("hides both assistant flags by default and never caches", async () => {
     holder.user = { id: "user-1", email: "owner@cafe.test" };
     const response = await GET(request());
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toEqual({
-      flags: { assistant: true, assistantProposals: false },
+      flags: { assistant: false, assistantProposals: false },
       preview: [],
     });
   });
 
-  it("releases a flag globally and still hides a stopped one", async () => {
+  it("releases proposals globally, and the Assistant with them", async () => {
+    holder.user = { id: "user-1", email: "owner@cafe.test" };
+    process.env.FEATURE_FLAGS = JSON.stringify({
+      assistantProposals: { enabled: true },
+    });
+
+    const payload = await (await GET(request())).json();
+    expect(payload.flags).toEqual({ assistant: true, assistantProposals: true });
+  });
+
+  it("takes both flags down with the Assistant kill switch", async () => {
     holder.user = { id: "user-1", email: "owner@cafe.test" };
     process.env.FEATURE_FLAGS = JSON.stringify({
       assistantProposals: { enabled: true },
@@ -56,7 +66,7 @@ describe("GET /api/features", () => {
     });
 
     const payload = await (await GET(request())).json();
-    expect(payload.flags).toEqual({ assistant: false, assistantProposals: true });
+    expect(payload.flags).toEqual({ assistant: false, assistantProposals: false });
   });
 
   it("releases a flag to an allowlisted email only", async () => {
@@ -65,7 +75,9 @@ describe("GET /api/features", () => {
       assistantProposals: { emails: ["owner@cafe.test"] },
     });
 
-    expect((await (await GET(request())).json()).flags.assistantProposals).toBe(true);
+    const flags = (await (await GET(request())).json()).flags;
+    expect(flags.assistantProposals).toBe(true);
+    expect(flags.assistant).toBe(true);
   });
 
   it("accepts a preview from the proxy header when the flag allows it", async () => {
@@ -77,11 +89,19 @@ describe("GET /api/features", () => {
     const payload = await (
       await GET(request({ "x-eateryo-ff-preview": "assistantProposals" }))
     ).json();
-    expect(payload.flags.assistantProposals).toBe(true);
+    expect(payload.flags).toEqual({ assistant: true, assistantProposals: true });
     expect(payload.preview).toEqual(["assistantProposals"]);
   });
 
-  it("accepts the proposal preview by default when FEATURE_FLAGS is unset", async () => {
+  it("accepts the assistant preview without enabling proposals", async () => {
+    holder.user = { id: "user-1", email: "owner@cafe.test" };
+
+    const payload = await (await GET(request({ "x-eateryo-ff-preview": "assistant" }))).json();
+    expect(payload.flags).toEqual({ assistant: true, assistantProposals: false });
+    expect(payload.preview).toEqual(["assistant"]);
+  });
+
+  it("accepts the full assistant preview by default when FEATURE_FLAGS is unset", async () => {
     holder.user = { id: "user-1", email: "owner@cafe.test" };
 
     const payload = await (
@@ -100,13 +120,13 @@ describe("GET /api/features", () => {
     const withCookie = await (
       await GET(request({ cookie: "eateryo_ff_preview=assistantProposals" }))
     ).json();
-    expect(withCookie.flags.assistantProposals).toBe(true);
+    expect(withCookie.flags).toEqual({ assistant: true, assistantProposals: true });
 
     process.env.FEATURE_FLAGS = JSON.stringify({ assistantProposals: { preview: false } });
     const refused = await (
       await GET(request({ cookie: "eateryo_ff_preview=assistantProposals" }))
     ).json();
-    expect(refused.flags.assistantProposals).toBe(false);
+    expect(refused.flags).toEqual({ assistant: false, assistantProposals: false });
   });
 
   it("fails closed to defaults when the env JSON is invalid", async () => {
@@ -114,6 +134,6 @@ describe("GET /api/features", () => {
     process.env.FEATURE_FLAGS = "{not json";
 
     const payload = await (await GET(request())).json();
-    expect(payload.flags).toEqual({ assistant: true, assistantProposals: false });
+    expect(payload.flags).toEqual({ assistant: false, assistantProposals: false });
   });
 });
